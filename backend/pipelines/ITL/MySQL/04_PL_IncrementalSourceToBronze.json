@@ -1,0 +1,773 @@
+{
+    "name": "04_PL_IncrementalSourceToBronze",
+    "properties": {
+        "activities": [
+            {
+                "name": "Get Tables List",
+                "description": "Lookup activity to fetch list of all active tables from IncrementalConfigETL metadata table for incremental processing.",
+                "type": "Lookup",
+                "dependsOn": [],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "typeProperties": {
+                    "source": {
+                        "type": "DataWarehouseSource",
+                        "query": {
+                            "value": "@concat('\nSELECT\n    Id,\n    SourceSchemaName,\n    SourceTableName,\n    BronzeSchemaName,\n    BronzeTableName,\n    SilverSchemaName,\n    SilverTableName,\n    LoadType,\n    PrimaryKey,\n    IsFullLoad,\n    IncLoadType,\n    SourceDeleteQuery,\n    CreatedWaterMarkField,\n    CreatedWaterMarkValue,\n    UpdatedWaterMarkField,\n    UpdatedWaterMarkValue,\n    IsActive,\n    IsSourceDelete,\n    CASE\n        WHEN IsFullLoad = 1 THEN\n            SourceQuery\n        WHEN IncLoadType = 2 THEN\n            REPLACE(SourceQuery + '' WHERE CAST('' + CreatedWaterMarkField + '' AS DATE) > CAST('''''' + CONVERT(VARCHAR(19), CreatedWaterMarkValue, 120) + '''''' AS DATE)'', CHAR(13), '''')\n        WHEN IncLoadType = 3 THEN\n            REPLACE(SourceQuery + '' WHERE CAST('' + UpdatedWaterMarkField + '' AS DATE) > CAST('''''' + CONVERT(VARCHAR(19), UpdatedWaterMarkValue, 120) + '''''' AS DATE)'', CHAR(13), '''')\n        WHEN IncLoadType = 4 THEN\n            REPLACE(SourceQuery + '' WHERE (CAST('' + CreatedWaterMarkField + '' AS DATE) > CAST('''''' + CONVERT(VARCHAR(19), CreatedWaterMarkValue, 120) + '''''' AS DATE)) OR (CAST('' + UpdatedWaterMarkField + '' AS DATE) > CAST('''''' + CONVERT(VARCHAR(19), UpdatedWaterMarkValue, 120) + '''''' AS DATE))'', CHAR(13), '''')\n        ELSE\n            SourceQuery\n    END AS SourceQuery\nFROM [WH_MetaData].[Config_', pipeline().parameters.SchemaName, '].[IncrementalConfigETL]\nWHERE IsActive = 1\nORDER BY Id\n')",
+                            "type": "Expression"
+                        },
+                        "queryTimeout": "02:00:00",
+                        "partitionOption": "None"
+                    },
+                    "firstRowOnly": false,
+                    "datasetSettings": {
+                        "annotations": [],
+                        "linkedService": {
+                            "name": "WH_MetaData",
+                            "properties": {
+                                "annotations": [],
+                                "type": "DataWarehouse",
+                                "typeProperties": {
+                                    "endpoint": "Replace_MetaData_SQL_Endpoint",
+                                    "artifactId": "Replace_MetaData_Warehouse_Id",
+                                    "workspaceId": "Replace_Workspace_Id"
+                                }
+                            }
+                        },
+                        "type": "DataWarehouseTable",
+                        "schema": []
+                    }
+                }
+            },
+            {
+                "name": "Looping Tables",
+                "description": "ForEach activity to iterate through each table from the metadata and process them in parallel .",
+                "type": "ForEach",
+                "dependsOn": [
+                    {
+                        "activity": "Get Tables List",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "typeProperties": {
+                    "items": {
+                        "value": "@activity('Get Tables List').output.value",
+                        "type": "Expression"
+                    },
+                    "isSequential": false,
+                    "batchCount": 20,
+                    "activities": [
+                        {
+                            "name": "Condition To Split Files and Table",
+                            "description": "If Condition to route tables based on LoadType , Table for Lakehouse Table load, otherwise for File (Parquet) load.",
+                            "type": "IfCondition",
+                            "dependsOn": [],
+                            "typeProperties": {
+                                "expression": {
+                                    "value": "@equals(item().LoadType,'Table')",
+                                    "type": "Expression"
+                                },
+                                "ifFalseActivities": [
+                                    {
+                                        "name": "Bronze Lakehouse - File Incremental",
+                                        "description": "Copy Activity - Incremental load from Source to Bronze Lakehouse as Parquet files (used for File Load Type).",
+                                        "type": "Copy",
+                                        "dependsOn": [
+                                            {
+                                                "activity": "Delete data",
+                                                "dependencyConditions": [
+                                                    "Succeeded"
+                                                ]
+                                            }
+                                        ],
+                                        "policy": {
+                                            "timeout": "0.12:00:00",
+                                            "retry": 2,
+                                            "retryIntervalInSeconds": 30,
+                                            "secureOutput": false,
+                                            "secureInput": false
+                                        },
+                                        "typeProperties": {
+                                            "source": {
+                                                "type": "SqlServerSource",
+                                                "query": {
+                                                    "value": "@item().SourceQuery",
+                                                    "type": "Expression"
+                                                },
+                                                "queryTimeout": "02:00:00",
+                                                "partitionOption": "None",
+                                                "datasetSettings": {
+                                                    "annotations": [],
+                                                    "type": "SqlServerTable",
+                                                    "schema": [],
+                                                    "externalReferences": {
+                                                        "connection": "Replace_Source_Connection_Id"
+                                                    }
+                                                },
+                                                "numberPrecision": 38,
+                                                "numberScale": 18
+                                            },
+                                            "sink": {
+                                                "type": "ParquetSink",
+                                                "storeSettings": {
+                                                    "type": "AzureBlobStorageWriteSettings",
+                                                    "maxConcurrentConnections": 0
+                                                },
+                                                "formatSettings": {
+                                                    "type": "ParquetWriteSettings",
+                                                    "maxRowsPerFile": 10000,
+                                                    "enableVertiParquet": true
+                                                },
+                                                "datasetSettings": {
+                                                    "annotations": [],
+                                                    "linkedService": {
+                                                        "name": "LH_Bronze",
+                                                        "properties": {
+                                                            "annotations": [],
+                                                            "type": "Lakehouse",
+                                                            "typeProperties": {
+                                                                "workspaceId": "Replace_Workspace_Id",
+                                                                "artifactId": "Replace_Bronze_Lakehouse_Id",
+                                                                "rootFolder": "Files"
+                                                            }
+                                                        }
+                                                    },
+                                                    "type": "Parquet",
+                                                    "typeProperties": {
+                                                        "location": {
+                                                            "type": "LakehouseLocation",
+                                                            "folderPath": {
+                                                                "value": "@concat(pipeline().parameters.DBsource, '/', item().BronzeSchemaName, '/', item().BronzeTableName)",
+                                                                "type": "Expression"
+                                                            }
+                                                        },
+                                                        "compressionCodec": "snappy"
+                                                    },
+                                                    "schema": []
+                                                }
+                                            },
+                                            "enableStaging": false,
+                                            "enableSkipIncompatibleRow": false,
+                                            "translator": {
+                                                "type": "TabularTranslator",
+                                                "typeConversion": true,
+                                                "typeConversionSettings": {
+                                                    "allowDataTruncation": true,
+                                                    "treatBooleanAsNumber": false
+                                                }
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "name": "Activity Start Time - File",
+                                        "description": "Set Variable activity to capture the start time of the File load activity for logging purposes.",
+                                        "type": "SetVariable",
+                                        "dependsOn": [],
+                                        "policy": {
+                                            "secureOutput": false,
+                                            "secureInput": false
+                                        },
+                                        "typeProperties": {
+                                            "variableName": "Activity_Start_Time",
+                                            "value": {
+                                                "value": "@utcNow()",
+                                                "type": "Expression"
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "name": "Success Activity Log File",
+                                        "description": "Logs successful completion of File incremental load into the ETL Batch Log table.",
+                                        "type": "SqlServerStoredProcedure",
+                                        "dependsOn": [
+                                            {
+                                                "activity": "Bronze Lakehouse - File Incremental",
+                                                "dependencyConditions": [
+                                                    "Succeeded"
+                                                ]
+                                            }
+                                        ],
+                                        "policy": {
+                                            "timeout": "0.12:00:00",
+                                            "retry": 0,
+                                            "retryIntervalInSeconds": 30,
+                                            "secureOutput": false,
+                                            "secureInput": false
+                                        },
+                                        "typeProperties": {
+                                            "storedProcedureName": "Replace_BatchBronzeDetails_stored_procedure_name",
+                                            "storedProcedureParameters": {
+                                                "BatchId": {
+                                                    "value": {
+                                                        "value": "@pipeline().parameters.Batch_Id",
+                                                        "type": "Expression"
+                                                    },
+                                                    "type": "String"
+                                                },
+                                                "EndTime": {
+                                                    "value": {
+                                                        "value": "@utcNow()",
+                                                        "type": "Expression"
+                                                    },
+                                                    "type": "DateTime"
+                                                },
+                                                "ErrorMessage": {
+                                                    "value": "No Error",
+                                                    "type": "String"
+                                                },
+                                                "ExtractedRowCount ": {
+                                                    "value": {
+                                                        "value": "@coalesce(activity('Bronze Lakehouse - File Incremental').output.rowsRead,0)", 
+                                                        "type": "Expression"
+                                                    },
+                                                    "type": "Int32"
+                                                },
+                                                "SchemaName": {
+                                                    "value": {
+                                                        "value": "@item().BronzeSchemaName",
+                                                        "type": "Expression"
+                                                    },
+                                                    "type": "String"
+                                                },
+                                                "SourceName": {
+                                                    "value": {
+                                                        "value": "@pipeline().parameters.DBsource",
+                                                        "type": "Expression"
+                                                    },
+                                                    "type": "String"
+                                                },
+                                                "StartTime": {
+                                                    "value": {
+                                                        "value": "@variables('Activity_Start_Time')",
+                                                        "type": "Expression"
+                                                    },
+                                                    "type": "DateTime"
+                                                },
+                                                "Status": {
+                                                    "value": "Success",
+                                                    "type": "String"
+                                                },
+                                                "TableName": {
+                                                    "value": {
+                                                        "value": "@item().SourceTableName",
+                                                        "type": "Expression"
+                                                    },
+                                                    "type": "String"
+                                                },
+                                                "TableId": {
+                                                    "value": {
+                                                        "value": "@item().Id",
+                                                        "type": "Expression"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "linkedService": {
+                                            "name": "WH_MetaData",
+                                            "properties": {
+                                                "annotations": [],
+                                                "type": "DataWarehouse",
+                                                "typeProperties": {
+                                                    "endpoint": "Replace_MetaData_SQL_Endpoint",
+                                                    "artifactId": "Replace_MetaData_Warehouse_Id",
+                                                    "workspaceId": "Replace_Workspace_Id"
+                                                }
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "name": "Failure Activity Log File",
+                                        "description": "Logs failure details of File incremental load into the ETL Batch Log table with error message.",
+                                        "type": "SqlServerStoredProcedure",
+                                        "dependsOn": [
+                                            {
+                                                "activity": "Bronze Lakehouse - File Incremental",
+                                                "dependencyConditions": [
+                                                    "Failed"
+                                                ]
+                                            }
+                                        ],
+                                        "policy": {
+                                            "timeout": "0.12:00:00",
+                                            "retry": 0,
+                                            "retryIntervalInSeconds": 30,
+                                            "secureOutput": false,
+                                            "secureInput": false
+                                        },
+                                        "typeProperties": {
+                                            "storedProcedureName": "Replace_BatchBronzeDetails_stored_procedure_name",
+                                            "storedProcedureParameters": {
+                                                "BatchId": {
+                                                    "value": {
+                                                        "value": "@pipeline().parameters.Batch_Id",
+                                                        "type": "Expression"
+                                                    },
+                                                    "type": "String"
+                                                },
+                                                "EndTime": {
+                                                    "value": {
+                                                        "value": "@utcNow()",
+                                                        "type": "Expression"
+                                                    },
+                                                    "type": "DateTime"
+                                                },
+                                                "ErrorMessage": {
+                                                    "value": {
+                                                        "value": "@if(\n    and(\n        not(empty(activity('Bronze Lakehouse - File Incremental').output.errors)),\n        not(empty(activity('Bronze Lakehouse - File Incremental').output.errors[0].Message))\n    ),\n    activity('Bronze Lakehouse - File Incremental').output.errors[0].Message,\n    'NotExecuted'\n)",
+                                                        "type": "Expression"
+                                                    },
+                                                    "type": "String"
+                                                },
+                                                "ExtractedRowCount ": {
+                                                    "value": "0",
+                                                    "type": "Int32"
+                                                },
+                                                "SchemaName": {
+                                                    "value": {
+                                                        "value": "@item().BronzeSchemaName",
+                                                        "type": "Expression"
+                                                    },
+                                                    "type": "String"
+                                                },
+                                                "SourceName": {
+                                                    "value": {
+                                                        "value": "@pipeline().parameters.DBsource",
+                                                        "type": "Expression"
+                                                    },
+                                                    "type": "String"
+                                                },
+                                                "StartTime": {
+                                                    "value": {
+                                                        "value": "@variables('Activity_Start_Time')",
+                                                        "type": "Expression"
+                                                    },
+                                                    "type": "DateTime"
+                                                },
+                                                "Status": {
+                                                    "value": "Failure",
+                                                    "type": "String"
+                                                },
+                                                "TableName": {
+                                                    "value": {
+                                                        "value": "@item().SourceTableName",
+                                                        "type": "Expression"
+                                                    },
+                                                    "type": "String"
+                                                },
+                                                "TableId": {
+                                                    "value": {
+                                                        "value": "@item().Id",
+                                                        "type": "Expression"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "linkedService": {
+                                            "name": "WH_MetaData",
+                                            "properties": {
+                                                "annotations": [],
+                                                "type": "DataWarehouse",
+                                                "typeProperties": {
+                                                    "endpoint": "Replace_MetaData_SQL_Endpoint",
+                                                    "artifactId": "Replace_MetaData_Warehouse_Id",
+                                                    "workspaceId": "Replace_Workspace_Id"
+                                                }
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "name": "Delete data",
+                                        "description": "Delete activity to clear old Parquet files from the target Bronze Lakehouse folder before writing new incremental data.",
+                                        "type": "Delete",
+                                        "dependsOn": [
+                                            {
+                                                "activity": "Activity Start Time - File",
+                                                "dependencyConditions": [
+                                                    "Succeeded"
+                                                ]
+                                            }
+                                        ],
+                                        "policy": {
+                                            "timeout": "0.12:00:00",
+                                            "retry": 0,
+                                            "retryIntervalInSeconds": 30,
+                                            "secureOutput": false,
+                                            "secureInput": false
+                                        },
+                                        "typeProperties": {
+                                            "datasetSettings": {
+                                                "annotations": [],
+                                                "linkedService": {
+                                                    "name": "LH_Bronze",
+                                                    "properties": {
+                                                        "annotations": [],
+                                                        "type": "Lakehouse",
+                                                        "typeProperties": {
+                                                            "workspaceId": "Replace_Workspace_Id",
+                                                            "artifactId": "Replace_Bronze_Lakehouse_Id",
+                                                            "rootFolder": "Files"
+                                                        }
+                                                    }
+                                                },
+                                                "type": "Binary",
+                                                "typeProperties": {
+                                                    "location": {
+                                                        "type": "LakehouseLocation",
+                                                        "folderPath": {
+                                                            "value": "@concat(pipeline().parameters.DBsource, '/', item().BronzeSchemaName, '/', item().BronzeTableName)",
+                                                            "type": "Expression"
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            "enableLogging": false,
+                                            "storeSettings": {
+                                                "type": "AzureBlobStorageReadSettings",
+                                                "recursive": true,
+                                                "enablePartitionDiscovery": false
+                                            }
+                                        }
+                                    }
+                                ],
+                                "ifTrueActivities": [
+                                    {
+                                        "name": "Bronze Lakehouse - Table Incremental",
+                                        "description": "Incremental load from Source to Bronze Lakehouse as Tables ",
+                                        "type": "Copy",
+                                        "dependsOn": [
+                                            {
+                                                "activity": "Activity Start Time - Table",
+                                                "dependencyConditions": [
+                                                    "Succeeded"
+                                                ]
+                                            }
+                                        ],
+                                        "policy": {
+                                            "timeout": "0.12:00:00",
+                                            "retry": 3,
+                                            "retryIntervalInSeconds": 30,
+                                            "secureOutput": false,
+                                            "secureInput": false
+                                        },
+                                        "typeProperties": {
+                                            "source": {
+                                                "type": "Replace_Source_Type",
+                                                "query": {
+                                                    "value": "@item().SourceQuery",
+                                                    "type": "Expression"
+                                                },
+                                                "partitionOption": "None",
+                                                "numberPrecision": 38,
+                                                "numberScale": 18,
+                                                "queryTimeout": "02:00:00",
+                                                "datasetSettings": {
+                                                    "annotations": [],
+                                                    "type": "Replace_Source_Dataset_Type",
+                                                    "schema": [],
+                                                    "externalReferences": {
+                                                        "connection": "Replace_Source_Connection_Id"
+                                                    }
+                                                }
+                                            },
+                                            "sink": {
+                                                "type": "LakehouseTableSink",
+                                                "tableActionOption": "Overwrite",
+                                                "partitionOption": "None",
+                                                "datasetSettings": {
+                                                    "annotations": [],
+                                                    "linkedService": {
+                                                        "name": "LH_Bronze",
+                                                        "properties": {
+                                                            "annotations": [],
+                                                            "type": "Lakehouse",
+                                                            "typeProperties": {
+                                                                "workspaceId": "Replace_Workspace_Id",
+                                                                "artifactId": "Replace_Bronze_Lakehouse_Id",
+                                                                "rootFolder": "Tables"
+                                                            }
+                                                        }
+                                                    },
+                                                    "type": "LakehouseTable",
+                                                    "schema": [],
+                                                    "typeProperties": {
+                                                        "schema": {
+                                                            "value": "@item().BronzeSchemaName",
+                                                            "type": "Expression"
+                                                        },
+                                                        "table": {
+                                                            "value": "@item().BronzeTableName",
+                                                            "type": "Expression"
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            "enableStaging": false,
+                                            "parallelCopies": 3,
+                                            "enableSkipIncompatibleRow": false,
+                                            "dataIntegrationUnits": 256,
+                                            "translator": {
+                                                "type": "TabularTranslator",
+                                                "typeConversion": true,
+                                                "typeConversionSettings": {
+                                                    "allowDataTruncation": true,
+                                                    "treatBooleanAsNumber": false
+                                                }
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "name": "Activity Start Time - Table",
+                                        "description": "Set Variable activity to capture the start time of the Table load activity for logging purposes.",
+                                        "type": "SetVariable",
+                                        "dependsOn": [],
+                                        "policy": {
+                                            "secureOutput": false,
+                                            "secureInput": false
+                                        },
+                                        "typeProperties": {
+                                            "variableName": "Activity_Start_Time",
+                                            "value": {
+                                                "value": "@utcNow()",
+                                                "type": "Expression"
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "name": "Success Activity Log Table",
+                                        "description": "Logs successful completion of Table incremental load into the ETL Batch Log table.",
+                                        "type": "SqlServerStoredProcedure",
+                                        "dependsOn": [
+                                            {
+                                                "activity": "Bronze Lakehouse - Table Incremental",
+                                                "dependencyConditions": [
+                                                    "Succeeded"
+                                                ]
+                                            }
+                                        ],
+                                        "policy": {
+                                            "timeout": "0.12:00:00",
+                                            "retry": 0,
+                                            "retryIntervalInSeconds": 30,
+                                            "secureOutput": false,
+                                            "secureInput": false
+                                        },
+                                        "typeProperties": {
+                                            "storedProcedureName": "Replace_BatchBronzeDetails_stored_procedure_name",
+                                            "storedProcedureParameters": {
+                                                "BatchId": {
+                                                    "value": {
+                                                        "value": "@pipeline().parameters.Batch_Id",
+                                                        "type": "Expression"
+                                                    },
+                                                    "type": "String"
+                                                },
+                                                "EndTime": {
+                                                    "value": {
+                                                        "value": "@utcNow()",
+                                                        "type": "Expression"
+                                                    },
+                                                    "type": "DateTime"
+                                                },
+                                                "ErrorMessage": {
+                                                    "value": "No Error",
+                                                    "type": "String"
+                                                },
+                                                "ExtractedRowCount ": {
+                                                    "value": {
+                                                        "value": "@coalesce(activity('Bronze Lakehouse - Table Incremental').output.rowsRead,0)",
+                                                        "type": "Expression"
+                                                    },
+                                                    "type": "Int32"
+                                                },
+                                                "SchemaName": {
+                                                    "value": {
+                                                        "value": "@item().BronzeSchemaName",
+                                                        "type": "Expression"
+                                                    },
+                                                    "type": "String"
+                                                },
+                                                "SourceName": {
+                                                    "value": {
+                                                        "value": "@pipeline().parameters.DBsource",
+                                                        "type": "Expression"
+                                                    },
+                                                    "type": "String"
+                                                },
+                                                "StartTime": {
+                                                    "value": {
+                                                        "value": "@variables('Activity_Start_Time')",
+                                                        "type": "Expression"
+                                                    },
+                                                    "type": "DateTime"
+                                                },
+                                                "Status": {
+                                                    "value": "Success",
+                                                    "type": "String"
+                                                },
+                                                "TableName": {
+                                                    "value": {
+                                                        "value": "@item().BronzeTableName",
+                                                        "type": "Expression"
+                                                    },
+                                                    "type": "String"
+                                                },
+                                                "TableId": {
+                                                    "value": {
+                                                        "value": "@item().Id",
+                                                        "type": "Expression"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "linkedService": {
+                                            "name": "WH_MetaData",
+                                            "properties": {
+                                                "annotations": [],
+                                                "type": "DataWarehouse",
+                                                "typeProperties": {
+                                                    "endpoint": "Replace_MetaData_SQL_Endpoint",
+                                                    "artifactId": "Replace_MetaData_Warehouse_Id",
+                                                    "workspaceId": "Replace_Workspace_Id"
+                                                }
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "name": "Failure Activity Log Table",
+                                        "description": "Logs failure details of Table incremental load into the ETL Batch Log table with error message.",
+                                        "type": "SqlServerStoredProcedure",
+                                        "dependsOn": [
+                                            {
+                                                "activity": "Bronze Lakehouse - Table Incremental",
+                                                "dependencyConditions": [
+                                                    "Failed"
+                                                ]
+                                            }
+                                        ],
+                                        "policy": {
+                                            "timeout": "0.12:00:00",
+                                            "retry": 0,
+                                            "retryIntervalInSeconds": 30,
+                                            "secureOutput": false,
+                                            "secureInput": false
+                                        },
+                                        "typeProperties": {
+                                            "storedProcedureName": "Replace_BatchBronzeDetails_stored_procedure_name",
+                                            "storedProcedureParameters": {
+                                                "BatchId": {
+                                                    "value": {
+                                                        "value": "@pipeline().parameters.Batch_Id",
+                                                        "type": "Expression"
+                                                    },
+                                                    "type": "String"
+                                                },
+                                                "EndTime": {
+                                                    "value": {
+                                                        "value": "@utcNow()",
+                                                        "type": "Expression"
+                                                    },
+                                                    "type": "DateTime"
+                                                },
+                                                "ErrorMessage": {
+                                                    "value": {
+                                                        "value": "@if(\n    and(\n        not(empty(activity('Bronze Lakehouse - Table Incremental').output.errors)),\n        not(empty(activity('Bronze Lakehouse - Table Incremental').output.errors[0].Message))\n    ),\n    activity('Bronze Lakehouse - Table Incremental').output.errors[0].Message,\n    'NotExecuted'\n)\n\n",
+                                                        "type": "Expression"
+                                                    },
+                                                    "type": "String"
+                                                },
+                                                "ExtractedRowCount ": {
+                                                    "value": "0",
+                                                    "type": "Int32"
+                                                },
+                                                "SchemaName": {
+                                                    "value": {
+                                                        "value": "@item().BronzeSchemaName",
+                                                        "type": "Expression"
+                                                    },
+                                                    "type": "String"
+                                                },
+                                                "SourceName": {
+                                                    "value": {
+                                                        "value": "@pipeline().parameters.DBsource",
+                                                        "type": "Expression"
+                                                    },
+                                                    "type": "String"
+                                                },
+                                                "StartTime": {
+                                                    "value": {
+                                                        "value": "@variables('Activity_Start_Time')",
+                                                        "type": "Expression"
+                                                    },
+                                                    "type": "DateTime"
+                                                },
+                                                "Status": {
+                                                    "value": "Failure",
+                                                    "type": "String"
+                                                },
+                                                "TableName": {
+                                                    "value": {
+                                                        "value": "@item().BronzeTableName",
+                                                        "type": "Expression"
+                                                    },
+                                                    "type": "String"
+                                                },
+                                                "TableId": {
+                                                    "value": {
+                                                        "value": "@item().Id",
+                                                        "type": "Expression"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "linkedService": {
+                                            "name": "WH_MetaData",
+                                            "properties": {
+                                                "annotations": [],
+                                                "type": "DataWarehouse",
+                                                "typeProperties": {
+                                                    "endpoint": "Replace_MetaData_SQL_Endpoint",
+                                                    "artifactId": "Replace_MetaData_Warehouse_Id",
+                                                    "workspaceId": "Replace_Workspace_Id"
+                                                }
+                                            }
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            }
+        ],
+        "concurrency": 4,
+        "parameters": {
+            "DBsource": {
+                "type": "string",
+                "defaultValue": "Incremental Reporting Tables - Data Load"
+            },
+            "Batch_Id": {
+                "type": "int"
+            },
+            "SchemaName": {
+                "type": "string"
+            }
+        },
+        "variables": {
+            "Activity_Start_Time": {
+                "type": "String"
+            },
+            "Activity_End_Time": {
+                "type": "String"
+            }
+        },
+        "lastModifiedByObjectId": "809935d2-cc6d-4f0b-994d-ca2aee5aba03",
+        "lastPublishTime": "2026-07-02T10:51:44Z"
+    }
+}

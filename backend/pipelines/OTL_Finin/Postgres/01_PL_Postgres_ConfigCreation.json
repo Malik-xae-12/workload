@@ -1,0 +1,342 @@
+{
+    "name": "01_PL_Postgres_ConfigCreation",
+    "properties": {
+        "activities": [
+            {
+                "name": "Information Schema",
+                "description": "Uses a copy activity to transfer data from PostgreSQL to the Warehouse InformationSchema",
+                "type": "Copy",
+                "dependsOn": [
+                    {
+                        "activity": "Create Schema",
+                        "dependencyConditions": [
+                            "Completed"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "typeProperties": {
+                    "source": {
+                        "type": "Replace_Source_Type",
+                        "query": "SELECT * FROM INFORMATION_SCHEMA.COLUMNS ",
+                        "queryTimeout": "02:00:00",
+                        "partitionOption": "None",
+                        "datasetSettings": {
+                            "annotations": [],
+                            "type": "PostgreSqlTable",
+                            "schema": [],
+                            "typeProperties": {
+                                "schema": "",
+                                "table": "",
+                                "database": "postgres"
+                            },
+                            "externalReferences": {
+                                "connection": "Replace_Source_Connection_Id"
+                            }
+                        },
+                        "sqlReaderQuery": "SELECT * FROM INFORMATION_SCHEMA.COLUMNS "
+                    },
+                    "sink": {
+                        "type": "DataWarehouseSink",
+                        "allowCopyCommand": true,
+                        "writeBehavior": "Insert",
+                        "tableOption": "autoCreate",
+                        "datasetSettings": {
+                            "annotations": [],
+                            "linkedService": {
+                                "name": "WH_MetaData",
+                                "properties": {
+                                    "annotations": [],
+                                    "type": "DataWarehouse",
+                                    "typeProperties": {
+                                        "endpoint": "Replace_MetaData_SQL_Endpoint",
+                                        "artifactId": "Replace_MetaData_Warehouse_Id",
+                                        "workspaceId": "Replace_Workspace_Id"
+                                    }
+                                }
+                            },
+                            "type": "DataWarehouseTable",
+                            "schema": [],
+                            "typeProperties": {
+                                "schema": {
+                                    "value": "@variables('ConfigSchemaName')",
+                                    "type": "Expression"
+                                },
+                                "table": "SourceInformationSchema"
+                            }
+                        }
+                    },
+                    "enableStaging": true,
+                    "translator": {
+                        "type": "TabularTranslator",
+                        "typeConversion": true,
+                        "typeConversionSettings": {
+                            "allowDataTruncation": true,
+                            "treatBooleanAsNumber": false
+                        }
+                    }
+                }
+            },
+            {
+                "name": "Create Schema",
+                "description": "Executes a script to create the PostgreSQL config schema",
+                "type": "Script",
+                "dependsOn": [],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "linkedService": {
+                    "name": "WH_MetaData",
+                    "properties": {
+                        "annotations": [],
+                        "type": "DataWarehouse",
+                        "typeProperties": {
+                            "endpoint": "Replace_MetaData_SQL_Endpoint",
+                            "artifactId": "Replace_MetaData_Warehouse_Id",
+                            "workspaceId": "Replace_Workspace_Id"
+                        }
+                    }
+                },
+                "typeProperties": {
+                    "scripts": [
+                        {
+                            "type": "Query",
+                            "text": {
+                                "value": "@concat('CREATE SCHEMA ' ,variables('ConfigSchemaName'))",
+                                "type": "Expression"
+                            }
+                        }
+                    ],
+                    "scriptBlockExecutionTimeout": "02:00:00"
+                }
+            },
+            {
+                "name": "Wait for Process Completion",
+                "description": "Introduces a wait activity to allow time for prior activities to complete before proceeding with the next steps.",
+                "type": "Wait",
+                "dependsOn": [
+                    {
+                        "activity": "Primary Key",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "typeProperties": {
+                    "waitTimeInSeconds": 10
+                }
+            },
+            {
+                "name": "Process Metadata",
+                "description": "Executes the metadata processing notebook to generate dynamic SQL queries, transform the data, and load the processed metadata into the centralized configuration table.",
+                "type": "TridentNotebook",
+                "dependsOn": [
+                    {
+                        "activity": "Wait for Process Completion",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "typeProperties": {
+                    "notebookId": "Replace_OTLMetaData_Creation_Id",
+                    "workspaceId": "Replace_Workspace_Id",
+                    "parameters": {
+                        "ConfigSchemaName": {
+                            "value": {
+                                "value": "@variables('ConfigSchemaName')",
+                                "type": "Expression"
+                            },
+                            "type": "string"
+                        }
+                    }
+                }
+            },
+            {
+                "name": "Key Constraint Config",
+                "description": "Uses a copy activity to transfer PostgreSQL FK metadata to Warehouse",
+                "type": "Copy",
+                "dependsOn": [
+                    {
+                        "activity": "Information Schema",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "typeProperties": {
+                    "source": {
+                        "type": "Replace_Source_Type",
+                        "query": "SELECT rc.constraint_name AS FK_Name, kcu.table_schema AS FK_Schema, kcu.table_name AS FK_Table, kcu.column_name AS FK_Column, ccu.table_schema AS Referenced_Schema, ccu.table_name AS Referenced_Table, ccu.column_name AS Referenced_Column FROM information_schema.referential_constraints rc JOIN information_schema.key_column_usage kcu ON rc.constraint_name = kcu.constraint_name AND rc.constraint_schema = kcu.constraint_schema JOIN information_schema.constraint_column_usage ccu ON rc.unique_constraint_name = ccu.constraint_name AND rc.unique_constraint_schema = ccu.constraint_schema ORDER BY FK_Schema, FK_Table",
+                        "queryTimeout": "02:00:00",
+                        "partitionOption": "None",
+                        "datasetSettings": {
+                            "annotations": [],
+                            "type": "PostgreSqlTable",
+                            "schema": [],
+                            "typeProperties": {
+                                "schema": "",
+                                "table": "",
+                                "database": "postgres"
+                            },
+                            "externalReferences": {
+                                "connection": "Replace_Source_Connection_Id"
+                            }
+                        },
+                        "sqlReaderQuery": "SELECT rc.constraint_name AS FK_Name, kcu.table_schema AS FK_Schema, kcu.table_name AS FK_Table, kcu.column_name AS FK_Column, ccu.table_schema AS Referenced_Schema, ccu.table_name AS Referenced_Table, ccu.column_name AS Referenced_Column FROM information_schema.referential_constraints rc JOIN information_schema.key_column_usage kcu ON rc.constraint_name = kcu.constraint_name AND rc.constraint_schema = kcu.constraint_schema JOIN information_schema.constraint_column_usage ccu ON rc.unique_constraint_name = ccu.constraint_name AND rc.unique_constraint_schema = ccu.constraint_schema ORDER BY FK_Schema, FK_Table"
+                    },
+                    "sink": {
+                        "type": "DataWarehouseSink",
+                        "allowCopyCommand": true,
+                        "writeBehavior": "Insert",
+                        "tableOption": "autoCreate",
+                        "datasetSettings": {
+                            "annotations": [],
+                            "linkedService": {
+                                "name": "WH_MetaData",
+                                "properties": {
+                                    "annotations": [],
+                                    "type": "DataWarehouse",
+                                    "typeProperties": {
+                                        "endpoint": "Replace_MetaData_SQL_Endpoint",
+                                        "artifactId": "Replace_MetaData_Warehouse_Id",
+                                        "workspaceId": "Replace_Workspace_Id"
+                                    }
+                                }
+                            },
+                            "type": "DataWarehouseTable",
+                            "schema": [],
+                            "typeProperties": {
+                                "schema": {
+                                    "value": "@variables('ConfigSchemaName')",
+                                    "type": "Expression"
+                                },
+                                "table": "KeyConstraintConfig"
+                            }
+                        }
+                    },
+                    "enableStaging": true,
+                    "translator": {
+                        "type": "TabularTranslator",
+                        "typeConversion": true,
+                        "typeConversionSettings": {
+                            "allowDataTruncation": true,
+                            "treatBooleanAsNumber": false
+                        }
+                    }
+                }
+            },
+            {
+                "name": "Primary Key",
+                "description": "Uses a copy activity to transfer PostgreSQL PK metadata to Warehouse",
+                "type": "Copy",
+                "dependsOn": [
+                    {
+                        "activity": "Key Constraint Config",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "typeProperties": {
+                    "source": {
+                        "type": "Replace_Source_Type",
+                        "query": "SELECT KU.TABLE_SCHEMA, KU.TABLE_NAME, KU.COLUMN_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS TC JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE KU ON TC.CONSTRAINT_NAME = KU.CONSTRAINT_NAME WHERE TC.CONSTRAINT_TYPE = 'PRIMARY KEY' ORDER BY KU.TABLE_SCHEMA, KU.TABLE_NAME, KU.ORDINAL_POSITION;",
+                        "queryTimeout": "02:00:00",
+                        "partitionOption": "None",
+                        "datasetSettings": {
+                            "annotations": [],
+                            "type": "PostgreSqlTable",
+                            "schema": [],
+                            "typeProperties": {
+                                "schema": "",
+                                "table": "",
+                                "database": "postgres"
+                            },
+                            "externalReferences": {
+                                "connection": "Replace_Source_Connection_Id"
+                            }
+                        },
+                        "sqlReaderQuery": "SELECT KU.TABLE_SCHEMA, KU.TABLE_NAME, KU.COLUMN_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS TC JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE KU ON TC.CONSTRAINT_NAME = KU.CONSTRAINT_NAME WHERE TC.CONSTRAINT_TYPE = 'PRIMARY KEY' ORDER BY KU.TABLE_SCHEMA, KU.TABLE_NAME, KU.ORDINAL_POSITION;"
+                    },
+                    "sink": {
+                        "type": "DataWarehouseSink",
+                        "allowCopyCommand": true,
+                        "writeBehavior": "Insert",
+                        "tableOption": "autoCreate",
+                        "datasetSettings": {
+                            "annotations": [],
+                            "linkedService": {
+                                "name": "WH_MetaData",
+                                "properties": {
+                                    "annotations": [],
+                                    "type": "DataWarehouse",
+                                    "typeProperties": {
+                                        "endpoint": "Replace_MetaData_SQL_Endpoint",
+                                        "artifactId": "Replace_MetaData_Warehouse_Id",
+                                        "workspaceId": "Replace_Workspace_Id"
+                                    }
+                                }
+                            },
+                            "type": "DataWarehouseTable",
+                            "schema": [],
+                            "typeProperties": {
+                                "schema": {
+                                    "value": "@variables('ConfigSchemaName')",
+                                    "type": "Expression"
+                                },
+                                "table": "PrimaryKeyConfig"
+                            }
+                        }
+                    },
+                    "enableStaging": true,
+                    "translator": {
+                        "type": "TabularTranslator",
+                        "typeConversion": true,
+                        "typeConversionSettings": {
+                            "allowDataTruncation": true,
+                            "treatBooleanAsNumber": false
+                        }
+                    }
+                }
+            }
+        ],
+        "variables": {
+            "ConfigSchemaName": {
+                "type": "String",
+                "defaultValue": "Replace_ConfigSchemaName"
+            }
+        }
+    }
+}

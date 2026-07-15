@@ -1,0 +1,2714 @@
+[
+    {
+        "table_name": "AggregationMetric",
+        "column_name": "MetricCode",
+        "data_type": "varchar",
+        "length": 32,
+        "description": "Code used to identify the specific metric being aggregated",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Metric",
+        "column_name": "Name",
+        "data_type": "varchar",
+        "length": 32,
+        "description": "Short name of the metric",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Metric",
+        "column_name": "MetricGroup",
+        "data_type": "varchar",
+        "length": 32,
+        "description": "Group or category to which the metric belongs",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Metric",
+        "column_name": "MetricDisplayName",
+        "data_type": "varchar",
+        "length": 32,
+        "description": "User-friendly name for displaying the metric",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "AggregationMetric",
+        "column_name": "MetricLabel",
+        "data_type": "varchar",
+        "length": 32,
+        "description": "Human-readable label for the metric, used for display purposes",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "AggregationMetric",
+        "column_name": "AggregationCode",
+        "data_type": "varchar",
+        "length": 32,
+        "description": "Identifier for the type of aggregation applied to the metric",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Aggregation",
+        "column_name": "Name",
+        "data_type": "varchar",
+        "length": 64,
+        "description": "",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Aggregation",
+        "column_name": "AggType",
+        "data_type": "varchar",
+        "length": 16,
+        "description": "Type/category of the aggregation (e.g., sum, average).",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Aggregation",
+        "column_name": "Formula",
+        "data_type": "varchar",
+        "length": 256,
+        "description": "Mathematical formula used for the aggregation.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Metric",
+        "column_name": "Source",
+        "data_type": "varchar",
+        "length": 64,
+        "description": "Origin or source system of the metric data",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "AggregationMetric",
+        "column_name": "CreatedBy",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Username of the person who created the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "AggregationMetric",
+        "column_name": "UpdatedBy",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Username of the person who last updated the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "LinkAssetClass",
+        "column_name": "AssetClassCode",
+        "data_type": "varchar",
+        "length": 2,
+        "description": "Unique identifier for a Asset Class code.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "LinkAssetClass",
+        "column_name": "AssetClassName",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Asset Class Name",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "LinkAssetClass",
+        "column_name": "ParentAssetClassCode",
+        "data_type": "varchar",
+        "length": 2,
+        "description": "Unique identifier for a Parent Asset Class code.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "LinkAssetClass",
+        "column_name": "ParentAssetClassName",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Parent Asset Class Name",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "LinkAssetClass",
+        "column_name": "CustomerAssetClassCode",
+        "data_type": "varchar",
+        "length": 16,
+        "description": "Unique identifier for a Customer Asset Class code.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "LinkAssetClass",
+        "column_name": "CustomerAssetClassName",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Customer Asset Class Name",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "LinkAssetClass",
+        "column_name": "ParentCustomerAssetClassCode",
+        "data_type": "varchar",
+        "length": 2,
+        "description": "Unique identifier for a Parent Customer Asset Class code.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "LinkAssetClass",
+        "column_name": "ParentCustomerAssetClassName",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Parent Customer Asset Class Name",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "LinkAssetClass",
+        "column_name": "CreatedBy",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Username of the person who created the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "LinkAssetClass",
+        "column_name": "UpdatedBy",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Username of the person who last updated the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Benchmark",
+        "column_name": "BenchmarkId",
+        "data_type": "varchar",
+        "length": 16,
+        "description": "If source doesn't have ID based primary column, assign Code to BenchmarkId \nelse assign source table ID column",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Benchmark",
+        "column_name": "BenchmarkCode",
+        "data_type": "varchar",
+        "length": 16,
+        "description": "Short code representing the benchmark",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Benchmark",
+        "column_name": "BenchMarkName",
+        "data_type": "varchar",
+        "length": 512,
+        "description": "Full name of the benchmark",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Benchmark",
+        "column_name": "IndexCode",
+        "data_type": "varchar",
+        "length": 24,
+        "description": "Code of the index associated with this benchmark",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Benchmark",
+        "column_name": "IndexName",
+        "data_type": "varchar",
+        "length": 512,
+        "description": "Full name of the index associated with this benchmark",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Benchmark",
+        "column_name": "IndexType",
+        "data_type": "varchar",
+        "length": 16,
+        "description": "Type of index (e.g., equity, fixed income, composite)",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Benchmark",
+        "column_name": "CreatedBy",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Username of the person who created the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Benchmark",
+        "column_name": "UpdatedBy",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Username of the person who last updated the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Broker",
+        "column_name": "BrokerId",
+        "data_type": "varchar",
+        "length": 24,
+        "description": "If source doesn't have ID based primary column, assign Code to BrokerId\nelse assign source table ID column",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Broker",
+        "column_name": "Code",
+        "data_type": "varchar",
+        "length": 24,
+        "description": "Unique code assigned to the broker",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Broker",
+        "column_name": "Name",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Full name of the broker",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Broker",
+        "column_name": "DTCCode",
+        "data_type": "varchar",
+        "length": 16,
+        "description": "Depository Trust Company (DTC) code for the broker",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Broker",
+        "column_name": "CreatedBy",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Username of the person who created the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Broker",
+        "column_name": "UpdatedBy",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Username of the person who last updated the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Client",
+        "column_name": "CientId",
+        "data_type": "varchar",
+        "length": 24,
+        "description": "If source doesn't have ID based primary column, assign Code to ClientId\nelse assign source table ID column",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Client",
+        "column_name": "Code",
+        "data_type": "varchar",
+        "length": 24,
+        "description": "Unique code assigned to the client",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Client",
+        "column_name": "Name",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Full name of the client",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Client",
+        "column_name": "ShortName",
+        "data_type": "varchar",
+        "length": 60,
+        "description": "Abbreviated or commonly used name for the client",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Client",
+        "column_name": "LongName",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Extended or formal name of the client",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Client",
+        "column_name": "CreatedBy",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Username of the person who created the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Client",
+        "column_name": "UpdatedBy",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Username of the person who last updated the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Country",
+        "column_name": "CountryId",
+        "data_type": "varchar",
+        "length": 4,
+        "description": "If source doesn't have ID based primary column, assign Code to CountryId\nelse assign source table ID column",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Country",
+        "column_name": "Code",
+        "data_type": "varchar",
+        "length": 4,
+        "description": "ISO 3166-1 alpha-3 country code",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Country",
+        "column_name": "Name",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Full name of the country",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Country",
+        "column_name": "CreatedBy",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Username of the person who created the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Country",
+        "column_name": "UpdatedBy",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Username of the person who last updated the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Currency",
+        "column_name": "CurrencyId",
+        "data_type": "varchar",
+        "length": 4,
+        "description": "If source doesn't have ID based primary column, assign Code to CurrencyId\nelse assign source table ID column",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Currency",
+        "column_name": "Code",
+        "data_type": "varchar",
+        "length": 4,
+        "description": "ISO 4217 currency code",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Currency",
+        "column_name": "Description",
+        "data_type": "varchar",
+        "length": 32,
+        "description": "Full name or description of the currency",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Currency",
+        "column_name": "CreatedBy",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Username of the person who created the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Currency",
+        "column_name": "UpdatedBy",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Username of the person who last updated the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Custodian",
+        "column_name": "CustodianId",
+        "data_type": "varchar",
+        "length": 24,
+        "description": "If source doesn't have ID based primary column, assign Code to CustodianId\nelse assign source table ID column \"",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Custodian",
+        "column_name": "Code",
+        "data_type": "varchar",
+        "length": 24,
+        "description": "Unique code assigned to the custodian",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Custodian",
+        "column_name": "Name",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Full name of the custodian",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Custodian",
+        "column_name": "DTCCode",
+        "data_type": "varchar",
+        "length": 16,
+        "description": "Depository Trust Company (DTC) code for the custodian",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Custodian",
+        "column_name": "CreatedBy",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Username of the person who created the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Custodian",
+        "column_name": "UpdatedBy",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Username of the person who last updated the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "IndexSecurity",
+        "column_name": "Identifier",
+        "data_type": "varchar",
+        "length": 24,
+        "description": "Unique identifier for the security (e.g., CUSIP, ISIN)",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "IndexSecurity",
+        "column_name": "CreatedBy",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Username of the person who created the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "IndexSecurity",
+        "column_name": "UpdatedBy",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Username of the person who last updated the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Portfolio",
+        "column_name": "PortfolioId",
+        "data_type": "varchar",
+        "length": 64,
+        "description": "If source doesn't have ID based primary column, assign Code to PortfolioId\nelse assign source table ID column",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Portfolio",
+        "column_name": "PortfolioCode",
+        "data_type": "varchar",
+        "length": 64,
+        "description": "Unique code assigned to the portfolio",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Portfolio",
+        "column_name": "ShortName",
+        "data_type": "varchar",
+        "length": 60,
+        "description": "Abbreviated or commonly used name for the portfolio",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Portfolio",
+        "column_name": "LongName",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Extended or formal name of the portfolio",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Portfolio",
+        "column_name": "PortfolioDescription",
+        "data_type": "varchar",
+        "length": 8000,
+        "description": "Detailed description of the portfolio's characteristics and objectives",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Portfolio",
+        "column_name": "PortfolioType",
+        "data_type": "char",
+        "length": 2,
+        "description": "Single character code indicating the type of portfolio",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "PortfolioGroup",
+        "column_name": "Code",
+        "data_type": "varchar",
+        "length": 24,
+        "description": "Unique code assigned to the portfolio group",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "PortfolioGroup",
+        "column_name": "Name",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Full name of the portfolio group",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Portfolio",
+        "column_name": "CreatedBy",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Username of the person who created the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Portfolio",
+        "column_name": "UpdatedBy",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Username of the person who last updated the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Position",
+        "column_name": "Identifier",
+        "data_type": "varchar",
+        "length": 24,
+        "description": "Unique identifier for the security (e.g., CUSIP, ISIN)",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Position",
+        "column_name": "Coupon",
+        "data_type": "decimal",
+        "length": -52,
+        "description": "Interest rate of the bond, expressed as a percentage.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Position",
+        "column_name": "TicketId",
+        "data_type": "varchar",
+        "length": 64,
+        "description": "Identifier for the trade ticket associated with this position.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Position",
+        "column_name": "CreatedBy",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Username of the person who created the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Position",
+        "column_name": "UpdatedBy",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Username of the person who last updated the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "LinkSecurityType",
+        "column_name": "SecurityTypeCode",
+        "data_type": "varchar",
+        "length": 16,
+        "description": "Unique identifier for a Security Type code.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "LinkSecurityType",
+        "column_name": "CustomerSecurityTypeCode",
+        "data_type": "varchar",
+        "length": 64,
+        "description": "Unique identifier for a Customer Security Code.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityType",
+        "column_name": "Name",
+        "data_type": "varchar",
+        "length": 64,
+        "description": "Name or description of the security type.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "CustomerSecurityType",
+        "column_name": "Name",
+        "data_type": "varchar",
+        "length": 64,
+        "description": "Name or description of the security type.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "LinkSecurityType",
+        "column_name": "CreatedBy",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Username of the person who created the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "LinkSecurityType",
+        "column_name": "UpdatedBy",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Username of the person who last updated the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SourceSystem",
+        "column_name": "SourceSystemId",
+        "data_type": "varchar",
+        "length": 8,
+        "description": "If source doesn't have ID based primary column, assign Code to SourceSystemId\nelse assign source table ID column",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SourceSystem",
+        "column_name": "Code",
+        "data_type": "varchar",
+        "length": 8,
+        "description": "Unique identifier for a source system.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SourceSystem",
+        "column_name": "Name",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Name of the source system.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SourceSystem",
+        "column_name": "SourceSystemTypeCode",
+        "data_type": "varchar",
+        "length": 8,
+        "description": "Code representing the type of source system.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SourceSystemType",
+        "column_name": "Name",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Name or description of the source system type.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SourceSystem",
+        "column_name": "CreatedBy",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Username of the person who created the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SourceSystem",
+        "column_name": "UpdatedBy",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Username of the person who last updated the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Strategy",
+        "column_name": "StrategyId",
+        "data_type": "varchar",
+        "length": 24,
+        "description": "If source doesn't have ID based primary column, assign Code to StrategyId\nelse assign source table ID column",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Strategy",
+        "column_name": "Code",
+        "data_type": "varchar",
+        "length": 24,
+        "description": "Unique identifier for an investment strategy.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Strategy",
+        "column_name": "Name",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Name or description of the investment strategy.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Strategy",
+        "column_name": "CreatedBy",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Username of the person who created the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Strategy",
+        "column_name": "UpdatedBy",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Username of the person who last updated the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "Identifier",
+        "data_type": "varchar",
+        "length": 24,
+        "description": "Unique identifier for the security involved in the transaction (e.g., CUSIP, ISIN).",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "TradeType",
+        "data_type": "char",
+        "length": 8,
+        "description": "Code representing the type of trade (e.g., buy, sell, short).",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "BuyProtection",
+        "data_type": "varchar",
+        "length": 48,
+        "description": "Indicates if buy protection was purchased for this transaction, typically for credit default swaps.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "CreatedBy",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Username of the person who created the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "UpdatedBy",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Username of the person who last updated the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Security",
+        "column_name": "FIGI",
+        "data_type": "varchar",
+        "length": 256,
+        "description": "Financial Instrument Global Identifier",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Security",
+        "column_name": "ShortName",
+        "data_type": "varchar",
+        "length": 64,
+        "description": "Short name or ticker symbol of the security",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Security",
+        "column_name": "LongName",
+        "data_type": "varchar",
+        "length": 256,
+        "description": "Full name of the security",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Security",
+        "column_name": "SecurityDescription",
+        "data_type": "varchar",
+        "length": 8000,
+        "description": "Detailed description of the security",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Security",
+        "column_name": "IndustryGICS",
+        "data_type": "varchar",
+        "length": 256,
+        "description": "GICS industry classification",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Security",
+        "column_name": "SubindustryGICS",
+        "data_type": "varchar",
+        "length": 256,
+        "description": "GICS sub-industry classification",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Security",
+        "column_name": "SectorGICS",
+        "data_type": "varchar",
+        "length": 256,
+        "description": "GICS sector classification",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Security",
+        "column_name": "IndustryGroupGICS",
+        "data_type": "varchar",
+        "length": 256,
+        "description": "GICS industry group classification",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Security",
+        "column_name": "SubSectorGICS",
+        "data_type": "varchar",
+        "length": 256,
+        "description": "GICS sub-sector classification",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Security",
+        "column_name": "ContractSize",
+        "data_type": "varchar",
+        "length": 32,
+        "description": "Size of the contract for derivatives",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Security",
+        "column_name": "CreatedBy",
+        "data_type": "varchar",
+        "length": 256,
+        "description": "User who created the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Security",
+        "column_name": "UpdatedBy",
+        "data_type": "varchar",
+        "length": 256,
+        "description": "User who last updated the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Security",
+        "column_name": "ProductType",
+        "data_type": "varchar",
+        "length": 64,
+        "description": "",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityIdentifier",
+        "column_name": "IdentifierType",
+        "data_type": "varchar",
+        "length": 64,
+        "description": "Type of identifier (e.g., CUSIP, ISIN, SEDOL)",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityIdentifier",
+        "column_name": "Identifier",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Actual identifier value",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityIdentifier",
+        "column_name": "CreatedBy",
+        "data_type": "varchar",
+        "length": 256,
+        "description": "User who created the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityIdentifier",
+        "column_name": "UpdatedBy",
+        "data_type": "varchar",
+        "length": 256,
+        "description": "User who last updated the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityDollarAnalytics",
+        "column_name": "CreatedBy",
+        "data_type": "varchar",
+        "length": 256,
+        "description": "User who created the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityDollarAnalytics",
+        "column_name": "UpdatedBy",
+        "data_type": "varchar",
+        "length": 256,
+        "description": "User who last updated the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityRiskAnalytics",
+        "column_name": "CreatedBy",
+        "data_type": "varchar",
+        "length": 256,
+        "description": "User who created the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityRiskAnalytics",
+        "column_name": "UpdatedBy",
+        "data_type": "varchar",
+        "length": 256,
+        "description": "User who last updated the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Gics",
+        "column_name": "GicsId",
+        "data_type": "varchar",
+        "length": 24,
+        "description": "If source doesn't have ID based primary column, assign Code to GicsId",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Gics",
+        "column_name": "Code",
+        "data_type": "varchar",
+        "length": 24,
+        "description": "Unique code assigned to the GICS",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Gics",
+        "column_name": "Name",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "Full name of the GICS",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Gics",
+        "column_name": "CreatedBy",
+        "data_type": "varchar",
+        "length": 256,
+        "description": "User who created the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Gics",
+        "column_name": "UpdatedBy",
+        "data_type": "varchar",
+        "length": 256,
+        "description": "User who last updated the record",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Account",
+        "column_name": "AccountId",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Account",
+        "column_name": "Code",
+        "data_type": "varchar",
+        "length": 128,
+        "description": "",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Account",
+        "column_name": "Name",
+        "data_type": "varchar",
+        "length": 256,
+        "description": "",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Account",
+        "column_name": "ExternalSystemAccountNumber",
+        "data_type": "varchar",
+        "length": 256,
+        "description": "",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Account",
+        "column_name": "CreatedBy",
+        "data_type": "varchar",
+        "length": 256,
+        "description": "",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Account",
+        "column_name": "ModifiedBy",
+        "data_type": "varchar",
+        "length": 256,
+        "description": "",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "ExternalSystem",
+        "column_name": "ExternalSystemId",
+        "data_type": "varchar",
+        "length": 64,
+        "description": "",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "ExternalSystem",
+        "column_name": "Code",
+        "data_type": "varchar",
+        "length": 64,
+        "description": "",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "ExternalSystem",
+        "column_name": "Name",
+        "data_type": "varchar",
+        "length": 256,
+        "description": "",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "ExternalSystem",
+        "column_name": "CreatedBy",
+        "data_type": "varchar",
+        "length": 256,
+        "description": "",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "ExternalSystem",
+        "column_name": "ModifiedBy",
+        "data_type": "varchar",
+        "length": 256,
+        "description": "",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Benchmark",
+        "column_name": "AvgMaturity",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Average maturity of the securities in the benchmark, typically in years",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Position",
+        "column_name": "MarketPrice",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Current market price of the security",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Position",
+        "column_name": "MarketValue",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Total market value of the position (Quantity * MarketPrice)",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Position",
+        "column_name": "Originalface",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Position",
+        "column_name": "Currentface",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Current face value of the security, which may differ from original face due to amortization or other factors.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Position",
+        "column_name": "Quantity",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Number of units of the security held in this position.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Position",
+        "column_name": "AccruedInterestAmount",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Amount of interest accrued but not yet paid for this position.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Position",
+        "column_name": "NotionalValue",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Notional value of the position, often used for derivatives.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "Quantity",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Number of units of the security involved in the transaction.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "PriceLocal",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Price of the security in the local currency.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "PriceBase",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Price of the security in the base currency of the portfolio.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "PriceUSD",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Price of the security in US dollars.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "CommissionLocal",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Commission for the transaction in local currency.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "CommissionBase",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Commission for the transaction in the base currency of the portfolio.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "CommissionUSD",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Commission for the transaction in US dollars.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "ImpliedCommissionLocal",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Implied commission in local currency, typically for fixed income trades.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "ImpliedCommissionBase",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Implied commission in the base currency of the portfolio.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "ImpliedCommissionUSD",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Implied commission in US dollars.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "FeesLocal",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Additional fees for the transaction in local currency.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "FeesBase",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Additional fees for the transaction in the base currency of the portfolio.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "FeesUSD",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Additional fees for the transaction in US dollars.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "NetAmountLocal",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Net amount of the transaction in local currency (including fees and commissions).",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "NetAmountBase",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Net amount of the transaction in the base currency of the portfolio.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "NetAmountUSD",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Net amount of the transaction in US dollars.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "GrossAmountLocal",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Gross amount of the transaction in local currency (excluding fees and commissions).",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "GrossAmountBase",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Gross amount of the transaction in the base currency of the portfolio.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "GrossAmountUSD",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Gross amount of the transaction in US dollars.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "CostLocal",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Total cost of the transaction in local currency.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "CostBase",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Total cost of the transaction in the base currency of the portfolio.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "CostUSD",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Total cost of the transaction in US dollars.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "GainLossLocal",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Realized gain or loss from the",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "PercentGainLossLocal",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Percent gain or loss in local currency.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "PercentGainLossBase",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Percentage gain or loss relative to base currency.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "PercentGainLossUSD",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Percentage gain or loss in USD.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "AccruedInterestLocal",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Interest accrued in local currency.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "AccruedInterestBase",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Interest accrued relative to base currency.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "AccruedInterestUSD",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Interest accrued in USD",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Security",
+        "column_name": "Coupon",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Coupon rate for fixed-income securities",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Security",
+        "column_name": "TotalShares",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Total number of shares outstanding for equity securities",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityDollarAnalytics",
+        "column_name": "PriceStartDay",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Opening price of the security for the day",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityDollarAnalytics",
+        "column_name": "PriceLastEOD",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Closing price of the security for the previous day",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityDollarAnalytics",
+        "column_name": "DividendYield",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Annual dividend yield as a percentage",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityDollarAnalytics",
+        "column_name": "DividendAmount",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Amount of the dividend payment",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityDollarAnalytics",
+        "column_name": "FiftyTwoWeekHigh",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Highest price of the security in the last 52 weeks",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityDollarAnalytics",
+        "column_name": "FiftyTwoWeekLow",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Lowest price of the security in the last 52 weeks",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityDollarAnalytics",
+        "column_name": "CurrentYearHigh",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Highest price of the security in the current year",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityDollarAnalytics",
+        "column_name": "CurrentYearLow",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Lowest price of the security in the current year",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityDollarAnalytics",
+        "column_name": "MarketPrice",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Current market price of the security",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityDollarAnalytics",
+        "column_name": "Factor",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Multiplier used in calculating the actual face value of a security",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityDollarAnalytics",
+        "column_name": "OneMCPR",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "One-month Conditional Prepayment Rate",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityDollarAnalytics",
+        "column_name": "ThreeMCPR",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Three-month Conditional Prepayment Rate",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityDollarAnalytics",
+        "column_name": "SixMCPR",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Six-month Conditional Prepayment Rate",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityDollarAnalytics",
+        "column_name": "TwelveMCPR",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Twelve-month Conditional Prepayment Rate",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityDollarAnalytics",
+        "column_name": "DTC",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Days to Cover (short interest ratio)",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityRiskAnalytics",
+        "column_name": "EquityVolatility",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Measure of the security's price volatility",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityRiskAnalytics",
+        "column_name": "PERatio",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Price-to-Earnings ratio of the security",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityRiskAnalytics",
+        "column_name": "KeyRateDur6M",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Key rate duration for 6 months",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityRiskAnalytics",
+        "column_name": "KeyRateDur1Yr",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Key rate duration for 1 year",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityRiskAnalytics",
+        "column_name": "KeyRateDur2y",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Key rate duration for 2 years",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityRiskAnalytics",
+        "column_name": "KeyRateDur3y",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Key rate duration for 3 years",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityRiskAnalytics",
+        "column_name": "KeyRateDur5y",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Key rate duration for 5 years",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityRiskAnalytics",
+        "column_name": "KeyRateDur7y",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Key rate duration for 7 years",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityRiskAnalytics",
+        "column_name": "KeyRateDur10y",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Key rate duration for 10 years",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityRiskAnalytics",
+        "column_name": "Factor",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Multiplier used in calculating the actual face value of a security",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityRiskAnalytics",
+        "column_name": "WAC",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Weighted Average Coupon",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityRiskAnalytics",
+        "column_name": "WAM",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Weighted Average Maturity",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityRiskAnalytics",
+        "column_name": "ModifiedDur",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Modified duration of the security",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityRiskAnalytics",
+        "column_name": "SpreadDur",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Spread duration of the security",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityRiskAnalytics",
+        "column_name": "OAS",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Option-Adjusted Spread",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityRiskAnalytics",
+        "column_name": "Convexity",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Measure of the curvature of the price-yield relationship",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityRiskAnalytics",
+        "column_name": "AdjustedDur",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Duration adjusted for embedded options",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityRiskAnalytics",
+        "column_name": "YTM",
+        "data_type": "decimal",
+        "length": -184,
+        "description": "Yield to Maturity",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "AggregationMetric",
+        "column_name": "CreatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was created",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "LinkAssetClass",
+        "column_name": "CreatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was created",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Benchmark",
+        "column_name": "CreatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was created",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Broker",
+        "column_name": "CreatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was created",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Client",
+        "column_name": "CreatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was created",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Country",
+        "column_name": "CreatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was created",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Currency",
+        "column_name": "CreatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was created",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Custodian",
+        "column_name": "CreatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was created",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "IndexSecurity",
+        "column_name": "CreatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was created",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Portfolio",
+        "column_name": "CreatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was created",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Position",
+        "column_name": "CreatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was created",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "LinkSecurityType",
+        "column_name": "CreatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was created",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SourceSystem",
+        "column_name": "CreatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was created",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Strategy",
+        "column_name": "CreatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was created",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "CreatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was created",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Security",
+        "column_name": "CreatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was created",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityIdentifier",
+        "column_name": "CreatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was created",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityDollarAnalytics",
+        "column_name": "CreatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was created",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityRiskAnalytics",
+        "column_name": "CreatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was created",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Gics",
+        "column_name": "CreatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was created",
+        "is_primary_key": true
+    },
+    {
+        "table_name": "AggregationMetric",
+        "column_name": "UpdatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was last updated",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "LinkAssetClass",
+        "column_name": "UpdatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was last updated",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Benchmark",
+        "column_name": "UpdatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was last updated",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Broker",
+        "column_name": "UpdatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was last updated",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Client",
+        "column_name": "UpdatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was last updated",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Country",
+        "column_name": "UpdatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was last updated",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Currency",
+        "column_name": "UpdatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was last updated",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Custodian",
+        "column_name": "UpdatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was last updated",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "IndexSecurity",
+        "column_name": "UpdatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was last updated",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Portfolio",
+        "column_name": "UpdatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was last updated",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Position",
+        "column_name": "UpdatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was last updated",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "LinkSecurityType",
+        "column_name": "UpdatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was last updated",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SourceSystem",
+        "column_name": "UpdatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was last updated",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Strategy",
+        "column_name": "UpdatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was last updated",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "UpdatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was last updated",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Security",
+        "column_name": "UpdatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was last updated",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityIdentifier",
+        "column_name": "UpdatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was last updated",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityDollarAnalytics",
+        "column_name": "UpdatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was last updated",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityRiskAnalytics",
+        "column_name": "UpdatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was last updated",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Gics",
+        "column_name": "UpdatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date and time when the record was last updated",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "AggregationMetric",
+        "column_name": "SortOrder",
+        "data_type": "int",
+        "length": null,
+        "description": "Numeric value to determine the order in which metrics are displayed or processed",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Benchmark",
+        "column_name": "IsActive",
+        "data_type": "bit",
+        "length": null,
+        "description": "Flag indicating whether the benchmark is currently active",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Portfolio",
+        "column_name": "ParentId",
+        "data_type": "int",
+        "length": null,
+        "description": "Identifier of the parent portfolio, used for hierarchical structure",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Portfolio",
+        "column_name": "IsActive",
+        "data_type": "bit",
+        "length": null,
+        "description": "Flag indicating whether the portfolio is currently active",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Position",
+        "column_name": "Factor",
+        "data_type": "int",
+        "length": null,
+        "description": "Multiplier used to calculate the current face value from the original face value.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Strategy",
+        "column_name": "ParentId",
+        "data_type": "int",
+        "length": null,
+        "description": "Identifier for the parent strategy, used for hierarchical classification.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Security",
+        "column_name": "LatestEffectiveDt",
+        "data_type": "date",
+        "length": null,
+        "description": "Most recent effective date for the security information",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Security",
+        "column_name": "OrginationDt",
+        "data_type": "date",
+        "length": null,
+        "description": "Date when the security was originated or issued",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Security",
+        "column_name": "MaturityDate",
+        "data_type": "date",
+        "length": null,
+        "description": "Date when the security matures or expires",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityDollarAnalytics",
+        "column_name": "EffectiveDt",
+        "data_type": "date",
+        "length": null,
+        "description": "Effective date of the dollar analytics data",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityDollarAnalytics",
+        "column_name": "NextDividendPaydate",
+        "data_type": "date",
+        "length": null,
+        "description": "Date of the next dividend payment",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityDollarAnalytics",
+        "column_name": "LastDividendPaydate",
+        "data_type": "date",
+        "length": null,
+        "description": "Date of the last dividend payment",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityRiskAnalytics",
+        "column_name": "EffectiveDt",
+        "data_type": "date",
+        "length": null,
+        "description": "Effective date of the risk analytics data",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Account",
+        "column_name": "InceptionDate",
+        "data_type": "date",
+        "length": null,
+        "description": "",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Account",
+        "column_name": "IsActive",
+        "data_type": "bit",
+        "length": null,
+        "description": "",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Account",
+        "column_name": "TerminationDate",
+        "data_type": "date",
+        "length": null,
+        "description": "",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Benchmark",
+        "column_name": "MarketDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date of the market data used for this benchmark",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "IndexSecurity",
+        "column_name": "AsofDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date for which the index security data is valid",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Portfolio",
+        "column_name": "InceptionDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Portfolio",
+        "column_name": "TerminationDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date when the portfolio was or will be terminated, if applicable",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Position",
+        "column_name": "AsofDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date for which the position data is valid",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "ReportedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date when the transaction was reported.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "TradeDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date when the trade was executed.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "SettlementDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date when the transaction is scheduled to settle.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "CanceledDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "Date when the transaction was canceled, if applicable.",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Account",
+        "column_name": "CreatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Account",
+        "column_name": "ModifiedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "ExternalSystem",
+        "column_name": "CreatedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "ExternalSystem",
+        "column_name": "ModifiedDate",
+        "data_type": "datetime2",
+        "length": null,
+        "description": "",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "AggregationMetric",
+        "column_name": "AggregationMetricKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Unique identifier for each Aggregation record",
+        "is_primary_key": true
+    },
+    {
+        "table_name": "LinkAssetClass",
+        "column_name": "LinkAssetClassKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Unique identifier for each AssetClass record",
+        "is_primary_key": true
+    },
+    {
+        "table_name": "Benchmark",
+        "column_name": "BenchmarkKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Unique identifier for each Benchmark record",
+        "is_primary_key": true
+    },
+    {
+        "table_name": "Broker",
+        "column_name": "BrokerKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Unique identifier for each Broker record",
+        "is_primary_key": true
+    },
+    {
+        "table_name": "Client",
+        "column_name": "ClientKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Unique identifier for each Client record",
+        "is_primary_key": true
+    },
+    {
+        "table_name": "Country",
+        "column_name": "CountryKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Unique identifier for each Country record",
+        "is_primary_key": true
+    },
+    {
+        "table_name": "Currency",
+        "column_name": "CurrencyKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Unique identifier for each Currency record",
+        "is_primary_key": true
+    },
+    {
+        "table_name": "Custodian",
+        "column_name": "CustodianKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Unique identifier for each Custodian record",
+        "is_primary_key": true
+    },
+    {
+        "table_name": "IndexSecurity",
+        "column_name": "IndexSecurityKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Unique identifier for each IndexSecurity record",
+        "is_primary_key": true
+    },
+    {
+        "table_name": "IndexSecurity",
+        "column_name": "BenchmarkKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Benchmark Key",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "IndexSecurity",
+        "column_name": "SecurityKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Security Key",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Portfolio",
+        "column_name": "PortfolioKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Unique identifier for each Portfolio record",
+        "is_primary_key": true
+    },
+    {
+        "table_name": "Portfolio",
+        "column_name": "StrategyKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Strategy Key",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Portfolio",
+        "column_name": "BenchmarkKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Benchmark Key",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Portfolio",
+        "column_name": "CustodianKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Custodian key",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Position",
+        "column_name": "PositionKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Unique identifier for each Position record",
+        "is_primary_key": true
+    },
+    {
+        "table_name": "Position",
+        "column_name": "DateKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Date of the Position data in integer format (YYYYMMDD)",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Position",
+        "column_name": "SecurityKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Security Key",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Position",
+        "column_name": "PortfolioKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Portfolio Key",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "LinkSecurityType",
+        "column_name": "LinkSecurityTypeKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Unique identifier for each Security Type Mapping record",
+        "is_primary_key": true
+    },
+    {
+        "table_name": "LinkSecurityType",
+        "column_name": "SecurityTypeKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "SecurityType Key",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "LinkSecurityType",
+        "column_name": "CustomerSecurityTypeKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Customer Security type Key",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SourceSystem",
+        "column_name": "SourceSystemKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Unique identifier for each Position record",
+        "is_primary_key": true
+    },
+    {
+        "table_name": "Strategy",
+        "column_name": "StrategyKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Unique identifier for each Position record",
+        "is_primary_key": true
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "TransactKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Unique identifier for each Transact record",
+        "is_primary_key": true
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "DateKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Date of the Tranasct Trade date  in integer format (YYYYMMDD)",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "SecurityKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Security Key",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "PortfolioKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Portfolio Key",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Transact",
+        "column_name": "BrokerKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Broker Key",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Security",
+        "column_name": "SecurityKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Unique identifier for each record in the Security table",
+        "is_primary_key": true
+    },
+    {
+        "table_name": "Security",
+        "column_name": "LinkAssetClassKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Foreign key referencing the link asset class dimension",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Security",
+        "column_name": "LinkSecurityTypeKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Foreign key referencing the link security type dimension",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Security",
+        "column_name": "CurrencyKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Foreign key referencing the currency dimension",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Security",
+        "column_name": "CountryKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Foreign key referencing the country dimension",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Security",
+        "column_name": "SourceSystemKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Foreign key referencing the source system dimension",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Security",
+        "column_name": "IssuerKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Foreign Key referencing the Issuer table",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityIdentifier",
+        "column_name": "SecurityKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Foreign key referencing the Security table",
+        "is_primary_key": true
+    },
+    {
+        "table_name": "Gics",
+        "column_name": "GicsKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Unique identifier for each record in the DimGics table",
+        "is_primary_key": true
+    },
+    {
+        "table_name": "Account",
+        "column_name": "AccountKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "",
+        "is_primary_key": true
+    },
+    {
+        "table_name": "Account",
+        "column_name": "ExternalSystemKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Account",
+        "column_name": "PlanKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Account",
+        "column_name": "CountryKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Account",
+        "column_name": "CurrencyKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "Account",
+        "column_name": "ClientKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "ExternalSystem",
+        "column_name": "ExternalSystemKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "",
+        "is_primary_key": true
+    },
+    {
+        "table_name": "SecurityRiskAnalytics",
+        "column_name": "AnalyticsKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Unique identifier for each record in the FactSecurityRiskAnalytics table",
+        "is_primary_key": true
+    },
+    {
+        "table_name": "SecurityRiskAnalytics",
+        "column_name": "SecurityKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Foreign key referencing the Security table",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityRiskAnalytics",
+        "column_name": "LinkAssetClassKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Foreign key referencing the link asset class dimension",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityRiskAnalytics",
+        "column_name": "LinkSecurityTypeKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Foreign key referencing the link security type dimension",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityRiskAnalytics",
+        "column_name": "CurrencyKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Foreign key referencing the currency dimension",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityRiskAnalytics",
+        "column_name": "CountryKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Foreign key referencing the country dimension",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityRiskAnalytics",
+        "column_name": "SourceSystemKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Foreign key referencing the source system dimension",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityRiskAnalytics",
+        "column_name": "DateKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Date of the risk analytics data in integer format (YYYYMMDD)",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityDollarAnalytics",
+        "column_name": "AnalyticsKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Unique identifier for each record in the SecurityDollarAnalytics table",
+        "is_primary_key": true
+    },
+    {
+        "table_name": "SecurityDollarAnalytics",
+        "column_name": "SecurityKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Foreign key referencing the Security table",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityDollarAnalytics",
+        "column_name": "CustomAssetClassKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Foreign key referencing the link asset class dimension",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityDollarAnalytics",
+        "column_name": "CustomSecurityTypeKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Foreign key referencing the link security type dimension",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityDollarAnalytics",
+        "column_name": "CurrencyKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Foreign key referencing the currency dimension",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityDollarAnalytics",
+        "column_name": "CountryKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Foreign key referencing the country dimension",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityDollarAnalytics",
+        "column_name": "SourceSystemKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Foreign key referencing the source system dimension",
+        "is_primary_key": false
+    },
+    {
+        "table_name": "SecurityDollarAnalytics",
+        "column_name": "DateKey",
+        "data_type": "bigint",
+        "length": null,
+        "description": "Date of the risk analytics data in integer format (YYYYMMDD)",
+        "is_primary_key": false
+    }
+]

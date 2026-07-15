@@ -1,0 +1,334 @@
+{
+    "name": "01_PL_SQL_ConfigCreation",
+   
+    "properties": {
+        "activities": [
+            {
+                "name": "Information Schema",
+                "description": "Uses a copy activity to transfer data from Azure SQL to the  Warehouse's InformationSchema ",
+                "type": "Copy",
+                "dependsOn": [
+                    {
+                        "activity": "Create Schema",
+                        "dependencyConditions": [
+                            "Completed"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "typeProperties": {
+                    "source": {
+                        "type": "Replace_Source_Type",
+                        "sqlReaderQuery": "SELECT * FROM INFORMATION_SCHEMA.COLUMNS ",
+                        "queryTimeout": "02:00:00",
+                        "partitionOption": "None",
+                        "datasetSettings": {
+                            "annotations": [],
+                            "type": "Replace_Source_Dataset_Type",
+                            "schema": [],
+                            "typeProperties": {
+                                "database": "Replace_Source_Database_Name"
+                            },
+                            "externalReferences": {
+                                "connection": "Replace_Source_Connection_Id"
+                            }
+                        }
+                    },
+                    "sink": {
+                        "type": "DataWarehouseSink",
+                        "allowCopyCommand": true,
+                        "writeBehavior": "Insert",
+                        "tableOption": "autoCreate",
+                        "datasetSettings": {
+                            "annotations": [],
+                            "linkedService": {
+                                "name": "WH_MetaData",
+                                "properties": {
+                                    "annotations": [],
+                                    "type": "DataWarehouse",
+                                    "typeProperties": {
+                                        "endpoint": "Replace_MetaData_SQL_Endpoint",
+                                        "artifactId": "Replace_MetaData_Warehouse_Id",
+                                        "workspaceId": "Replace_Workspace_Id"
+                                    }
+                                }
+                            },
+                            "type": "DataWarehouseTable",
+                            "schema": [],
+                            "typeProperties": {
+                                "schema": {
+                                    "value": "@variables('ConfigSchemaName')",
+                                    "type": "Expression"
+                                },
+                                "table": "SourceInformationSchema"
+                            }
+                        }
+                    },
+                    "enableStaging": true,
+                    "translator": {
+                        "type": "TabularTranslator",
+                        "typeConversion": true,
+                        "typeConversionSettings": {
+                            "allowDataTruncation": true,
+                            "treatBooleanAsNumber": false
+                        }
+                    }
+                }
+            },
+            {
+                "name": "Create Schema",
+                "description": "Executes a script to create the Config_SQLServer schema ",
+                "type": "Script",
+                "dependsOn": [],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "linkedService": {
+                    "name": "WH_MetaData",
+                    "properties": {
+                        "annotations": [],
+                        "type": "DataWarehouse",
+                        "typeProperties": {
+                            "endpoint": "Replace_MetaData_SQL_Endpoint",
+                            "artifactId": "Replace_MetaData_Warehouse_Id",
+                            "workspaceId": "Replace_Workspace_Id"
+                        }
+                    }
+                },
+                "typeProperties": {
+                    "scripts": [
+                        {
+                            "type": "Query",
+                            "text": {
+                                "value": "@concat('CREATE SCHEMA ' ,variables('ConfigSchemaName'))",
+                                "type": "Expression"
+                            }
+                        }
+                    ],
+                    "scriptBlockExecutionTimeout": "02:00:00"
+                }
+            },
+            {
+                "name": "Wait for Process Completion",
+                "description": "Introduces a wait activity to allow time for prior activities to complete before proceeding with the next steps.",
+                "type": "Wait",
+                "dependsOn": [
+                    {
+                        "activity": "Primary Key",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "typeProperties": {
+                    "waitTimeInSeconds": 10
+                }
+            },
+            {
+                "name": "Process Metadata",
+                "description": "Executes the metadata processing notebook to generate dynamic SQL queries, transform the data, and load the processed metadata into the centralized configuration table.",
+                "type": "TridentNotebook",
+                "dependsOn": [
+                    {
+                        "activity": "Wait for Process Completion",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "typeProperties": {
+                    "notebookId": "Replace_OTLMetaData_Creation_Id",
+                    "workspaceId": "Replace_Workspace_Id",
+                    "parameters": {
+                        "ConfigSchemaName": {
+                            "value": {
+                                "value": "@variables('ConfigSchemaName')",
+                                "type": "Expression"
+                            },
+                            "type": "string"
+                        }
+                    }
+                }
+            },
+            {
+                "name": "Key Constraint Config",
+                "description": "Uses a copy activity to transfer data from Azure SQL to the  Warehouse's InformationSchema ",
+                "type": "Copy",
+                "dependsOn": [
+                    {
+                        "activity": "Information Schema",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "typeProperties": {
+                    "source": {
+                        "type": "Replace_Source_Type",
+                        "sqlReaderQuery": "SELECT \n    fk.name AS FK_Name,\n    sch1.name AS FK_Schema,\n    t1.name AS FK_Table,\n    c1.name AS FK_Column,\n    sch2.name AS Referenced_Schema,\n    t2.name AS Referenced_Table,\n    c2.name AS Referenced_Column\nFROM sys.foreign_keys fk\nINNER JOIN sys.foreign_key_columns fkc \n    ON fk.object_id = fkc.constraint_object_id\nINNER JOIN sys.tables t1 \n    ON fkc.parent_object_id = t1.object_id\nINNER JOIN sys.schemas sch1 \n    ON t1.schema_id = sch1.schema_id\nINNER JOIN sys.columns c1 \n    ON fkc.parent_object_id = c1.object_id \n    AND fkc.parent_column_id = c1.column_id\nINNER JOIN sys.tables t2 \n    ON fkc.referenced_object_id = t2.object_id\nINNER JOIN sys.schemas sch2 \n    ON t2.schema_id = sch2.schema_id\nINNER JOIN sys.columns c2 \n    ON fkc.referenced_object_id = c2.object_id \n    AND fkc.referenced_column_id = c2.column_id\nORDER BY FK_Schema, FK_Table;",
+                        "queryTimeout": "02:00:00",
+                        "partitionOption": "None",
+                        "datasetSettings": {
+                            "annotations": [],
+                            "type": "Replace_Source_Dataset_Type",
+                            "schema": [],
+                            "typeProperties": {
+                                "database": "Replace_Source_Database_Name"
+                            },
+                            "externalReferences": {
+                                "connection": "Replace_Source_Connection_Id"
+                            }
+                        }
+                    },
+                    "sink": {
+                        "type": "DataWarehouseSink",
+                        "allowCopyCommand": true,
+                        "writeBehavior": "Insert",
+                        "tableOption": "autoCreate",
+                        "datasetSettings": {
+                            "annotations": [],
+                            "linkedService": {
+                                "name": "WH_MetaData",
+                                "properties": {
+                                    "annotations": [],
+                                    "type": "DataWarehouse",
+                                    "typeProperties": {
+                                        "endpoint": "Replace_MetaData_SQL_Endpoint",
+                                        "artifactId": "Replace_MetaData_Warehouse_Id",
+                                        "workspaceId": "Replace_Workspace_Id"
+                                    }
+                                }
+                            },
+                            "type": "DataWarehouseTable",
+                            "schema": [],
+                            "typeProperties": {
+                                "schema": {
+                                    "value": "@variables('ConfigSchemaName')",
+                                    "type": "Expression"
+                                },
+                                "table": "KeyConstraintConfig"
+                            }
+                        }
+                    },
+                    "enableStaging": true,
+                    "translator": {
+                        "type": "TabularTranslator",
+                        "typeConversion": true,
+                        "typeConversionSettings": {
+                            "allowDataTruncation": true,
+                            "treatBooleanAsNumber": false
+                        }
+                    }
+                }
+            },
+            {
+                "name": "Primary Key",
+                "description": "Uses a copy activity to transfer data from Azure SQL to the  Warehouse's InformationSchema ",
+                "type": "Copy",
+                "dependsOn": [
+                    {
+                        "activity": "Key Constraint Config",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "typeProperties": {
+                    "source": {
+                        "type": "Replace_Source_Type",
+                        "sqlReaderQuery": "SELECT \n    KU.TABLE_SCHEMA,\n    KU.TABLE_NAME,\n    KU.COLUMN_NAME\nFROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS TC\nJOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE KU\n    ON TC.CONSTRAINT_NAME = KU.CONSTRAINT_NAME\nWHERE TC.CONSTRAINT_TYPE = 'PRIMARY KEY'\nORDER BY KU.TABLE_SCHEMA, KU.TABLE_NAME, KU.ORDINAL_POSITION;",
+                        "queryTimeout": "02:00:00",
+                        "partitionOption": "None",
+                        "datasetSettings": {
+                            "annotations": [],
+                            "type": "Replace_Source_Dataset_Type",
+                            "schema": [],
+                            "typeProperties": {
+                                "database": "Replace_Source_Database_Name"
+                            },
+                            "externalReferences": {
+                                "connection": "Replace_Source_Connection_Id"
+                            }
+                        }
+                    },
+                    "sink": {
+                        "type": "DataWarehouseSink",
+                        "allowCopyCommand": true,
+                        "writeBehavior": "Insert",
+                        "tableOption": "autoCreate",
+                        "datasetSettings": {
+                            "annotations": [],
+                            "linkedService": {
+                                "name": "WH_MetaData",
+                                "properties": {
+                                    "annotations": [],
+                                    "type": "DataWarehouse",
+                                    "typeProperties": {
+                                    "endpoint": "Replace_MetaData_SQL_Endpoint",
+                                    "artifactId": "Replace_MetaData_Warehouse_Id",
+                                    "workspaceId": "Replace_Workspace_Id"
+                                    }
+                                }
+                            },
+                            "type": "DataWarehouseTable",
+                            "schema": [],
+                            "typeProperties": {
+                                "schema": {
+                                    "value": "@variables('ConfigSchemaName')",
+                                    "type": "Expression"
+                                },
+                                "table": "PrimaryKeyConfig"
+                            }
+                        }
+                    },
+                    "enableStaging": true,
+                    "translator": {
+                        "type": "TabularTranslator",
+                        "typeConversion": true,
+                        "typeConversionSettings": {
+                            "allowDataTruncation": true,
+                            "treatBooleanAsNumber": false
+                        }
+                    }
+                }
+            }
+        ],
+        "variables": {
+            "ConfigSchemaName": {
+                "type": "String",
+                "defaultValue": "Replace_ConfigSchemaName"
+            }
+        }
+    }
+}

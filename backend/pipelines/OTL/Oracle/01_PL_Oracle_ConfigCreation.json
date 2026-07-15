@@ -1,0 +1,340 @@
+{
+    "name": "01_PL_Oracle_ConfigCreation",
+    
+    "properties": {
+        "activities": [
+            {
+                "name": "Information Schema",
+                "description": "Extracts foreign key relationships and constraint metadata from Oracle  and loads it into the Fabric warehouse to support relationship mapping.",
+                "type": "Copy",
+                "dependsOn": [
+                    {
+                        "activity": "Create Schema",
+                        "dependencyConditions": [
+                            "Completed"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "typeProperties": {
+                    "source": {
+                        "type": "Replace_Source_Type",
+                        "oracleReaderQuery": {
+                            "value": "@concat('SELECT \nOWNER  ,\nTABLE_NAME,\nCOLUMN_NAME,\nDATA_TYPE,\nDATA_TYPE_MOD,\nDATA_TYPE_OWNER,\nDATA_LENGTH,\nDATA_PRECISION,\nDATA_SCALE,\nNULLABLE,\nDEFAULT_LENGTH,\nDATA_DEFAULT,\nNUM_DISTINCT,\nNUM_NULLS,\nLAST_ANALYZED,\nAVG_COL_LEN,\nCHAR_LENGTH,\nCHAR_USED,\nDEFAULT_ON_NULL,\nIDENTITY_COLUMN  FROM all_tab_columns ')",
+                            "type": "Expression"
+                        },
+                        "partitionOption": "None",
+                        "numberPrecision": 38,
+                        "numberScale": 18,
+                        "queryTimeout": "02:00:00",
+                        "datasetSettings": {
+                            "annotations": [],
+                            "type": "OracleTable",
+                            "schema": [],
+                            "externalReferences": {
+                                "connection": "Replace_Source_Connection_Id"
+                            }
+                        }
+                    },
+                    "sink": {
+                        "type": "DataWarehouseSink",
+                        "allowCopyCommand": true,
+                        "writeBehavior": "Insert",
+                        "tableOption": "autoCreate",
+                        "datasetSettings": {
+                            "annotations": [],
+                            "linkedService": {
+                                "name": "WH_MetaData",
+                                "properties": {
+                                    "annotations": [],
+                                    "type": "DataWarehouse",
+                                    "typeProperties": {
+                                        "endpoint": "Replace_MetaData_SQL_Endpoint",
+                                        "artifactId": "Replace_MetaData_Warehouse_Id",
+                                        "workspaceId": "Replace_Workspace_Id"
+                                    }
+                                }
+                            },
+                            "type": "DataWarehouseTable",
+                            "schema": [],
+                            "typeProperties": {
+                                "schema": {
+                                    "value": "@variables('ConfigSchemaName')",
+                                    "type": "Expression"
+                                },
+                                "table": "SourceInformationSchema"
+                            }
+                        }
+                    },
+                    "enableStaging": true,
+                    "translator": {
+                        "type": "TabularTranslator",
+                        "typeConversion": true,
+                        "typeConversionSettings": {
+                            "allowDataTruncation": true,
+                            "treatBooleanAsNumber": false
+                        }
+                    }
+                }
+            },
+            {
+                "name": "Key Contraint Config",
+                "description": "Extracts primary key columns for all tables from Oracle and stores them in the Fabric warehouse for metadata enrichment and join logic.",
+                "type": "Copy",
+                "dependsOn": [
+                    {
+                        "activity": "Information Schema",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "typeProperties": {
+                    "source": {
+                        "type": "Replace_Source_Type",
+                        "oracleReaderQuery": "SELECT \n    c.owner,\n    c.table_name,\n    c.constraint_name,\n    c.constraint_type,\n    cc.column_name,\n    c.r_owner,\n    c.r_constraint_name,\n    c.status\nFROM all_constraints c\nJOIN all_cons_columns cc\n    ON c.owner = cc.owner\n    AND c.constraint_name = cc.constraint_name\nORDER BY c.owner, c.table_name, c.constraint_name",
+                        "partitionOption": "None",
+                        "numberPrecision": 38,
+                        "numberScale": 18,
+                        "queryTimeout": "02:00:00",
+                        "datasetSettings": {
+                            "annotations": [],
+                            "type": "OracleTable",
+                            "schema": [],
+                            "externalReferences": {
+                                "connection": "Replace_Source_Connection_Id"
+                            }
+                        }
+                    },
+                    "sink": {
+                        "type": "DataWarehouseSink",
+                        "allowCopyCommand": true,
+                        "writeBehavior": "Insert",
+                        "tableOption": "autoCreate",
+                        "datasetSettings": {
+                            "annotations": [],
+                            "linkedService": {
+                                "name": "WH_MetaData",
+                                "properties": {
+                                    "annotations": [],
+                                    "type": "DataWarehouse",
+                                    "typeProperties": {
+                                        "endpoint": "Replace_MetaData_SQL_Endpoint",
+                                        "artifactId": "Replace_MetaData_Warehouse_Id",
+                                        "workspaceId": "Replace_Workspace_Id"
+                                    }
+                                }
+                            },
+                            "type": "DataWarehouseTable",
+                            "schema": [],
+                            "typeProperties": {
+                                "schema": {
+                                    "value": "@variables('ConfigSchemaName')",
+                                    "type": "Expression"
+                                },
+                                "table": "KeyConstraintConfig"
+                            }
+                        }
+                    },
+                    "enableStaging": true,
+                    "translator": {
+                        "type": "TabularTranslator",
+                        "typeConversion": true,
+                        "typeConversionSettings": {
+                            "allowDataTruncation": true,
+                            "treatBooleanAsNumber": false
+                        }
+                    }
+                }
+            },
+            {
+                "name": "One Time Config ETL",
+                "description": "Builds a consolidated metadata configuration by combining information schema, key constraints, and primary key data. Generates source queries and config mappings for Bronze/Silver pipeline setup and stores the final configuration in the warehouse.",
+                "type": "TridentNotebook",
+                "dependsOn": [
+                    {
+                        "activity": "Wait for process completion",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "typeProperties": {
+                    "notebookId": "Replace_OTLMetaData_Creation_Id",
+                    "workspaceId": "Replace_Workspace_Id",
+                    "parameters": {
+                        "ConfigSchemaName": {
+                            "value": {
+                                "value": "@variables('ConfigSchemaName')",
+                                "type": "Expression"
+                            },
+                            "type": "string"
+                        }
+                    }
+                }
+            },
+            {
+                "name": "Primary Key",
+                "description": "Extracts Oracle table metadata (columns, data types, and structure) and loads it into the Fabric warehouse for downstream processing.",
+                "type": "Copy",
+                "dependsOn": [
+                    {
+                        "activity": "Key Contraint Config",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "typeProperties": {
+                    "source": {
+                        "type": "Replace_Source_Type",
+                        "oracleReaderQuery": "SELECT \n acc.owner,\n    acc.table_name,\n    acc.column_name\nFROM all_constraints ac\nJOIN all_cons_columns acc\n    ON ac.owner = acc.owner\n    AND ac.constraint_name = acc.constraint_name\nWHERE ac.constraint_type = 'P'\nAND acc.owner = 'HOSPITAL'",
+                        "partitionOption": "None",
+                        "numberPrecision": 38,
+                        "numberScale": 18,
+                        "queryTimeout": "02:00:00",
+                        "datasetSettings": {
+                            "annotations": [],
+                            "type": "OracleTable",
+                            "schema": [],
+                            "externalReferences": {
+                                "connection": "Replace_Source_Connection_Id"
+                            }
+                        }
+                    },
+                    "sink": {
+                        "type": "DataWarehouseSink",
+                        "allowCopyCommand": true,
+                        "writeBehavior": "Insert",
+                        "tableOption": "autoCreate",
+                        "datasetSettings": {
+                            "annotations": [],
+                            "linkedService": {
+                                "name": "WH_MetaData",
+                                "properties": {
+                                    "annotations": [],
+                                    "type": "DataWarehouse",
+                                    "typeProperties": {
+                                        "endpoint": "Replace_MetaData_SQL_Endpoint",
+                                        "artifactId": "Replace_MetaData_Warehouse_Id",
+                                        "workspaceId": "Replace_Workspace_Id"
+                                    }
+                                }
+                            },
+                            "type": "DataWarehouseTable",
+                            "schema": [],
+                            "typeProperties": {
+                                "schema": {
+                                    "value": "@variables('ConfigSchemaName')",
+                                    "type": "Expression"
+                                },
+                                "table": "PrimayKeyConfig "
+                            }
+                        }
+                    },
+                    "enableStaging": true,
+                    "translator": {
+                        "type": "TabularTranslator",
+                        "typeConversion": true,
+                        "typeConversionSettings": {
+                            "allowDataTruncation": true,
+                            "treatBooleanAsNumber": false
+                        }
+                    }
+                }
+            },
+            {
+                "name": "Create Schema",
+                "type": "Script",
+                "dependsOn": [],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "linkedService": {
+                    "name": "WH_MetaData",
+                    "properties": {
+                        "annotations": [],
+                        "type": "DataWarehouse",
+                        "typeProperties": {
+                            "endpoint": "Replace_MetaData_SQL_Endpoint",
+                            "artifactId": "Replace_MetaData_Warehouse_Id",
+                            "workspaceId": "Replace_Workspace_Id"
+                        }
+                    }
+                },
+                "typeProperties": {
+                    "scripts": [
+                        {
+                            "type": "Query",
+                            "text": {
+                                "value": "@concat('CREATE SCHEMA ' ,variables('ConfigSchemaName'))",
+                                "type": "Expression"
+                            }
+                        }
+                    ],
+                    "scriptBlockExecutionTimeout": "02:00:00"
+                }
+            },
+            {
+                "name": "Wait for process completion",
+                "description": "Introduces a wait activity to allow time for prior activities to complete before proceeding with the next steps.",
+                "type": "Wait",
+                "dependsOn": [
+                    {
+                        "activity": "Primary Key",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "typeProperties": {
+                    "waitTimeInSeconds": 10
+                }
+            }
+        ],
+        "parameters": {
+            "OWNER": {
+                "type": "string"
+            }
+        },
+        "variables": {
+            "ConfigSchemaName": {
+                "type": "String",
+                "defaultValue": "Replace_ConfigSchemaName"
+            }
+        },
+        "lastModifiedByObjectId": "cbbba9aa-fb65-460c-822d-c812e779c13f",
+        "lastPublishTime": "2026-05-05T06:55:43Z"
+    }
+}

@@ -1,0 +1,113 @@
+{
+  "name": "03_PL_InvokePipeline",
+  "properties": {
+    "activities": [
+      {
+        "name": "Config Set",
+        "type": "SetVariable",
+        "dependsOn": [],
+        "policy": {
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "typeProperties": {
+          "variableName": "starttime",
+          "value": {
+            "value": "@utcNow()",
+            "type": "Expression"
+          }
+        }
+      },
+      {
+        "name": "Source To Bronze",
+        "type": "ExecutePipeline",
+        "dependsOn": [
+          {
+            "activity": "Config Set",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ],
+        "policy": {
+          "secureInput": false
+        },
+        "typeProperties": {
+          "pipeline": {
+            "referenceName": "Replace_Reference_IncrementalSourceToBronze_Pipeline_Name",
+            "type": "PipelineReference"
+          },
+          "waitOnCompletion": true,
+          "parameters": {
+            "DBsource": {
+              "value": "@pipeline().parameters.DBsource",
+              "type": "Expression"
+            },
+            "Batch_Id": {
+              "value": "@pipeline().parameters.Batch_Id",
+              "type": "Expression"
+            },
+            "SchemaName": {
+              "value": "@pipeline().parameters.SchemaName",
+              "type": "Expression"
+            }
+          }
+        }
+      },
+      {
+        "name": "Source Delete",
+        "type": "ExecutePipeline",
+        "dependsOn": [
+          {
+            "activity": "Config Set",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ],
+        "policy": {
+          "secureInput": false
+        },
+        "typeProperties": {
+          "pipeline": {
+            "referenceName": "Replace_Reference_SourceDelete_Pipeline_Name",
+            "type": "PipelineReference"
+          },
+          "waitOnCompletion": true,
+          "parameters": {
+            "Batch_Id": {
+              "value": "@pipeline().parameters.Batch_Id",
+              "type": "Expression"
+            },
+            "DBsource": {
+              "value": "@pipeline().parameters.DBsource",
+              "type": "Expression"
+            },
+            "SchemaName": {
+              "value": "@pipeline().parameters.SchemaName",
+              "type": "Expression"
+            }
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Batch_Id": {
+        "type": "string"
+      },
+      "DBsource": {
+        "type": "string"
+      },
+      "SchemaName": {
+        "type": "string"
+      }
+    },
+    "variables": {
+      "starttime": {
+        "type": "String"
+      }
+    },
+    "lastModifiedByObjectId": "809935d2-cc6d-4f0b-994d-ca2aee5aba03",
+    "lastPublishTime": "2026-07-02T10:52:18Z"
+  }
+}

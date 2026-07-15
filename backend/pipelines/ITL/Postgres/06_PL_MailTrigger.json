@@ -1,0 +1,54 @@
+{
+    "name": "06_PL_MailTrigger",
+   
+    "properties": {
+        "activities": [
+            {
+                "name": "IRIS Mail Trigger",
+                "type": "Office365Outlook",
+                "dependsOn": [],
+                "typeProperties": {
+                    "inputs": {
+                        "method": "post",
+                        "path": "/v2/Mail",
+                        "body": {
+                            "To": "@replace(pipeline().parameters.recipient_email_to, ',', ';')",
+                            "Subject": "@pipeline().parameters.email_subject",
+                            "Body": "@pipeline().parameters.email_body",
+                            "Sensitivity": "",
+                            "Importance": "Normal",
+                            "Cc": "@replace(pipeline().parameters.recipient_email_cc, ',', ';')",
+                            "Bcc": "@replace(pipeline().parameters.recipient_email_bcc, ',', ';')"
+                        }
+                    }
+                }
+            }
+        ],
+        "parameters": {
+            "recipient_email_bcc": {
+                "type": "string"
+            },
+            "email_body": {
+                "type": "string"
+            },
+            "recipient_email_cc": {
+                "type": "string"
+            },
+            "recipient_email_to": {
+                "type": "string"
+            },
+            "email_subject": {
+                "type": "string"
+            }
+        },
+        "logicAppsConnectionPayload": {
+            "id": "/subscriptions/f2ae9a2c-2b5d-4486-b605-db2c960c3ba4/resourceGroups/connections-27123242-df72-41f7-822b-0b14db152c20/providers/Microsoft.Web/connections/1_ae099a39-b6fc-453d-9011-05f9fa93fb23_67fa654b-8f81-4a5f-ace3-86fba4600511",
+            "properties": {
+                "api": {
+                    "name": "office365",
+                    "id": "/subscriptions/f2ae9a2c-2b5d-4486-b605-db2c960c3ba4/providers/Microsoft.Web/locations/uaenorth/managedApis/office365"
+                }
+            }
+        }
+    }
+}
