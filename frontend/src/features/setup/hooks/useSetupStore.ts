@@ -744,7 +744,7 @@ export const useSetupStore = (projectId: string | null) => {
   /**
    * Fetch the list of local pipeline JSON files from the backend.
    */
-  const fetchPipelineFiles = useCallback(async (dbTypeOverride?: string, connectionIdOverride?: string) => {
+  const fetchPipelineFiles = useCallback(async (dbTypeOverride?: string, connectionIdOverride?: string, skipItlStatus?: boolean) => {
     const currentState = stateRef.current;
     const resolvedConnectionId = connectionIdOverride ?? currentState.selectedConnection;
     const selectedConn = currentState.connections.find((c) => c.id === resolvedConnectionId);
@@ -794,7 +794,10 @@ export const useSetupStore = (projectId: string | null) => {
           return { ...prev, configLoading: { ...prev.configLoading, [connId]: false }, pipelineFiles: { ...prev.pipelineFiles, [connId]: merged } };
         });
         // Restore ITL downloaded/uploaded/notebook/pipeline state from backend DB
-        if (projectId && selectedConn?.name) {
+        // (Finin mode never shows the ITL section, so skip this extra
+        // round-trip there — it was adding latency to every connection
+        // switch for no visible benefit.)
+        if (projectId && selectedConn?.name && !skipItlStatus) {
           getItlConfigStatus(projectId, selectedConn.name).then((status) => {
             applyForProject(projectId, (prev) => {
               const prevNotebookStatus = prev.itlNotebookRunStatus[connId] ?? null;

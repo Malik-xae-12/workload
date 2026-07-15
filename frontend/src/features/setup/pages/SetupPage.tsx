@@ -48,6 +48,16 @@ export const SetupPage = () => {
   const [activeNav, setActiveNavRaw] = useState('fabric-accelerator');
   const [activeProjectId, setActiveProjectId] = useState<string | null>(() => loadPersistedActiveProject(modeOf('fabric-accelerator')).id);
   const [activeProjectName, setActiveProjectName] = useState<string>(() => loadPersistedActiveProject(modeOf('fabric-accelerator')).name);
+  // Finin-only: the connection selected in Config when the user is sent to
+  // AI Mapping, so that page can pick it up instead of asking again, and so
+  // we know where to send them back once the mapping is saved.
+  const [aiMappingConnectionName, setAiMappingConnectionName] = useState<string | null>(null);
+  const [aiMappingReturnNav, setAiMappingReturnNav] = useState<string>('finin-accelerator');
+  // Finin-only: connections whose mapping has already been saved to
+  // SourceInformationSchemaMapped. Once a connection is in this set, the
+  // "Go to AI Mapping" prompt in Config stays hidden for it — no need to
+  // send the user back through mapping again after they've returned.
+  const [mappedConnectionNames, setMappedConnectionNames] = useState<Set<string>>(new Set());
 
   // Keep the persisted active project in sync (per accelerator) so a page
   // refresh reopens the same project (and, combined with useSetupStore's own
@@ -294,6 +304,22 @@ export const SetupPage = () => {
             notebooks={state.notebooks}
             pipelineFiles={state.pipelineFiles}
             appMode={activeNav === 'finin-accelerator' ? 'finin' : 'fabric'}
+            isConnectionMapped={
+              !!state.connections.find((c) => c.id === state.selectedConnection) &&
+              mappedConnectionNames.has(
+                state.connections.find((c) => c.id === state.selectedConnection)?.name || ''
+              )
+            }
+            onGoToAIMapping={
+              activeNav === 'finin-accelerator'
+                ? () => {
+                    const conn = state.connections.find((c) => c.id === state.selectedConnection);
+                    setAiMappingConnectionName(conn?.name || null);
+                    setAiMappingReturnNav(activeNav);
+                    setActiveNav('ai-mapping');
+                  }
+                : undefined
+            }
             onSelectConnection={selectConnection}
             onRunTask={handleRunTask}
             onFetchNotebooks={fetchNotebooks}
@@ -415,7 +441,7 @@ export const SetupPage = () => {
 
         {/* Step content */}
         <main className="flex-1 px-10 py-5">
-          {activeNav === 'fabric-accelerator' || activeNav === 'finin-accelerator' ? (
+          {(activeNav === 'fabric-accelerator' || activeNav === 'finin-accelerator') && (
             activeProjectId ? (
               /* Setup wizard for selected project — same steps either way;
                * appMode only changes how the Config step behaves. */
@@ -461,16 +487,33 @@ export const SetupPage = () => {
                 }}
               />
             )
-          ) : activeNav === 'ai-mapping' ? (
+          )}
+
+          {/* AI Mapping stays mounted at all times (just hidden when not
+           * active) instead of being conditionally rendered — a mapping job
+           * lives in FininApp's local state, and unmounting it (e.g. if the
+           * user accidentally clicks away mid-run) would throw that progress
+           * away and force the whole thing to restart from scratch. */}
+          <div style={{ display: activeNav === 'ai-mapping' ? 'block' : 'none' }}>
             <FininPage
               connections={state.connections}
               projectId={activeProjectId}
+              initialConnectionName={aiMappingConnectionName}
+              onMappingSaved={() => {
+                if (aiMappingConnectionName) {
+                  setMappedConnectionNames((prev) => new Set(prev).add(aiMappingConnectionName));
+                }
+                setAiMappingConnectionName(null);
+                setActiveNav(aiMappingReturnNav);
+              }}
               onOpenProject={(projectId, projectName) => {
                 setActiveProjectId(projectId);
                 setActiveProjectName(projectName);
               }}
             />
-          ) : (
+          </div>
+
+          {activeNav !== 'fabric-accelerator' && activeNav !== 'finin-accelerator' && activeNav !== 'ai-mapping' && (
             <div className="flex items-center justify-center py-20">
               <p className="text-sm text-slate-400">
                 {navLabels[activeNav] || (activeNav.charAt(0).toUpperCase() + activeNav.slice(1))} — coming soon

@@ -72,18 +72,24 @@ export function ConnectionForm({
   const handleRun = () => (useProjectCreds && onRunProject ? onRunProject(projectBody()) : onRun(creds));
 
   return (
-    <div className="form-card">
+    <div className={`form-card${testing ? ' is-testing' : ''}`}>
+      {testing && (
+        <div className="testing-banner">
+          <span className="testing-spinner" />
+          Testing connection{connectionName ? <> to <strong>{connectionName}</strong></> : null}…
+        </div>
+      )}
       {projectId && (
         <div className="form-section">
-          <label className="mm-select" style={{ display: "flex", alignItems: "center", gap: 8, width: "fit-content", cursor: "pointer" }}>
+          {/* <label className="mm-select" style={{ display: "flex", alignItems: "center", gap: 8, width: "fit-content", cursor: "pointer" }}>
             <input type="checkbox" checked={useProjectCreds} onChange={(e) => setUseProjectCreds(e.target.checked)} />
             Use my logged-in Fabric project's credentials
-          </label>
-          {useProjectCreds && (
+          </label> */}
+          {/* {useProjectCreds && (
             <div className="conn-banner ok" style={{ marginTop: 8 }}>
               <span>✓</span> Connecting as {projectClientId ? <code>{projectClientId}</code> : "your project's service principal"} — no need to re-enter server/tenant/secret.
             </div>
-          )}
+          )} */}
         </div>
       )}
 
@@ -135,9 +141,9 @@ export function ConnectionForm({
 
       <div className="form-section">
         <h3 className="section-label">Tables</h3>
-        <div className="conn-banner ok" style={{ marginBottom: 12 }}>
+        {/* <div className="conn-banner ok" style={{ marginBottom: 12 }}>
           <span>ℹ</span> Template schema is loaded automatically from Finin's local financial template — no database or table name needed.
-        </div>
+        </div> */}
         <div className="field-grid">
           {useProjectCreds ? (
             <div className="field">
@@ -212,8 +218,8 @@ export function ConnectionForm({
         </div>
       )}
 
-      <div className="form-actions">
-        <button className="btn-secondary" onClick={handleTest} disabled={testing || !projectReady}>
+      <div className="form-actions flex flex-col">
+        <button className={`btn-secondary${testing ? ' is-testing' : ''}`} onClick={handleTest} disabled={testing || !projectReady}>
           {testing ? "Testing…" : "Test Connection"}
         </button>
         <button className="btn-primary" onClick={handleRun} disabled={!canRun || !projectReady}>

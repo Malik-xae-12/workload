@@ -6,6 +6,8 @@ interface Props {
   connections: SourceConnection[];
   projectId: string | null;
   onOpenProject: (projectId: string, projectName: string) => void;
+  initialConnectionName?: string | null;
+  onMappingSaved?: () => void;
 }
 
 /**
@@ -13,7 +15,7 @@ interface Props {
  * in-place; if no Fabric project is open yet it nudges the user to pick
  * one first (so there's a Config_<connection> schema to save mappings into).
  */
-export const FininPage = ({ connections, projectId, onOpenProject }: Props) => {
+export const FininPage = ({ connections, projectId, onOpenProject, initialConnectionName, onMappingSaved }: Props) => {
   if (!projectId) {
     return (
       <div className="space-y-4">
@@ -26,5 +28,12 @@ export const FininPage = ({ connections, projectId, onOpenProject }: Props) => {
     );
   }
 
-  return <FininApp connections={connections} projectId={projectId} />;
+  return (
+    <FininApp
+      connections={connections}
+      projectId={projectId}
+      initialConnectionName={initialConnectionName}
+      onMappingSaved={onMappingSaved}
+    />
+  );
 };

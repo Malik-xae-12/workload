@@ -52,7 +52,7 @@ def ensure_mapped_table(
         cursor.execute(f"""
             CREATE TABLE [{config_schema_name}].[SourceInformationSchemaMapped]
             (
-                Id                      INT IDENTITY(1,1) NOT NULL,
+                Id                      BIGINT IDENTITY NOT NULL,
                 JobId                   VARCHAR(64),
                 SourceTableSchema       VARCHAR(255),
                 SourceTableName         VARCHAR(255),

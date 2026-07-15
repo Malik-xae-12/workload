@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ConnectionForm } from "../connection/components/ConnectionForm";
 import { ProgressPanel } from "../mapping/components/ProgressPanel";
 import { StatsDashboard } from "../mapping/components/StatsDashboard";
@@ -14,9 +14,16 @@ import type { SourceConnection } from "../../setup/types";
 interface Props {
   connections: SourceConnection[];
   projectId: string | null;
+  /** When arriving here via the Config step's "AI Mapping" redirect, this is
+   * the connection the user had selected there — preselect it and carry on
+   * instead of making them pick it again. */
+  initialConnectionName?: string | null;
+  /** Called once the mapping has been saved to SourceInformationSchemaMapped,
+   * so the Config step can pull the user back to finish Bronze/Silver. */
+  onMappingSaved?: () => void;
 }
 
-export default function FininApp({ connections, projectId }: Props) {
+export default function FininApp({ connections, projectId, initialConnectionName, onMappingSaved }: Props) {
   const {
     job, testing, saving, connectionOk, connectionMsg,
     testConnection, testConnectionForProject, runMapping, runMappingForProject,
@@ -25,7 +32,7 @@ export default function FininApp({ connections, projectId }: Props) {
   } = useMapping();
 
   const [showManual, setShowManual] = useState(false);
-  const [connectionName, setConnectionName] = useState(connections[0]?.name || "");
+  const [connectionName, setConnectionName] = useState(initialConnectionName || connections[0]?.name || "");
   const [projectClientId, setProjectClientId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -33,6 +40,29 @@ export default function FininApp({ connections, projectId }: Props) {
     getProjectConnectionInfo(projectId).then((info) => setProjectClientId(info?.client_id || null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
+
+  // Arrived here from the Config step with a connection already chosen —
+  // pick it up and immediately test it so the user just has to hit Run.
+  // Keyed to *which* connection, not just "has this ever run": if the user
+  // comes back for the same connection they left mid-mapping, we leave
+  // everything alone so they resume where they left off. If they come back
+  // for a *different* connection (e.g. finished saving Source A, switched
+  // to Source B in Config, clicked "Go to AI Mapping" again), the stale
+  // job/result from Source A must be cleared instead of just being shown.
+  const lastAutoConnRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!initialConnectionName || !projectId) return;
+    if (lastAutoConnRef.current === initialConnectionName) return; // same source — resume as-is
+    const isSwitchingSource = lastAutoConnRef.current !== null;
+    lastAutoConnRef.current = initialConnectionName;
+    if (isSwitchingSource) {
+      reset();
+      setShowManual(false);
+    }
+    setConnectionName(initialConnectionName);
+    testConnectionForProject({ project_id: projectId, connection_name: initialConnectionName });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialConnectionName, projectId]);
 
   const isDone = job?.status === "done";
   const isActive = job && !isDone && job.status !== "error";
@@ -60,6 +90,7 @@ export default function FininApp({ connections, projectId }: Props) {
     try {
       const res = await saveToMetadata(job.job_id, projectId, connectionName);
       alert(`Saved ${res.inserted} rows to SourceInformationSchemaMapped (Config_${connectionName}).`);
+      if (onMappingSaved) onMappingSaved();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Failed to save mapping to metadata.");
     }
@@ -97,6 +128,7 @@ export default function FininApp({ connections, projectId }: Props) {
         {!showManual && !job && (
           <div className="landing">
             <div className="landing-hero">
+              <span className="eyebrow"><span className="eyebrow-dot" />AI-Powered Column Mapping</span>
               <h1>Map columns with meaning,<br /><em>not just names.</em></h1>
               <p>
                 Connect your Azure SQL databases and let semantic embeddings automatically match
@@ -104,6 +136,29 @@ export default function FininApp({ connections, projectId }: Props) {
                 full auditability. Finished mappings save straight into your Fabric Accelerator
                 metadata (SourceInformationSchemaMapped).
               </p>
+              <ol className="hero-steps">
+                <li>
+                  <span className="hero-step-num">1</span>
+                  <div>
+                    <strong>Connect</strong>
+                    <span>Pick a source connection or enter Azure SQL credentials directly.</span>
+                  </div>
+                </li>
+                <li>
+                  <span className="hero-step-num">2</span>
+                  <div>
+                    <strong>Match</strong>
+                    <span>Semantic embeddings score every column against the financial template.</span>
+                  </div>
+                </li>
+                <li>
+                  <span className="hero-step-num">3</span>
+                  <div>
+                    <strong>Save</strong>
+                    <span>Review, adjust, and commit results to SourceInformationSchemaMapped.</span>
+                  </div>
+                </li>
+              </ol>
             </div>
             <ConnectionForm
               onTest={testConnection}

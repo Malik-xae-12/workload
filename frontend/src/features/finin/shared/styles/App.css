@@ -128,6 +128,7 @@
   background: var(--surface);
   border-radius: var(--radius);
   margin-bottom: 8px;
+  box-shadow: var(--shadow-sm);
 }
 
 .finin-app .header-inner {
@@ -220,6 +221,36 @@
   line-height: 1.7;
 }
 
+.finin-app .hero-steps {
+  list-style: none;
+  margin-top: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.finin-app .hero-steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+.finin-app .hero-step-num {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--forest-50);
+  color: var(--forest-700);
+  font-weight: 800;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--forest-100);
+}
+.finin-app .hero-steps li div { display: flex; flex-direction: column; gap: 2px; }
+.finin-app .hero-steps li strong { font-size: 13px; font-weight: 700; color: var(--text-primary); }
+.finin-app .hero-steps li span { font-size: 12.5px; color: var(--text-secondary); line-height: 1.5; }
+
 /* =============================================
    FORM CARD
    ============================================= */
@@ -229,6 +260,51 @@
   box-shadow: var(--shadow-md);
   border-radius: var(--radius-lg);
   overflow: hidden;
+  transition: box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+/* Connection test in progress — an unmissable glowing/animated border so
+   the user knows something is happening, instead of a static disabled
+   button that reads as "nothing's going on". */
+@keyframes finin-border-pulse {
+  0%   { box-shadow: 0 0 0 0 var(--accent-glow), var(--shadow-md); border-color: var(--accent); }
+  50%  { box-shadow: 0 0 0 6px rgba(79, 70, 229, 0.10), var(--shadow-md); border-color: var(--forest-700); }
+  100% { box-shadow: 0 0 0 0 var(--accent-glow), var(--shadow-md); border-color: var(--accent); }
+}
+.finin-app .form-card.is-testing {
+  animation: finin-border-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes finin-spin {
+  to { transform: rotate(360deg); }
+}
+.finin-app .testing-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 24px;
+  background: var(--forest-50);
+  color: var(--forest-700);
+  font-size: 13px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--forest-100);
+}
+.finin-app .testing-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--forest-100);
+  border-top-color: var(--forest-600);
+  animation: finin-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+.finin-app .btn-secondary.is-testing {
+  border-color: var(--accent);
+  color: var(--accent-hover);
+  background: var(--forest-50);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+  animation: finin-border-pulse 1.4s ease-in-out infinite;
 }
 
 .finin-app .form-section { padding: 24px; }

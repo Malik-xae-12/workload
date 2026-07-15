@@ -300,8 +300,15 @@ def _get_notebook_category(filename: str) -> str:
     return "02_OTL"
  
  
-def build_notebook_replacements(connection_name: str, db_type: str = "") -> dict[str, str]:
-    """Build placeholder → value mapping for notebook content."""
+def build_notebook_replacements(
+    connection_name: str, db_type: str = "", app_mode: str = "fabric"
+) -> dict[str, str]:
+    """Build placeholder → value mapping for notebook content.
+
+    *app_mode* stamps the shared 01_NB_BronzeToSilver notebook's ``AppMode``
+    parameter so it reads from SourceInformationSchemaMapped (Finin) instead
+    of SourceInformationSchema (Fabric) when loading metadata.
+    """
     schema_name = f"Config_{connection_name}"
     return {
         "Config_<connection_name>": schema_name,
@@ -310,6 +317,7 @@ def build_notebook_replacements(connection_name: str, db_type: str = "") -> dict
         "ConfigSchemaName =''": f"ConfigSchemaName = '{schema_name}'",
         "CofigSchemaName = ''": f"CofigSchemaName = '{schema_name}'",
         "CofigSchemaName =''": f"CofigSchemaName = '{schema_name}'",
+        "AppMode = 'fabric'": f"AppMode = '{app_mode}'",
     }
  
  
@@ -486,7 +494,7 @@ def upload_notebooks(
         "upload_notebooks: db_type=%r -> resolved OTL folder: %s", db_type, folder
     )
  
-    replacements = build_notebook_replacements(connection_name, db_type)
+    replacements = build_notebook_replacements(connection_name, db_type, app_mode)
  
     if filenames is None:
         if db_type:
@@ -557,11 +565,15 @@ def upload_itl_notebooks(
     db_type: str = "",
     filenames: list[str] | None = None,
     directory: str | None = None,
+    app_mode: str = "fabric",
 ) -> list[dict]:
     """Upload ITL notebooks to Fabric under the ITL folder hierarchy.
  
     01_NB_IncrementalConfigCreation → 01_Metadata/02_ITL_Metadata/01_Notebook
     01_NB_BronzeToSilver → 03_ITL/01_Notebook
+
+    *app_mode* is forwarded to build_notebook_replacements so the shared
+    01_NB_BronzeToSilver notebook's AppMode parameter is stamped correctly.
     """
     # ITL notebooks live flat in notebooks/ITL/ (no db_type subfoldering).
     # An explicit *directory* override always wins (e.g. in tests).
@@ -575,7 +587,7 @@ def upload_itl_notebooks(
         "upload_itl_notebooks: db_type=%r -> resolved ITL folder: %s", db_type, folder
     )
  
-    replacements = build_notebook_replacements(connection_name, db_type)
+    replacements = build_notebook_replacements(connection_name, db_type, app_mode)
  
     if filenames is None:
         if db_type:

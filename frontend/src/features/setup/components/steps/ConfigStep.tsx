@@ -17,11 +17,16 @@ interface ConfigStepProps {
   /** Which accelerator this wizard instance is running as — set once, from
    * the sidebar (Fabric Accelerator vs Finin Accelerator), not per-connection. */
   appMode: 'fabric' | 'finin';
+  /** Finin-only: true once the currently-selected connection's mapping has
+   * already been saved to SourceInformationSchemaMapped. When true, the
+   * "Go to AI Mapping" prompt stays hidden — the user already did it and
+   * was routed back here. */
+  isConnectionMapped?: boolean;
   onSelectConnection: (id: string) => void;
   onRunTask: (taskId: string) => void;
   onFetchNotebooks: (dbType?: string, connectionId?: string) => void;
   onUploadNotebooks: (connectionName: string, connectionIndex: number, filenames?: string[], appMode?: 'fabric' | 'finin') => void;
-  onFetchPipelines: (dbType?: string, connectionId?: string) => void;
+  onFetchPipelines: (dbType?: string, connectionId?: string, skipItlStatus?: boolean) => void;
   onUploadPipelines: (connectionName: string, connectionIndex: number, filenames?: string[], appMode?: 'fabric' | 'finin') => void;
   onRunPipeline: (pipelineName: string) => void;
   // ITL props — keyed by connection id, same shape as notebooks/pipelineFiles
@@ -36,6 +41,10 @@ interface ConfigStepProps {
   itlNotebookRunStatus: Record<string, string | null>;
   loading: boolean;
   configLoading: Record<string, boolean>;
+  /** Finin-only: jump to the AI Mapping page (to build
+   * SourceInformationSchemaMapped) after Config Files finish, before
+   * Bronze/Silver. Not used in Fabric mode. */
+  onGoToAIMapping?: () => void;
 }
 
 export const ConfigStep = ({
@@ -45,6 +54,7 @@ export const ConfigStep = ({
   notebooks,
   pipelineFiles,
   appMode,
+  isConnectionMapped,
   onSelectConnection,
   onRunTask,
   onFetchNotebooks,
@@ -63,6 +73,7 @@ export const ConfigStep = ({
   itlNotebookRunStatus,
   loading,
   configLoading,
+  onGoToAIMapping,
 }: ConfigStepProps) => {
   const selectedConn = connections.find((c) => c.id === selectedConnection);
   const connIndex = selectedConn ? connections.indexOf(selectedConn) + 1 : 1;
@@ -90,9 +101,17 @@ export const ConfigStep = ({
     if (selectedConnection && connections.length > 0) {
       const conn = connections.find((c) => c.id === selectedConnection);
       const dbType = conn?.databaseType;
-      onFetchNotebooks(dbType, selectedConnection);
-      onFetchPipelines(dbType, selectedConnection);
+      // Already have this connection's artifacts from an earlier fetch this
+      // session — reuse them instead of round-tripping to the backend again
+      // every time the user flips between connections (or comes back from
+      // AI Mapping). Live updates (deploy/run) still land via applyForProject
+      // directly, so this cache never goes stale mid-session.
+      const haveNotebooks = (notebooks[selectedConnection]?.length ?? 0) > 0;
+      const havePipelines = (pipelineFiles[selectedConnection]?.length ?? 0) > 0;
+      if (!haveNotebooks) onFetchNotebooks(dbType, selectedConnection);
+      if (!havePipelines) onFetchPipelines(dbType, selectedConnection, appMode === 'finin');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedConnection, connections.length]);
 
   const allNotebooksDone = connNotebooks.length > 0 && connNotebooks.every((nb) => nb.uploadStatus === 'success');
@@ -376,6 +395,27 @@ export const ConfigStep = ({
                 onDeploy={handleGroup1Deploy}
                 onRunPipeline={onRunPipeline}
               />
+
+              {group1PipelinesDone && !connConfigLoading && !isConnectionMapped && (
+                <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-[13px] font-bold text-indigo-900">Map source columns before Bronze/Silver</p>
+                    <p className="text-[11px] text-indigo-700 mt-0.5">
+                      Head to AI Mapping to build <code>SourceInformationSchemaMapped</code> for{' '}
+                      <span className="font-semibold">{selectedConn?.name}</span> <br /> You'll return here automatically once it's saved.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onGoToAIMapping}
+                    disabled={!onGoToAIMapping}
+                    className="shrink-0 flex items-center gap-1.5 px-4 py-2 text-[11px] font-bold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-all"
+                  >
+                    Go to AI Mapping →
+                  </button>
+                </div>
+              )}
+
               <ArtifactGroupCard
                 title="Bronze / Silver"
                 rows={[
