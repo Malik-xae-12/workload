@@ -122,12 +122,46 @@ export const SetupPage = () => {
     clearError,
   } = useSetupStore(activeProjectId);
 
+  // Finin-only: whenever the connections list (re)loads — including after a
+  // page reload — merge in any connection whose mapping was already
+  // persisted server-side (aiMappingSaved), so the "Go to AI Mapping" prompt
+  // stays hidden without depending on in-session state alone.
+  useEffect(() => {
+    const persistedMapped = state.connections.filter((c) => c.aiMappingSaved).map((c) => c.name);
+    if (persistedMapped.length === 0) return;
+    setMappedConnectionNames((prev) => {
+      const next = new Set(prev);
+      let changed = false;
+      for (const name of persistedMapped) {
+        if (!next.has(name)) {
+          next.add(name);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [state.connections]);
+
   // Load saved credentials when project changes
   useEffect(() => {
     if (activeProjectId) {
       fetchCredentialsFromBackend();
     }
   }, [activeProjectId, fetchCredentialsFromBackend]);
+
+  // If a connection is still mid-creation (status 'creating') — including
+  // one that was left that way by a reload during the original create
+  // request — poll until it resolves to 'active'/'failed' instead of making
+  // the user manually refresh to find out.
+  useEffect(() => {
+    if (!activeProjectId) return;
+    const anyCreating = state.connections.some((c) => c.status === 'creating');
+    if (!anyCreating) return;
+    const interval = setInterval(() => {
+      fetchCredentialsFromBackend();
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [activeProjectId, state.connections, fetchCredentialsFromBackend]);
 
   const userName = useMemo(() => {
     try {
@@ -299,6 +333,7 @@ export const SetupPage = () => {
         return (
           <ConfigStep
             connections={state.connections}
+            connectionsLoading={state.connectionsLoading}
             selectedConnection={state.selectedConnection}
             configTasks={state.configTasks}
             notebooks={state.notebooks}

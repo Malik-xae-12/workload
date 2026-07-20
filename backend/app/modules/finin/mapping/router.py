@@ -18,6 +18,7 @@ from app.modules.finin.mapping.graph.state import MappingState
 from app.modules.finin.mapping.repository import get_template_rows
 from app.modules.finin.shared.job_store import create_job, get_job, update_job
 from app.modules.finin.shared.utils import safe_mean, safe_round, sanitize_for_json
+from app.shared.excel_style import style_worksheet, CLR_HEADER_DEFAULT, CLR_HEADER_ALT
 from app.modules.finin.core.config import settings
 
 from fastapi import Depends
@@ -331,10 +332,32 @@ def download_xlsx(job_id: str, filter: str = "all"):
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as writer:
         export_df.to_excel(writer, index=False, sheet_name="Mapping")
+        mapping_ws = writer.sheets["Mapping"]
+        # Highlight the confidence/score-derived columns the same way the
+        # ITL config sheet highlights its "suggested" watermark columns.
+        suggested_cols = {
+            i + 1 for i, col in enumerate(export_df.columns)
+            if col.lower() in ("confidence", "score", "match_score")
+        }
+        style_worksheet(
+            mapping_ws,
+            num_data_rows=len(export_df),
+            num_cols=len(export_df.columns),
+            header_color=CLR_HEADER_DEFAULT,
+            highlight_col_indices=suggested_cols,
+        )
+
         for ext_name, payload in unmapped_source_columns.items():
             ext_df = pd.DataFrame(payload["columns"])  # source_table, source_column, datatype
             # Excel sheet names are capped at 31 characters.
-            ext_df.to_excel(writer, index=False, sheet_name=ext_name[:31])
+            sheet_name = ext_name[:31]
+            ext_df.to_excel(writer, index=False, sheet_name=sheet_name)
+            style_worksheet(
+                writer.sheets[sheet_name],
+                num_data_rows=len(ext_df),
+                num_cols=len(ext_df.columns),
+                header_color=CLR_HEADER_ALT,
+            )
     buf.seek(0)
 
     return StreamingResponse(
@@ -370,7 +393,18 @@ def download_column_config(job_id: str):
     ])
 
     buf = io.BytesIO()
-    df.to_excel(buf, index=False, sheet_name="ColumnConfig", engine="openpyxl")
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="ColumnConfig")
+        ws = writer.sheets["ColumnConfig"]
+        highlight_cols = {df.columns.get_loc(c) + 1 for c in ("Is Extension",) if c in df.columns}
+        style_worksheet(
+            ws,
+            num_data_rows=len(df),
+            num_cols=len(df.columns),
+            header_color=CLR_HEADER_DEFAULT,
+            highlight_col_indices=highlight_cols,
+            col_widths=[22, 24, 22, 22, 18, 14, 14],
+        )
     buf.seek(0)
 
     return StreamingResponse(

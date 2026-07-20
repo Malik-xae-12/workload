@@ -20,7 +20,7 @@ const WELCOME_MESSAGE: ChatMessage = {
 };
 
 export default function ChatPanel({ jobId, disabled, apiBase }: Props) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [messages, setMessages] = useState<ChatMessage[]>([WELCOME_MESSAGE]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -82,20 +82,22 @@ export default function ChatPanel({ jobId, disabled, apiBase }: Props) {
 
   if (collapsed) {
     return (
-      <button className="chat-toggle chat-toggle--collapsed" onClick={() => setCollapsed(false)} title="Open mapping assistant">
-        Assistant
+      <button className="chat-fab" onClick={() => setCollapsed(false)} title="Open mapping assistant">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+        </svg>
       </button>
     );
   }
 
   return (
-    <div className="chat-panel">
+    <div className="chat-panel chat-panel--floating">
       <div className="chat-panel-header">
         <div className="chat-panel-title">
           <span>Mapping Assistant</span>
           <span className="chat-panel-sub">Read-only · explains, doesn't change mappings</span>
         </div>
-        <button className="chat-toggle" onClick={() => setCollapsed(true)} title="Collapse">→</button>
+        <button className="chat-toggle" onClick={() => setCollapsed(true)} title="Collapse">✕</button>
       </div>
       <div className="chat-messages" ref={scrollRef}>
         {messages.map((m) => (

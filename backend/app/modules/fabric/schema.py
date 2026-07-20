@@ -18,6 +18,13 @@ class SourceConnectionBase(BaseModel):
     tenant_id: str | None = None
     client_id: str | None = None
     client_secret: str | None = None
+    # Optional: when provided, the connection is auto-linked to this project
+    # in the SAME request as creation, instead of a separate follow-up call.
+    # This closes the window where a reload between "created in Fabric" and
+    # "linked to project" left the connection orphaned (existing, but never
+    # showing up in the project's connections list).
+    project_id: str | None = None
+    connection_index: int = 1
 
 
 class SourceConnectionCreate(SourceConnectionBase):
@@ -33,6 +40,9 @@ class SourceConnectionRead(BaseModel):
     is_on_prem: bool
     gateway_name: str | None = None
     fabric_connection_id: str | None = None
+    ai_mapping_saved: bool = False
+    status: str = "active"
+    status_error: str | None = None
     user_id: str
 
     model_config = {"from_attributes": True}

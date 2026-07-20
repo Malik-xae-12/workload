@@ -196,7 +196,36 @@ async def create_source_connection_handler(
             payload.db_type = "SQL Server"
  
     token, _ = await _get_project_token(project.id, db)
- 
+
+    # Insert (and link) the row FIRST, before the slow Fabric API call below —
+    # so the connection shows up as "creating" immediately, including across
+    # a page reload that happens mid-request, instead of only appearing (or
+    # silently vanishing) once this whole request finishes.
+    record = await repo.create_source_connection_record(
+        db,
+        conn_name=payload.conn_name,
+        db_type=payload.db_type,
+        server=payload.server,
+        database=payload.database,
+        username=payload.username,
+        password=payload.password,
+        is_on_prem=payload.is_on_prem,
+        gateway_name=payload.gateway_name,
+        fabric_connection_id=None,
+        user_id=str(user.id),
+        status="creating",
+    )
+    if payload.project_id:
+        try:
+            await repo.create_project_link(
+                db,
+                project_id=payload.project_id,
+                source_connection_id=record.id,
+                connection_index=payload.connection_index,
+            )
+        except Exception:
+            pass
+
     try:
         conn_data = create_source_connection(
             token=token,
@@ -214,6 +243,7 @@ async def create_source_connection_handler(
             client_secret=payload.client_secret,
         )
     except (RuntimeError, ValueError) as e:
+        await repo.finalize_source_connection_status(db, record.id, status="failed", status_error=str(e))
         raise HTTPException(status_code=502, detail=str(e))
  
     fabric_conn_id = conn_data.get("id")
@@ -229,19 +259,10 @@ async def create_source_connection_handler(
         except Exception:
             pass
  
-    return await repo.create_source_connection_record(
-        db,
-        conn_name=payload.conn_name,
-        db_type=payload.db_type,
-        server=payload.server,
-        database=payload.database,
-        username=payload.username,
-        password=payload.password,
-        is_on_prem=payload.is_on_prem,
-        gateway_name=payload.gateway_name,
-        fabric_connection_id=fabric_conn_id,
-        user_id=str(user.id),
-    )
+    await repo.finalize_source_connection_status(db, record.id, status="active", fabric_connection_id=fabric_conn_id)
+    await db.refresh(record)
+
+    return record
  
  
 async def list_source_connections(user: User, db: AsyncSession):
@@ -596,11 +617,14 @@ async def run_pipeline_handler(
     user: User,
     db: AsyncSession,
 ):
+    import asyncio
+
     project = await _require_workspace(project_id, user, db)
     token, _ = await _get_project_token(project_id, db)
  
     try:
-        job_id = run_fabric_pipeline(
+        job_id = await asyncio.to_thread(
+            run_fabric_pipeline,
             token=token,
             workspace_id=project.workspace_id,
             pipeline_item_id=pipeline_item_id,
@@ -637,10 +661,13 @@ async def get_pipeline_job_status_handler(
     user: User,
     db: AsyncSession,
 ):
+    import asyncio
+
     project = await _require_workspace(project_id, user, db)
     token, _ = await _get_project_token(project_id, db)
  
-    return get_pipeline_job_status(
+    return await asyncio.to_thread(
+        get_pipeline_job_status,
         token=token,
         workspace_id=project.workspace_id,
         pipeline_item_id=pipeline_item_id,
@@ -678,6 +705,8 @@ async def sync_pipeline_status_handler(
     project = await _require_workspace(project_id, user, db)
     token, _ = await _get_project_token(project_id, db)
  
+    import asyncio
+
     uploads = await repo.get_config_uploads(db, project_id)
     running = [u for u in uploads if u.item_type == "pipeline" and u.run_status == "running" and u.job_id and u.fabric_item_id]
  
@@ -685,7 +714,8 @@ async def sync_pipeline_status_handler(
     updated = 0
     for u in running:
         try:
-            status_data = get_pipeline_job_status(
+            status_data = await asyncio.to_thread(
+                get_pipeline_job_status,
                 token=token,
                 workspace_id=project.workspace_id,
                 pipeline_item_id=u.fabric_item_id,
@@ -1285,7 +1315,7 @@ async def save_finin_mapping_handler(
 
     import anyio
 
-    return await anyio.to_thread.run_sync(
+    inserted = await anyio.to_thread.run_sync(
         lambda: _save_mapping_rows(
             client_id=conn["client_id"],
             client_secret=conn["client_secret"],
@@ -1296,3 +1326,11 @@ async def save_finin_mapping_handler(
             rows=rows,
         )
     )
+
+    # Persist the "already mapped" flag locally so the frontend can restore
+    # this on page reload without re-querying the Fabric warehouse.
+    sc.ai_mapping_saved = True
+    db.add(sc)
+    await db.commit()
+
+    return inserted

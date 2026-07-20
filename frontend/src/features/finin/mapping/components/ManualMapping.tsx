@@ -403,7 +403,16 @@ export default function ManualMapping({
               }
             }}
           >
-            {isSaving ? "Saving…" : savedDone ? "✓ Saved!" : "💾 Save & Download Excel"}
+            {isSaving ? (
+              <>
+                <span className="testing-spinner btn-save-excel-spinner" />
+                Saving…
+              </>
+            ) : savedDone ? (
+              "✓ Saved!"
+            ) : (
+              "💾 Save & Download Excel"
+            )}
           </button>
         )}
       </div>

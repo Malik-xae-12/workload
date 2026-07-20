@@ -127,6 +127,49 @@ async def _migrate_existing_db() -> None:
                 "CREATE INDEX IF NOT EXISTS ix_config_uploads_fabric_item_id "
                 "ON config_uploads (fabric_item_id)"
             ))
+            # Same story as the index above: create_all() never adds columns
+            # to a table that already exists, so source_connections rows
+            # created before ai_mapping_saved/status/status_error were added
+            # to the model are missing them entirely — every query against
+            # the table (including ones that don't touch these columns)
+            # fails with "no such column" because SQLAlchemy always selects
+            # every mapped column. Add them if absent, defaulting to values
+            # that mean "nothing has changed" for pre-existing rows.
+            existing_cols = {
+                row[1]
+                for row in (
+                    await conn.execute(text("PRAGMA table_info(source_connections)"))
+                ).fetchall()
+            }
+            if "ai_mapping_saved" not in existing_cols:
+                await conn.execute(text(
+                    "ALTER TABLE source_connections ADD COLUMN ai_mapping_saved BOOLEAN NOT NULL DEFAULT 0"
+                ))
+            if "status" not in existing_cols:
+                await conn.execute(text(
+                    "ALTER TABLE source_connections ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'active'"
+                ))
+            if "status_error" not in existing_cols:
+                await conn.execute(text(
+                    "ALTER TABLE source_connections ADD COLUMN status_error VARCHAR(1000)"
+                ))
+        # Dedupe project<->connection links created by the (now-fixed)
+        # non-idempotent create_project_link — a connection could get TWO
+        # link rows for the same project (one from the atomic create+link
+        # call, one from the frontend's follow-up fallback call), which made
+        # it appear twice in listProjectConnections. Keep one arbitrary link
+        # per (project_id, source_connection_id) pair and drop the rest —
+        # which one survives doesn't matter, the rows are otherwise identical.
+        await conn.execute(text(
+            """
+            DELETE FROM project_source_connections
+            WHERE id NOT IN (
+                SELECT MIN(id) FROM project_source_connections
+                GROUP BY project_id, source_connection_id
+            )
+            """
+        ))
+
         # Remove rows that never got a real Fabric item id (failed/dead
         # upload attempts) when a sibling row for the same project +
         # connection + item_type + Fabric item exists with a real

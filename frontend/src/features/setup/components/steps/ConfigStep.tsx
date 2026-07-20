@@ -10,6 +10,7 @@ import { useEffect, useState, useRef, type JSX } from 'react';
 
 interface ConfigStepProps {
   connections: SourceConnection[];
+  connectionsLoading?: boolean;
   selectedConnection: string | null;
   configTasks: ConfigTask[];
   notebooks: Record<string, NotebookItem[]>;
@@ -49,6 +50,7 @@ interface ConfigStepProps {
 
 export const ConfigStep = ({
   connections,
+  connectionsLoading,
   selectedConnection,
   configTasks,
   notebooks,
@@ -109,7 +111,7 @@ export const ConfigStep = ({
       const haveNotebooks = (notebooks[selectedConnection]?.length ?? 0) > 0;
       const havePipelines = (pipelineFiles[selectedConnection]?.length ?? 0) > 0;
       if (!haveNotebooks) onFetchNotebooks(dbType, selectedConnection);
-      if (!havePipelines) onFetchPipelines(dbType, selectedConnection, appMode === 'finin');
+      if (!havePipelines) onFetchPipelines(dbType, selectedConnection, false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedConnection, connections.length]);
@@ -216,6 +218,10 @@ export const ConfigStep = ({
 
   const group1NotebooksDone = group1Notebooks.length > 0 && group1Notebooks.every((nb) => nb.uploadStatus === 'success');
   const group1PipelinesDone = group1Pipelines.length > 0 && group1Pipelines.every((p) => p.uploadStatus === 'success');
+  // "Created" (uploaded) is not the same as "executed". The AI Mapping prompt
+  // should only appear once 01_PL_SQL_ConfigCreation has actually been run —
+  // gate on runStatus, not just uploadStatus.
+  const group1PipelinesRan = group1Pipelines.length > 0 && group1Pipelines.every((p) => p.runStatus === 'completed');
   const group1AnyNotebookUploading = group1Notebooks.some((nb) => nb.uploadStatus === 'uploading');
   const group2NotebooksDone = group2Notebooks.length > 0 && group2Notebooks.every((nb) => nb.uploadStatus === 'success');
   const group2PipelinesDone = group2Pipelines.length > 0 && group2Pipelines.every((p) => p.uploadStatus === 'success');
@@ -306,6 +312,20 @@ export const ConfigStep = ({
     }
   }, [group2NotebooksDone, group2AnyNotebookUploading, group2NotebooksUploading, selectedConnection]);
 
+  // handleGroup1Deploy/handleGroup2Deploy are auto-triggered from inside a
+  // useEffect below, which only runs AFTER the render where notebooksDone
+  // flips true — so there's one render in between where the button showed
+  // idle, clickable "Deploy" even though pipeline deploy was about to start
+  // (and did start, moments later). group1PendingDeployMap is set true
+  // synchronously the instant Create is clicked and only cleared once
+  // handleGroup1Deploy actually runs, so reading it here bridges that gap.
+  const group1PipelineAutoPending = !!(
+    selectedConnection && group1PendingDeployMap.current[selectedConnection] && group1NotebooksDone && !group1PipelinesDone
+  );
+  const group2PipelineAutoPending = !!(
+    selectedConnection && group2PendingDeployMap.current[selectedConnection] && group2NotebooksDone && !group2PipelinesDone
+  );
+
   // Overall Pipelines section status label
   const pipelineOverallLabel = allPipelinesRan
     ? 'Done'
@@ -339,7 +359,12 @@ export const ConfigStep = ({
       {/* Connection Selection */}
       <div className="mb-6">
         <h3 className="text-sm font-bold text-slate-700 mb-3">Select Connection</h3>
-        {connections.length === 0 ? (
+        {connections.length === 0 && connectionsLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 animate-pulse" aria-label="Loading connections">
+            <div className="h-20 bg-slate-100 rounded-xl" />
+            <div className="h-20 bg-slate-100 rounded-xl" />
+          </div>
+        ) : connections.length === 0 ? (
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-8 text-center">
             <p className="text-sm text-slate-500">No connections available. Add one in the Source step.</p>
           </div>
@@ -384,25 +409,26 @@ export const ConfigStep = ({
                   ...group1Pipelines.map((p) => ({ key: `pl-${p.filename}`, name: p.name, kind: 'Pipeline' as const, uploadStatus: p.uploadStatus, runStatus: p.runStatus, fabricItemId: p.fabricItemId })),
                 ]}
                 locked={false}
-                loading={loading || connConfigLoading}
+                loading={loading || connConfigLoading || !!connectionsLoading}
                 notebooksExist={group1Notebooks.length > 0}
                 pipelinesExist={group1Pipelines.length > 0}
                 notebooksDone={group1NotebooksDone}
                 pipelinesDone={group1PipelinesDone}
                 notebooksUploading={group1NotebooksUploading || group1AnyNotebookUploading}
-                pipelinesUploading={group1PipelinesUploading}
+                pipelinesUploading={group1PipelinesUploading || group1PipelineAutoPending}
                 onCreate={handleGroup1Create}
                 onDeploy={handleGroup1Deploy}
                 onRunPipeline={onRunPipeline}
               />
 
-              {group1PipelinesDone && !connConfigLoading && !isConnectionMapped && (
+              {group1PipelinesRan && !connConfigLoading && !isConnectionMapped && (
                 <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 flex items-center justify-between gap-4">
                   <div>
                     <p className="text-[13px] font-bold text-indigo-900">Map source columns before Bronze/Silver</p>
                     <p className="text-[11px] text-indigo-700 mt-0.5">
                       Head to AI Mapping to build <code>SourceInformationSchemaMapped</code> for{' '}
-                      <span className="font-semibold">{selectedConn?.name}</span> <br /> You'll return here automatically once it's saved.
+                      <span className="font-semibold">{selectedConn?.name}</span> — 01_NB_BronzeToSilver reads from it
+                      instead of SourceInformationSchema. You'll return here automatically once it's saved.
                     </p>
                   </div>
                   <button
@@ -422,14 +448,14 @@ export const ConfigStep = ({
                   ...group2Notebooks.map((nb) => ({ key: `nb-${nb.filename}`, name: nb.name, kind: 'Notebook' as const, uploadStatus: nb.uploadStatus })),
                   ...group2Pipelines.map((p) => ({ key: `pl-${p.filename}`, name: p.name, kind: 'Pipeline' as const, uploadStatus: p.uploadStatus, runStatus: p.runStatus, fabricItemId: p.fabricItemId })),
                 ]}
-                locked={!group1PipelinesDone}
-                loading={loading || connConfigLoading}
+                locked={appMode === 'finin' ? !isConnectionMapped : !group1PipelinesDone}
+                loading={loading || connConfigLoading || !!connectionsLoading}
                 notebooksExist={group2Notebooks.length > 0}
                 pipelinesExist={group2Pipelines.length > 0}
                 notebooksDone={group2NotebooksDone}
                 pipelinesDone={group2PipelinesDone}
                 notebooksUploading={group2NotebooksUploading || group2AnyNotebookUploading}
-                pipelinesUploading={group2PipelinesUploading}
+                pipelinesUploading={group2PipelinesUploading || group2PipelineAutoPending}
                 onCreate={handleGroup2Create}
                 onDeploy={handleGroup2Deploy}
                 onRunPipeline={onRunPipeline}
@@ -702,6 +728,12 @@ const ArtifactGroupCard = ({
 }: ArtifactGroupCardProps): JSX.Element => {
   const bothDone = (!notebooksExist || notebooksDone) && (!pipelinesExist || pipelinesDone);
   const pipelineRows = rows.filter((r) => r.kind === 'Pipeline');
+  // Fully complete = artifacts created AND (for pipelines) actually run to
+  // completion — not just deployed. Collapsing on bothDone alone left the
+  // full table (with Run/Retry buttons) visible even after everything had
+  // finished, which looked like the stage was still asking the user to act.
+  const fullyComplete = bothDone && (pipelineRows.length === 0 || pipelineRows.every((r) => r.runStatus === 'completed'));
+  const [showDetails, setShowDetails] = useState(true);
 
   // Auto-run each deployed pipeline in this group once it's ready, one at a
   // time — same chained pattern as the Fabric-mode Pipelines table (a row
@@ -725,7 +757,20 @@ const ArtifactGroupCard = ({
     <div className={`bg-white rounded-xl border overflow-hidden shadow-sm ${locked ? 'border-slate-100 opacity-60' : 'border-slate-200'}`}>
       <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
         <h3 className="text-[13px] font-bold text-slate-700">{title}</h3>
-        {bothDone ? (
+        {fullyComplete ? (
+          <div className="flex items-center gap-2">
+            <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-emerald-50 text-emerald-700">
+              <CheckCircle2 size={12} /> Completed
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowDetails((v) => !v)}
+              className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800"
+            >
+              {showDetails ? 'Hide details' : 'View details'}
+            </button>
+          </div>
+        ) : bothDone ? (
           <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-emerald-50 text-emerald-700">
             <CheckCircle2 size={12} /> Done
           </span>
@@ -747,11 +792,17 @@ const ArtifactGroupCard = ({
             disabled={loading || pipelinesUploading || !pipelinesExist}
             className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-all"
           >
-            {pipelinesUploading ? <><Loader2 size={12} className="animate-spin" /> Deploying...</> : <><Upload size={12} /> Deploy</>}
+            {pipelinesUploading ? <><Loader2 size={12} className="animate-spin" /> Creating...</> : <><Upload size={12} /> Deploy</>}
           </button>
         ) : null}
       </div>
-      {rows.length === 0 ? (
+      {fullyComplete && !showDetails ? null : rows.length === 0 && loading ? (
+        <div className="p-5 space-y-2 animate-pulse" aria-label="Loading artifacts">
+          <div className="h-3.5 bg-slate-100 rounded w-3/4" />
+          <div className="h-3.5 bg-slate-100 rounded w-2/3" />
+          <div className="h-3.5 bg-slate-100 rounded w-1/2" />
+        </div>
+      ) : rows.length === 0 ? (
         <div className="p-8 text-center">
           <p className="text-xs text-slate-500">No artifacts found</p>
         </div>
@@ -865,8 +916,7 @@ const ItlSection = ({
   const notebookFailed = itlNotebookRunStatus === 'failed';
   const allItlDeployed = itlPipelineFiles.length > 0 && itlPipelineFiles.every((p) => p.uploadStatus === 'success');
   const anyItlFailed = itlPipelineFiles.some((p) => p.uploadStatus === 'failed');
-  const [runningPipelines, setRunningPipelines] = useState(false);
-  // Must match the real Fabric item names from upload_itl_pipelines() exactly
+  const [runningPipelines, setRunningPipelines] = useState(false);  // Must match the real Fabric item names from upload_itl_pipelines() exactly
   // (the pipeline JSON's own "name" field, connection-prefixed) — including
   // the "NN_PL_" numbering and the literal space in "Master pipeline". A
   // shorthand here means these never match anything in itlPipelineFiles, so
@@ -878,6 +928,13 @@ const ItlSection = ({
   );
   const allItlPipelinesRan = runSequenceItems.length === RUN_SEQUENCE_SUFFIXES.length && runSequenceItems.every((p) => p.runStatus === 'completed');
   const anyItlPipelineFailed = runSequenceItems.some((p) => p.runStatus === 'failed');
+
+  // Every step for THIS connection done — download, upload, notebook run,
+  // pipelines deployed, and the run sequence completed. `key={selectedConn.id}`
+  // on ItlSection remounts this component per connection, so showDetails
+  // below is naturally isolated per source rather than leaking across them.
+  const fullyComplete = itlConfigDownloaded && itlConfigUploaded && notebookRan && allItlDeployed && allItlPipelinesRan;
+  const [showDetails, setShowDetails] = useState(false);
 
   // Auto-deploy ITL pipelines once notebook succeeds
   useEffect(() => {
@@ -919,13 +976,28 @@ const ItlSection = ({
           <Workflow size={15} className="text-indigo-600" />
           <h3 className="text-[13px] font-bold text-slate-700">ITL (Incremental Load)</h3>
         </div>
-        {allItlDeployed && (
+        {allItlDeployed && !fullyComplete && (
           <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-emerald-50 text-emerald-700">
             <CheckCircle2 size={12} /> Done
           </span>
         )}
+        {fullyComplete && (
+          <div className="flex items-center gap-2">
+            <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-emerald-50 text-emerald-700">
+              <CheckCircle2 size={12} /> Completed
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowDetails((v) => !v)}
+              className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800"
+            >
+              {showDetails ? 'Hide details' : 'View details'}
+            </button>
+          </div>
+        )}
       </div>
 
+      {(!fullyComplete || showDetails) && (
       <div className="p-5 space-y-4">
         {/* Step 1: Download Excel */}
         <div className="flex items-center gap-4">
@@ -1226,6 +1298,7 @@ const ItlSection = ({
           </div>
         )}
       </div>
+      )}
     </div>
     
   );

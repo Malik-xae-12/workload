@@ -118,6 +118,7 @@ async def create_source_connection_record(
     gateway_name: str | None,
     fabric_connection_id: str | None,
     user_id: str,
+    status: str = "active",
 ) -> SourceConnection:
     sc = SourceConnection(
         id=str(uuid4()),
@@ -131,11 +132,34 @@ async def create_source_connection_record(
         gateway_name=gateway_name,
         fabric_connection_id=fabric_connection_id,
         user_id=user_id,
+        status=status,
     )
     db.add(sc)
     await db.commit()
     await db.refresh(sc)
     return sc
+
+
+async def finalize_source_connection_status(
+    db: AsyncSession,
+    source_connection_id: str,
+    *,
+    status: str,
+    fabric_connection_id: str | None = None,
+    status_error: str | None = None,
+) -> None:
+    """Flip a connection from 'creating' to 'active'/'failed' once the (slow)
+    Fabric API call it was waiting on resolves."""
+    result = await db.execute(select(SourceConnection).where(SourceConnection.id == source_connection_id))
+    sc = result.scalars().first()
+    if sc is None:
+        return
+    sc.status = status
+    if fabric_connection_id is not None:
+        sc.fabric_connection_id = fabric_connection_id
+    sc.status_error = status_error
+    db.add(sc)
+    await db.commit()
 
 
 # ── Project ↔ Source Connection links ────────────────────────────────
@@ -148,6 +172,21 @@ async def create_project_link(
     source_connection_id: str,
     connection_index: int,
 ) -> ProjectSourceConnection:
+    # Idempotent: creating a connection now auto-links it server-side, and
+    # the frontend still fires its own follow-up link call as a fallback for
+    # older clients. Without this check, that follow-up created a SECOND
+    # ProjectSourceConnection row for the same pair — the connection then
+    # showed up twice in listProjectConnections (one row per link).
+    existing = await db.execute(
+        select(ProjectSourceConnection).where(
+            ProjectSourceConnection.project_id == project_id,
+            ProjectSourceConnection.source_connection_id == source_connection_id,
+        )
+    )
+    found = existing.scalars().first()
+    if found:
+        return found
+
     link = ProjectSourceConnection(
         id=str(uuid4()),
         project_id=project_id,

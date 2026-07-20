@@ -38,41 +38,41 @@ function ExtTable({ extName, payload }: { extName: string; payload: { columns: S
   );
 }
 
-export function UnmappedColumns({ data }: { data: Record<string, { columns: SourceCol[] }> }) {
-  const [collapsed, setCollapsed] = useState(true);
-  const entries = Object.entries(data || {});
+// export function UnmappedColumns({ data }: { data: Record<string, { columns: SourceCol[] }> }) {
+//   const [collapsed, setCollapsed] = useState(true);
+//   const entries = Object.entries(data || {});
 
-  if (entries.length === 0) return null;
+//   if (entries.length === 0) return null;
 
-  const totalColumns = entries.reduce((sum, [, v]) => sum + v.columns.length, 0);
+//   const totalColumns = entries.reduce((sum, [, v]) => sum + v.columns.length, 0);
 
-  return (
-    <div className="ext-section">
-      <button className="ext-header" onClick={() => setCollapsed(!collapsed)}>
-        <div className="ext-header-title">
-          <h3 className="section-label">Unmapped Source Columns</h3>
-          <span className="ext-header-sub">
-            {totalColumns} column{totalColumns !== 1 ? "s" : ""} across {entries.length} extension table{entries.length !== 1 ? "s" : ""} — columns that never matched a template column
-          </span>
-        </div>
-        <span className="ext-toggle">{collapsed ? "▼" : "▲"}</span>
-      </button>
-      {collapsed && (
-        <div className="ext-overview">
-          {entries.map(([extName, payload]) => (
-            <span key={extName} className="ext-overview-chip">
-              {extName}<span className="ext-overview-count">{payload.columns.length}</span>
-            </span>
-          ))}
-        </div>
-      )}
-      {!collapsed && (
-        <div className="ext-body">
-          {entries.map(([extName, payload]) => (
-            <ExtTable key={extName} extName={extName} payload={payload} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+//   return (
+//     <div className="ext-section">
+//       <button className="ext-header" onClick={() => setCollapsed(!collapsed)}>
+//         <div className="ext-header-title">
+//           <h3 className="section-label">Unmapped Source Columns</h3>
+//           <span className="ext-header-sub">
+//             {totalColumns} column{totalColumns !== 1 ? "s" : ""} across {entries.length} extension table{entries.length !== 1 ? "s" : ""} — columns that never matched a template column
+//           </span>
+//         </div>
+//         <span className="ext-toggle">{collapsed ? "▼" : "▲"}</span>
+//       </button>
+//       {collapsed && (
+//         <div className="ext-overview">
+//           {entries.map(([extName, payload]) => (
+//             <span key={extName} className="ext-overview-chip">
+//               {extName}<span className="ext-overview-count">{payload.columns.length}</span>
+//             </span>
+//           ))}
+//         </div>
+//       )}
+//       {!collapsed && (
+//         <div className="ext-body">
+//           {entries.map(([extName, payload]) => (
+//             <ExtTable key={extName} extName={extName} payload={payload} />
+//           ))}
+//         </div>
+//       )}
+//     </div>
+//   );
+// }

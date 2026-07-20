@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { MappingRow } from "../../shared/types";
 
 
@@ -12,10 +12,6 @@ interface Props {
 
 const PAGE_SIZE = 20;
 
-type Overrides = Record<string, { source_table: string; source_column: string }>;
-
-const overrideKey = (row: MappingRow) => `${row.template_table}.${row.template_column}`;
-
 
 export function ResultsTable({ rows, onDownload, onDownloadXlsx }: Props) {
   const [filter, setFilter] = useState<"all" | "matched" | "unmatched">("all");
@@ -24,118 +20,6 @@ export function ResultsTable({ rows, onDownload, onDownloadXlsx }: Props) {
   const [page, setPage] = useState(1);
   const [sortKey, setSortKey] = useState<keyof MappingRow>("mapping_score");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-
-  // Local manual overrides (applied immediately)
-  const [overrides, setOverrides] = useState<Overrides>({});
-
-  // Derive available source tables + columns from current result rows
-  const sourceOptions = useMemo(() => {
-    const tableMap: Record<string, Set<string>> = {};
-    for (const row of rows) {
-      const t = row.mapped_source_table;
-      const c = row.mapped_source_column;
-      if (
-        t && t !== "NO_MATCH" &&
-        c && c !== "NO_MATCH"
-      ) {
-        if (!tableMap[t]) tableMap[t] = new Set();
-        tableMap[t].add(c);
-      }
-    }
-    return tableMap;
-  }, [rows]);
-
-  const sourceTables = useMemo(() => Object.keys(sourceOptions).sort(), [sourceOptions]);
-
-  // When new results come in, reset overrides
-  useEffect(() => {
-    setOverrides({});
-  }, [rows]);
-
-  const getOverride = (row: MappingRow) => overrides[overrideKey(row)];
-
-  const getSelectedSourceTable = (row: MappingRow) => {
-    const ov = getOverride(row);
-    if (ov?.source_table) return ov.source_table;
-    if (row.mapped_source_table && row.mapped_source_table !== "NO_MATCH") return row.mapped_source_table;
-    return "";
-  };
-
-  const getSelectedSourceColumn = (row: MappingRow) => {
-    const ov = getOverride(row);
-    if (ov?.source_column) return ov.source_column;
-    if (row.mapped_source_column && row.mapped_source_column !== "NO_MATCH") return row.mapped_source_column;
-    return "";
-  };
-
-  const setRowOverride = (row: MappingRow, patch: Partial<{ source_table: string; source_column: string }>) => {
-    const k = overrideKey(row);
-    setOverrides((prev) => {
-      const current = prev[k] ?? { source_table: "", source_column: "" };
-      const next = { ...current, ...patch };
-      return {
-        ...prev,
-        [k]: next,
-      };
-    });
-  };
-
-  const getColumnOptionsForTable = (t: string) => Array.from(sourceOptions[t] ?? new Set<string>()).sort();
-
-  const applyManualOverridesImmediately = () => {
-
-    // Build nextRows by applying all local overrides to the incoming `rows` prop.
-    const nextRows = rows.map((r) => {
-      const k = overrideKey(r);
-      const ov = overrides[k];
-      if (!ov) return r;
-
-      const mapped_source_table = ov.source_table;
-      const mapped_source_column = ov.source_column;
-
-      const isValid =
-        mapped_source_table &&
-        mapped_source_column &&
-        mapped_source_column !== "NO_MATCH";
-
-      return {
-        ...r,
-        mapped_source_table,
-        mapped_source_column,
-        status: isValid ? "matched" : "unmatched",
-        reason: isValid ? "manual override" : r.reason,
-      };
-    });
-
-    const matched = nextRows.filter((x) => x.status === "matched").length;
-    const unmatched = nextRows.length - matched;
-    const match_rate = nextRows.length ? matched / nextRows.length : 0;
-    const template_tables = new Set(nextRows.map((x) => x.template_table)).size;
-    const score_distribution = {
-      high: nextRows.filter((x) => x.status === "matched" && x.mapping_score >= 0.85).length,
-      medium: nextRows.filter(
-        (x) => x.status === "matched" && x.mapping_score >= 0.72 && x.mapping_score < 0.85
-      ).length,
-    };
-
-    window.dispatchEvent(
-      new CustomEvent("manual-overrides-applied", {
-        detail: {
-          rows: nextRows,
-          stats: {
-            matched,
-            unmatched,
-            match_rate,
-            total_templates: nextRows.length,
-            template_tables,
-            score_distribution,
-          },
-        },
-      })
-    );
-  };
-
-
 
   const tables = useMemo(() => {
 
@@ -262,100 +146,8 @@ export function ResultsTable({ rows, onDownload, onDownloadXlsx }: Props) {
                 </td>
                 <td className="mono dim">{row.template_table}</td>
                 <td className="mono">{row.template_column}</td>
-                <td className="mono dim">
-                  {
-                    row.status !== "unmatched" ? (
-                      <select
-                        className="mm-select"
-                        value={getSelectedSourceTable(row)}
-                        onChange={(e) => {
-                          const t = e.target.value;
-                          // When changing table, reset column
-                          setRowOverride(row, { source_table: t, source_column: "" });
-                        }}
-                        onBlur={() => applyManualOverridesImmediately()}
-                      >
-                        <option value="">—</option>
-                        {sourceTables.map((t) => (
-                          <option key={t} value={t}>
-                            {t}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <select
-                        className="mm-select"
-                        value={getSelectedSourceTable(row)}
-                        onChange={(e) => {
-                          const t = e.target.value;
-                          setRowOverride(row, { source_table: t, source_column: "" });
-                        }}
-                        onBlur={() => applyManualOverridesImmediately()}
-                      >
-                        <option value="">—</option>
-                        {sourceTables.map((t) => (
-                          <option key={t} value={t}>
-                            {t}
-                          </option>
-                        ))}
-                      </select>
-                    )
-                  }
-
-                </td>
-                <td className="mono">
-                  {
-                    row.status !== "unmatched" ? (
-                      (() => {
-                        const selectedTable = getSelectedSourceTable(row);
-                        const options = selectedTable ? getColumnOptionsForTable(selectedTable) : [];
-                        return (
-                          <select
-                            className="mm-select"
-                            value={getSelectedSourceColumn(row)}
-                            onChange={(e) => {
-                              const c = e.target.value;
-                              setRowOverride(row, { source_column: c });
-                            }}
-                            onBlur={() => applyManualOverridesImmediately()}
-                            disabled={!getSelectedSourceTable(row)}
-                          >
-                            <option value="">—</option>
-                            {options.map((c) => (
-                              <option key={c} value={c}>
-                                {c}
-                              </option>
-                            ))}
-                          </select>
-                        );
-                      })()
-                    ) : (
-                      (() => {
-                        const selectedTable = getSelectedSourceTable(row);
-                        const options = selectedTable ? getColumnOptionsForTable(selectedTable) : [];
-                        return (
-                          <select
-                            className="mm-select"
-                            value={getSelectedSourceColumn(row)}
-                            onChange={(e) => {
-                              const c = e.target.value;
-                              setRowOverride(row, { source_column: c });
-                            }}
-                            onBlur={() => applyManualOverridesImmediately()}
-                            disabled={!getSelectedSourceTable(row)}
-                          >
-                            <option value="">—</option>
-                            {options.map((c) => (
-                              <option key={c} value={c}>
-                                {c}
-                              </option>
-                            ))}
-                          </select>
-                        );
-                      })()
-                    )
-                  }
-                </td>
+                <td className="mono dim">{row.mapped_source_table && row.mapped_source_table !== "NO_MATCH" ? row.mapped_source_table : "—"}</td>
+                <td className="mono">{row.mapped_source_column && row.mapped_source_column !== "NO_MATCH" ? row.mapped_source_column : "—"}</td>
 
 
                 <td className="mono dim small">{row.mapped_source_datatype || "—"}</td>
@@ -397,4 +189,3 @@ export function ResultsTable({ rows, onDownload, onDownloadXlsx }: Props) {
     </div>
   );
 }
-

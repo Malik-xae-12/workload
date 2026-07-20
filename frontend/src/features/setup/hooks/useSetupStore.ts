@@ -89,6 +89,7 @@ const initialState: SetupState = {
   pipelines: [],
   credentialsSaved: false,
   loading: false,
+  connectionsLoading: false,
   configLoading: {},
   error: null,
   itlConfigDownloaded: {},
@@ -316,6 +317,15 @@ export const useSetupStore = (projectId: string | null) => {
   const fetchCredentialsFromBackend = useCallback(async () => {
     if (!projectId) return;
 
+    // Dedicated flag for this bootstrap fetch, separate from the generic
+    // `loading` used by individual button actions (upload, run, etc.) —
+    // this function previously set neither, so on a page reload there was
+    // no signal at all that connections/artifacts were still being fetched.
+    // Screens gated on `connections.length === 0` (or `rows.length === 0`)
+    // showed their genuinely-empty state immediately instead of a loading
+    // placeholder, even though the real data was just about to arrive.
+    applyForProject(projectId, (prev) => ({ ...prev, connectionsLoading: true }));
+
     // Fetch all project state in parallel instead of sequentially. Uses
     // getProject (a single row by id) rather than listing every project —
     // previously this listed *all* projects in *both* accelerators just to
@@ -380,8 +390,10 @@ export const useSetupStore = (projectId: string | null) => {
             databaseName: sc.database || '',
             username: '',
             password: '',
-            status: 'active' as const,
+            status: (sc.status as SourceConnection['status']) || 'active',
+            statusError: sc.status_error || undefined,
             fabricConnectionId: sc.fabric_connection_id || undefined,
+            aiMappingSaved: !!sc.ai_mapping_saved,
           };
         });
       applyForProject(projectId, (prev) => ({ ...prev, connections: conns }));
@@ -415,6 +427,8 @@ export const useSetupStore = (projectId: string | null) => {
         },
       }));
     }
+
+    applyForProject(projectId, (prev) => ({ ...prev, connectionsLoading: false }));
   }, [projectId, applyForProject]);
 
   const updateCredentials = (field: string, value: string) => {
@@ -488,6 +502,7 @@ export const useSetupStore = (projectId: string | null) => {
     async (conn: { name: string; databaseType: string; server: string; databaseName: string; username: string; password: string; is_on_prem?: boolean; gateway_name?: string; auth_type?: string; tenant_id?: string; client_id?: string; client_secret?: string }) => {
       setState((prev) => ({ ...prev, loading: true, error: null }));
       try {
+        const connIndex = state.connections.length + 1;
         const result = await createSourceConnection({
           conn_name: conn.name,
           db_type: conn.databaseType,
@@ -501,15 +516,26 @@ export const useSetupStore = (projectId: string | null) => {
           tenant_id: conn.tenant_id,
           client_id: conn.client_id,
           client_secret: conn.client_secret,
+          // Auto-link atomically on the backend — see schema.py comment. If a
+          // reload happens mid-request, the connection either doesn't exist
+          // yet or is fully created AND linked; there's no in-between state
+          // where it's created in Fabric but invisible in the project.
+          project_id: projectId ?? undefined,
+          connection_index: connIndex,
         });
 
-        // Auto-link to the current project
+        // Fallback for older backends that don't auto-link: if we have a
+        // projectId but the response doesn't already reflect a link (this is
+        // harmless/idempotent — link creation is keyed on the pair).
         if (projectId) {
-          const connIndex = state.connections.length + 1;
-          await linkSourceConnection(projectId, {
-            source_connection_id: result.id,
-            connection_index: connIndex,
-          });
+          try {
+            await linkSourceConnection(projectId, {
+              source_connection_id: result.id,
+              connection_index: connIndex,
+            });
+          } catch {
+            /* already linked by the atomic path above — ignore */
+          }
         }
 
         const newConn: SourceConnection = {
@@ -755,6 +781,15 @@ export const useSetupStore = (projectId: string | null) => {
     const requestId = ++pipelinesRequestIdRef.current;
 
     try {
+      const finals = new Set(['completed', 'failed', 'error', 'cancelled']);
+      const toRunStatus = (s: string): 'completed' | 'failed' | null =>
+        s === 'completed' ? 'completed' : finals.has(s) ? 'failed' : null;
+
+      // Fast path: local DB reads only (listPipelines reads local files,
+      // getUploadStatus reads local config_uploads). No live Fabric calls
+      // here — those are what were making Config Step feel slow to load.
+      // Reconciling a stale 'running' badge against the live Fabric API
+      // (below) now happens AFTER this first render, not before it.
       const [items, uploads] = await Promise.all([
         listPipelines(dbType),
         projectId ? getUploadStatus(projectId, connId).catch(() => []) : Promise.resolve([]),
@@ -762,7 +797,12 @@ export const useSetupStore = (projectId: string | null) => {
       const saved: Record<string, { status: string; fabric_item_id: string | null; run_status: string | null; job_id: string | null }> = {};
       for (const u of uploads as any[]) {
         if (u.item_type === 'pipeline' && u.source_connection_id === connId) {
-          saved[u.item_name] = { status: u.status, fabric_item_id: u.fabric_item_id, run_status: u.run_status, job_id: u.job_id };
+          saved[u.item_name] = {
+            status: u.status,
+            fabric_item_id: u.fabric_item_id,
+            run_status: u.run_status,
+            job_id: u.job_id,
+          };
         }
       }
       const mapped: PipelineItem[] = items.map((p) => {
@@ -793,10 +833,11 @@ export const useSetupStore = (projectId: string | null) => {
           });
           return { ...prev, configLoading: { ...prev.configLoading, [connId]: false }, pipelineFiles: { ...prev.pipelineFiles, [connId]: merged } };
         });
-        // Restore ITL downloaded/uploaded/notebook/pipeline state from backend DB
-        // (Finin mode never shows the ITL section, so skip this extra
-        // round-trip there — it was adding latency to every connection
-        // switch for no visible benefit.)
+        // Restore ITL downloaded/uploaded/notebook/pipeline state from backend DB.
+        // ItlSection is shown for both Fabric and Finin (gated on allPipelinesRan,
+        // not appMode) — callers must always pass skipItlStatus=false, or the
+        // downloaded/uploaded flags reset to false on every reload and the
+        // section looks like it needs to be redone even after completion.
         if (projectId && selectedConn?.name && !skipItlStatus) {
           getItlConfigStatus(projectId, selectedConn.name).then((status) => {
             applyForProject(projectId, (prev) => {
@@ -811,7 +852,9 @@ export const useSetupStore = (projectId: string | null) => {
                 fabricItemId: p.fabric_item_id ?? undefined,
                 // Carry the persisted run state across too, so a pipeline that
                 // was completed/running before the refresh doesn't revert to
-                // looking like it was never run.
+                // looking like it was never run. Any stale 'running' value is
+                // corrected shortly after by the background reconciliation
+                // pass below (or the per-pipeline immediate-check poll).
                 runStatus: (p.run_status as PipelineItem['runStatus']) ?? undefined,
                 jobId: p.job_id ?? undefined,
               }));
@@ -864,8 +907,8 @@ export const useSetupStore = (projectId: string | null) => {
                       return;
                     }
                   } catch { /* fall through to poll loop */ }
-                  const pollInterval = 15_000;
-                  for (let i = 0; i < 60; i++) {
+                  const pollInterval = 5_000;
+                  for (let i = 0; i < 180; i++) {
                     await new Promise((r) => setTimeout(r, pollInterval));
                     if (connectionEpochRef.current !== epoch) return;
                     try {
@@ -915,8 +958,8 @@ export const useSetupStore = (projectId: string | null) => {
                     return; // no need to poll further
                   }
                 } catch { /* fall through to poll loop */ }
-                const pollInterval = 30_000;
-                for (let i = 0; i < 40; i++) {
+                const pollInterval = 5_000;
+                for (let i = 0; i < 240; i++) {
                   await new Promise((r) => setTimeout(r, pollInterval));
                   if (connectionEpochRef.current !== epoch) return;
                   try {
@@ -945,13 +988,16 @@ export const useSetupStore = (projectId: string | null) => {
       }
 
       // Reconcile any pipelines that were left 'running' and may have
-      // finished (or failed) while this page/tab was closed, instead of
-      // waiting up to 15-30s for the next poll tick to notice.
-      if (projectId) {
+      // finished (or failed) while this page/tab was closed — fired AFTER
+      // the fast local-only render above, not before it, so this live
+      // Fabric check never delays Config Step's first paint. Only bothers
+      // calling the live endpoint at all if the DB actually has something
+      // marked 'running' to verify.
+      const hasAnyRunning =
+        mapped.some((p) => p.runStatus === 'running') ||
+        Object.values(saved).some((s) => s.run_status === 'running');
+      if (projectId && hasAnyRunning) {
         syncPipelineStatus(projectId).then((sync) => {
-          const finals = new Set(['completed', 'failed', 'error', 'cancelled']);
-          const toRunStatus = (s: string): 'completed' | 'failed' | null =>
-            s === 'completed' ? 'completed' : finals.has(s) ? 'failed' : null;
           const changed = sync.pipelines.filter((p) => toRunStatus(p.new_status));
           if (changed.length === 0) return;
           applyForProject(projectId, (prev) => {
@@ -1119,11 +1165,14 @@ export const useSetupStore = (projectId: string | null) => {
           ),
         }));
 
-        // Poll for status
-        const pollInterval = 30_000; // 30 seconds
-        const maxPolls = 40; // up to 20 minutes
+        // Check right away in case it's already done, then poll fast —
+        // previously this waited a full 30s before the very first check and
+        // polled every 30s after, so the UI could sit on "Running" for a
+        // long time after Fabric had already moved to Succeeded/Failed.
+        const pollInterval = 5_000; // 5 seconds
+        const maxPolls = 240; // up to 20 minutes
         for (let i = 0; i < maxPolls; i++) {
-          await new Promise((r) => setTimeout(r, pollInterval));
+          if (i > 0) await new Promise((r) => setTimeout(r, pollInterval));
           try {
             const statusResp = await getPipelineJobStatus(
               projectId,
@@ -1191,6 +1240,11 @@ export const useSetupStore = (projectId: string | null) => {
       const connId = s.selectedConnection ?? '';
       const pf = (s.pipelineFiles[connId] || []).find((p) => p.name === pipelineName);
       if (!pf?.fabricItemId) return false;
+      // Already running (or already finished) — never re-trigger. This
+      // check alone isn't enough to close the reload race (see below), but
+      // it does stop accidental double-clicks/re-renders within the same
+      // session from firing a second job.
+      if (pf.runStatus === 'running' || pf.runStatus === 'completed') return false;
 
       // The backend's config_uploads row may be keyed under a
       // connection-prefixed name (see PipelineItem.uploadItemName).
@@ -1211,22 +1265,33 @@ export const useSetupStore = (projectId: string | null) => {
         }));
 
       updatePipeline('running');
+      // Persist 'running' BEFORE triggering the actual Fabric run — not
+      // after. Previously this was persisted only once runFabricPipeline's
+      // response came back, which left a window (network round-trip time)
+      // where a reload saw this pipeline as 'not-started' in the DB even
+      // though it either was about to run or already had — so on reload the
+      // auto-run effect saw "not-started" and triggered ANOTHER Fabric job
+      // for the same pipeline. Persisting first (job_id still unknown at
+      // this point) means a reload during that same window at least sees
+      // 'running' and won't re-trigger, even before we have a job_id yet.
+      try { await updateRunStatus(projectId, { item_name: uploadItemName, run_status: 'running' }); } catch { /* non-fatal */ }
 
       try {
         const result = await runFabricPipeline(projectId, pf.fabricItemId);
         const jobId = result.job_id;
         if (connectionEpochRef.current !== epoch) return false;
         updatePipeline('running', { jobId });
-        // Persist the running state + job id immediately — otherwise a page
-        // refresh while this pipeline is still executing has nothing to
-        // resume-poll against, and the run silently reverts to looking
-        // like it never started.
+        // Persist the real job id now that we have it — needed to resume-poll
+        // (rather than just display "running") after a reload.
         try { await updateRunStatus(projectId, { item_name: uploadItemName, run_status: 'running', job_id: jobId }); } catch { /* non-fatal, resume-poll/sync will still catch up later */ }
 
-        const pollInterval = 30_000;
-        const maxPolls = 40;
+        // Check right away in case it finished fast, then poll every 5s
+        // instead of every 30s — previously the UI could sit on "Running"
+        // for a long time after Fabric had already moved to Succeeded/Failed.
+        const pollInterval = 5_000;
+        const maxPolls = 240;
         for (let i = 0; i < maxPolls; i++) {
-          await new Promise((r) => setTimeout(r, pollInterval));
+          if (i > 0) await new Promise((r) => setTimeout(r, pollInterval));
           if (connectionEpochRef.current !== epoch) return false;
           try {
             const statusResp = await getPipelineJobStatus(projectId, pf.fabricItemId, jobId);
@@ -1420,6 +1485,7 @@ export const useSetupStore = (projectId: string | null) => {
         applyForProject(projectId, (prev) => ({ ...prev, error: `Pipeline '${pipelineName}' is not deployed yet` }));
         return false;
       }
+      if (pf.runStatus === 'running' || pf.runStatus === 'completed') return false;
 
       const updateItlPipeline = (runStatus: PipelineItem['runStatus'], extra?: Partial<PipelineItem>) =>
         applyForProject(projectId, (prev) => ({
@@ -1433,6 +1499,9 @@ export const useSetupStore = (projectId: string | null) => {
         }));
 
       updateItlPipeline('running');
+      // Persist 'running' BEFORE triggering — same reload-race fix as
+      // runPipelineFromFiles above (see its comment for the full story).
+      try { await updateRunStatus(projectId, { item_name: pipelineName, run_status: 'running' }); } catch { /* non-fatal */ }
 
       try {
         const result = await runFabricPipeline(projectId, pf.fabricItemId);
@@ -1442,10 +1511,13 @@ export const useSetupStore = (projectId: string | null) => {
         // instead of showing the pipeline as never having been run.
         try { await updateRunStatus(projectId, { item_name: pipelineName, run_status: 'running', job_id: jobId }); } catch { /* non-fatal */ }
 
-        const pollInterval = 15_000;
-        const maxPolls = 60; // up to 15 minutes
+        // Check right away in case it finished fast, then poll every 5s
+        // instead of every 15s — previously the UI could sit on "Running"
+        // for a long time after Fabric had already moved to Succeeded/Failed.
+        const pollInterval = 5_000;
+        const maxPolls = 180; // up to 15 minutes
         for (let i = 0; i < maxPolls; i++) {
-          await new Promise((r) => setTimeout(r, pollInterval));
+          if (i > 0) await new Promise((r) => setTimeout(r, pollInterval));
           try {
             const statusResp = await getPipelineJobStatus(projectId, pf.fabricItemId, jobId);
             if (statusResp.status === 'completed') {

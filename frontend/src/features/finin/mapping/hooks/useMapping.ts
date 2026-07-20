@@ -17,6 +17,15 @@ const authHeaders = async (): Promise<Record<string, string>> => {
   return { Authorization: `Bearer ${token}` };
 };
 
+/** AI Mapping runs as a backend job the browser polls — the job itself
+ * already survives backend restarts (see shared/job_store.py), but the
+ * frontend only ever kept the job_id in React state. A page reload lost
+ * track of it entirely, making an in-progress (or just-finished) mapping
+ * look like it needs to start over. Persisting the job_id here, keyed per
+ * project+connection, lets the hook reattach to it on mount. */
+const jobStorageKey = (projectId?: string | null, connectionName?: string | null) =>
+  projectId && connectionName ? `finin_mapping_job:${projectId}:${connectionName}` : null;
+
 interface Override {
   source_table: string;
   source_column: string;
@@ -42,7 +51,7 @@ interface Job {
   result: JobResult | null;
 }
 
-export function useMapping() {
+export function useMapping(projectId?: string | null, connectionName?: string | null) {
   const [job, setJob] = useState<Job | null>(null);
   const [testing, setTesting] = useState(false);
   const [connectionOk, setConnectionOk] = useState<boolean | null>(null);
@@ -60,11 +69,13 @@ export function useMapping() {
   const pollJob = useCallback(
     (jobId: string) => {
       stopPolling();
+      const key = jobStorageKey(projectId, connectionName);
       pollRef.current = setInterval(async () => {
         try {
           const res = await fetch(`${API}/api/job/${jobId}`);
           const data = await res.json();
           setJob(data);
+          if (key) localStorage.setItem(key, jobId);
           if (data.status === "done" || data.status === "error") {
             stopPolling();
           }
@@ -73,7 +84,7 @@ export function useMapping() {
         }
       }, 1200);
     },
-    [stopPolling]
+    [stopPolling, projectId, connectionName]
   );
 
   const testConnection = async (creds: Record<string, any>) => {
@@ -139,6 +150,8 @@ export function useMapping() {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail);
+    const key = jobStorageKey(projectId, connectionName);
+    if (key) localStorage.setItem(key, data.job_id);
     pollJob(data.job_id);
   };
 
@@ -152,6 +165,8 @@ export function useMapping() {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail);
+    const key = jobStorageKey(projectId, connectionName);
+    if (key) localStorage.setItem(key, data.job_id);
     pollJob(data.job_id);
   };
 
@@ -199,6 +214,8 @@ export function useMapping() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.detail || "Failed to save mapping to metadata");
+      const key = jobStorageKey(projectId, connectionName);
+      if (key) localStorage.removeItem(key);
       return data as { status: string; inserted: number; table: string };
     } finally {
       setSaving(false);
@@ -207,6 +224,38 @@ export function useMapping() {
 
   const jobRef = useRef(job);
   jobRef.current = job;
+
+  // Reattach to whatever job was in flight (or just finished) for this
+  // project+connection when the hook mounts — including after a page
+  // reload, which previously lost track of job_id entirely and made an
+  // in-progress mapping look like it needed to start over.
+  useEffect(() => {
+    const key = jobStorageKey(projectId, connectionName);
+    if (!key) return;
+    const savedJobId = localStorage.getItem(key);
+    if (!savedJobId) return;
+    (async () => {
+      try {
+        const res = await fetch(`${API}/api/job/${savedJobId}`);
+        if (!res.ok) {
+          // Job no longer exists server-side (pruned, or a different backend
+          // instance) — nothing to resume, drop the stale reference.
+          localStorage.removeItem(key);
+          return;
+        }
+        const data = await res.json();
+        setJob(data);
+        if (data.status === "queued" || data.status === "running") {
+          pollJob(savedJobId);
+        }
+      } catch {
+        /* backend unreachable right now — leave the key in place, try again next mount */
+      }
+    })();
+    // Only re-run when we're pointed at a different project/connection —
+    // pollJob/stopPolling are stable via useCallback.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, connectionName]);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -235,6 +284,8 @@ export function useMapping() {
     setJob(null);
     setConnectionOk(null);
     setConnectionMsg("");
+    const key = jobStorageKey(projectId, connectionName);
+    if (key) localStorage.removeItem(key);
   };
 
   return {

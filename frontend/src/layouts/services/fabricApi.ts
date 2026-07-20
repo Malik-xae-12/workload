@@ -252,6 +252,10 @@ export interface SourceConnectionPayload {
   tenant_id?: string;
   client_id?: string;
   client_secret?: string;
+  /** Optional: when provided, the backend links the new connection to this
+   * project in the same request, instead of a separate follow-up call. */
+  project_id?: string;
+  connection_index?: number;
 }
 
 export interface SourceConnectionResponse {
@@ -263,6 +267,9 @@ export interface SourceConnectionResponse {
   is_on_prem: boolean;
   gateway_name: string | null;
   fabric_connection_id: string | null;
+  ai_mapping_saved?: boolean;
+  status?: string;
+  status_error?: string | null;
   user_id: string;
 }
 

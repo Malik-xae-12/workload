@@ -1426,6 +1426,10 @@
   box-shadow: 0 2px 8px rgba(0,0,0,0.18);
   transition: background 0.18s, transform 0.12s, box-shadow 0.18s, opacity 0.15s;
   min-width: 220px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 .finin-app .btn-save-excel:hover:not(:disabled) {
   background: linear-gradient(135deg, var(--accent-hover) 0%, #312E81 100%);
@@ -1437,11 +1441,23 @@
   box-shadow: 0 2px 6px rgba(0,0,0,0.15);
 }
 .finin-app .btn-save-excel.mm-saving {
-  opacity: 0.7;
+  opacity: 0.85;
   cursor: not-allowed;
+  animation: finin-border-pulse 1.4s ease-in-out infinite;
 }
 .finin-app .btn-save-excel.mm-saved {
   background: linear-gradient(135deg, #1a7a4a 0%, #0f5c34 100%);
+}
+/* Same spinner as the "Testing connection…" banner, recolored for the
+   solid green Save button background. */
+.finin-app .btn-save-excel-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  animation: finin-spin 0.7s linear infinite;
+  flex-shrink: 0;
 }
 .finin-app .mm-page-save {
   display: flex;
@@ -1474,9 +1490,6 @@
 }
 
 .finin-app .chat-panel {
-  width: 40%;
-  flex: 0 0 40%;
-  min-width: 380px;
   display: flex;
   flex-direction: column;
   background: var(--surface);
@@ -1484,10 +1497,139 @@
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
   overflow: hidden;
-  position: sticky;
-  top: 76px;
-  max-height: calc(100vh - 96px);
 }
+
+/* ── Save & Export card (Save to metadata + Download Excel, ITL-style) ──── */
+.finin-app .se-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+
+.finin-app .se-card-header {
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.finin-app .se-step {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-light);
+  flex-wrap: wrap;
+}
+
+.finin-app .se-step:last-child { border-bottom: none; }
+
+.finin-app .se-num {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--forest-100);
+  color: var(--forest-700);
+  flex-shrink: 0;
+}
+
+.finin-app .se-num--done { background: var(--emerald-100); color: var(--emerald-700); }
+
+.finin-app .se-step-info { flex: 1 1 220px; min-width: 0; }
+.finin-app .se-step-title { font-size: 12px; font-weight: 600; color: var(--text-primary); }
+.finin-app .se-step-sub { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+
+.finin-app .se-select {
+  background: var(--surface2);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 7px 10px;
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+  max-width: 220px;
+}
+
+.finin-app .se-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+.finin-app .se-btn {
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  background: var(--accent);
+  color: #FFFFFF;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.finin-app .se-btn:hover:not(:disabled) { background: var(--accent-hover); }
+.finin-app .se-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.finin-app .se-btn--done { background: var(--emerald-100); color: var(--emerald-700); }
+.finin-app .se-btn--ghost { background: var(--forest-50); color: var(--forest-700); }
+.finin-app .se-btn--ghost:hover:not(:disabled) { background: var(--forest-100); }
+
+/* ── Manual Mapping trigger ───────────────────────────────────────────── */
+.finin-app .btn-manual {
+  background: var(--surface2);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 8px 14px;
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.finin-app .btn-manual:hover { color: var(--text-primary); border-color: var(--accent); }
+
+.finin-app .chat-panel--floating {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  top: auto;
+  width: 380px;
+  max-width: calc(100vw - 48px);
+  height: 560px;
+  max-height: calc(100vh - 120px);
+  z-index: 1000;
+}
+
+.finin-app .chat-fab {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #FFFFFF;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: var(--shadow-md), 0 4px 14px rgba(0,0,0,0.25);
+  transition: background 0.15s, transform 0.15s;
+  z-index: 1000;
+}
+
+.finin-app .chat-fab:hover { background: var(--accent-hover); transform: scale(1.06); }
 
 .finin-app .chat-toggle {
   background: var(--accent);
@@ -1503,17 +1645,6 @@
 }
 
 .finin-app .chat-toggle:hover { background: var(--accent-hover); }
-
-.finin-app .chat-toggle--collapsed {
-  position: sticky;
-  top: 76px;
-  align-self: flex-start;
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-  padding: 14px 8px;
-  border-radius: var(--radius-sm);
-  letter-spacing: 0.02em;
-}
 
 .finin-app .chat-panel-header {
   display: flex;

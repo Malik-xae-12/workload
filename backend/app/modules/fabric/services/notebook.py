@@ -349,6 +349,24 @@ def _get_otl_notebook_dir(db_type: str, app_mode: str = "fabric") -> str:
     if subfolder:
         return os.path.join(_NOTEBOOKS_DIR, root_name, subfolder)
     return _NOTEBOOKS_DIR
+
+
+def _get_bronze_silver_dir(app_mode: str = "fabric") -> str:
+    """Return the absolute path to the folder holding 01_NB_BronzeToSilver.ipynb.
+
+    Fabric mode reads from ``Bronze_Silver/`` (splits nothing — one bronze
+    table maps to one silver table via SourceInformationSchema). Finin mode
+    reads from ``Bronze_Silver_Finin/``, whose variant fans a single bronze
+    table out into one-or-more silver tables per
+    SourceInformationSchemaMapped's TargetTableName grouping.
+
+    This is resolved explicitly (rather than left to the directory walk
+    fallback used for other shared notebooks) because both folders contain a
+    file with the identical name, and the walk would otherwise pick whichever
+    one it encounters first regardless of app_mode.
+    """
+    root_name = "Bronze_Silver_Finin" if app_mode == "finin" else "Bronze_Silver"
+    return os.path.join(_NOTEBOOKS_DIR, root_name)
  
  
 # -- DB-type to notebook file mapping -----------------------------------
@@ -504,7 +522,13 @@ def upload_notebooks(
  
     results: list[dict] = []
     for fname in filenames:
-        path = os.path.join(folder, fname)
+        if fname == "01_NB_BronzeToSilver.ipynb":
+            # Explicit resolution: don't rely on the walk fallback below, since
+            # both Bronze_Silver/ and Bronze_Silver_Finin/ contain a file with
+            # this exact name.
+            path = os.path.join(_get_bronze_silver_dir(app_mode), fname)
+        else:
+            path = os.path.join(folder, fname)
         base_name = os.path.splitext(fname)[0]
         # Prefix with connection name to avoid conflicts when multiple connections exist
         display_name = f"{connection_name}_{base_name}"
@@ -597,7 +621,13 @@ def upload_itl_notebooks(
  
     results: list[dict] = []
     for fname in filenames:
-        path = os.path.join(folder, fname)
+        if fname == "01_NB_BronzeToSilver.ipynb":
+            # Explicit resolution: don't rely on the walk fallback below, since
+            # both Bronze_Silver/ and Bronze_Silver_Finin/ contain a file with
+            # this exact name.
+            path = os.path.join(_get_bronze_silver_dir(app_mode), fname)
+        else:
+            path = os.path.join(folder, fname)
         base_name = os.path.splitext(fname)[0]
         # Prefix with connection name to avoid conflicts when multiple connections exist
         display_name = f"{connection_name}_{base_name}"

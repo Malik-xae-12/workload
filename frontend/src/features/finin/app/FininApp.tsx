@@ -5,7 +5,6 @@ import { StatsDashboard } from "../mapping/components/StatsDashboard";
 import { ResultsTable } from "../mapping/components/ResultsTable";
 import ManualMapping from "../mapping/components/ManualMapping";
 import ChatPanel from "../mapping/components/ChatPanel";
-import { UnmappedColumns } from "../mapping/components/UnmappedColumns";
 import ErrorBoundary from "../shared/components/ErrorBoundary";
 import { useMapping } from "../mapping/hooks/useMapping";
 import "../shared/styles/App.css";
@@ -24,16 +23,20 @@ interface Props {
 }
 
 export default function FininApp({ connections, projectId, initialConnectionName, onMappingSaved }: Props) {
+  const [connectionName, setConnectionName] = useState(initialConnectionName || connections[0]?.name || "");
+
   const {
     job, testing, saving, connectionOk, connectionMsg,
     testConnection, testConnectionForProject, runMapping, runMappingForProject,
     getProjectConnectionInfo, downloadCsv, downloadXlsx, downloadColumnConfig,
     applyOverrides, saveToMetadata, reset, apiBase,
-  } = useMapping();
+  } = useMapping(projectId, connectionName);
 
   const [showManual, setShowManual] = useState(false);
-  const [connectionName, setConnectionName] = useState(initialConnectionName || connections[0]?.name || "");
   const [projectClientId, setProjectClientId] = useState<string | null>(null);
+  const [savedToMetadata, setSavedToMetadata] = useState(false);
+  const [excelDownloaded, setExcelDownloaded] = useState(false);
+  const [downloadingExcel, setDownloadingExcel] = useState(false);
 
   useEffect(() => {
     if (!projectId) { setProjectClientId(null); return; }
@@ -83,16 +86,33 @@ export default function FininApp({ connections, projectId, initialConnectionName
     setShowManual(false);
   };
 
+  useEffect(() => {
+    setSavedToMetadata(false);
+    setExcelDownloaded(false);
+  }, [job?.job_id]);
+
   const handleSaveToMetadata = async () => {
     if (!job?.job_id) return;
     if (!projectId) { alert("Open a Fabric project first (Projects tab) so mappings have a destination."); return; }
     if (!connectionName) { alert("Select a source connection to save into."); return; }
     try {
       const res = await saveToMetadata(job.job_id, projectId, connectionName);
+      setSavedToMetadata(true);
       alert(`Saved ${res.inserted} rows to SourceInformationSchemaMapped (Config_${connectionName}).`);
       if (onMappingSaved) onMappingSaved();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Failed to save mapping to metadata.");
+    }
+  };
+
+  const handleDownloadExcel = async () => {
+    if (!job?.job_id) return;
+    setDownloadingExcel(true);
+    try {
+      await downloadColumnConfig(job.job_id);
+      setExcelDownloaded(true);
+    } finally {
+      setDownloadingExcel(false);
     }
   };
 
@@ -122,6 +142,7 @@ export default function FininApp({ connections, projectId, initialConnectionName
               onBack={() => setShowManual(false)}
               onDownloadXlsx={(f) => downloadXlsx(job.job_id, f)}
             />
+            <ChatPanel jobId={job.job_id} apiBase={apiBase} />
           </ErrorBoundary>
         )}
 
@@ -202,24 +223,82 @@ export default function FininApp({ connections, projectId, initialConnectionName
                 </p>
               </div>
               <div className="form-actions">
-                <select value={connectionName} onChange={(e) => setConnectionName(e.target.value)} className="mm-select">
+                <button className="btn-manual" onClick={() => setShowManual(true)}>
+                  ✎ Manual Mapping
+                </button>
+              </div>
+            </div>
+
+            <div className="se-card">
+              <div className="se-card-header">Save & Export</div>
+
+              {/* Step 1: Save to metadata */}
+              <div className="se-step">
+                <div className={`se-num ${savedToMetadata ? 'se-num--done' : ''}`}>1</div>
+                <div className="se-step-info">
+                  <div className="se-step-title">Save to SourceInformationSchemaMapped</div>
+                  <div className="se-step-sub">Writes mapping rows into Config_{connectionName || '…'}</div>
+                </div>
+                <select
+                  value={connectionName}
+                  onChange={(e) => setConnectionName(e.target.value)}
+                  className="se-select"
+                >
                   <option value="">Select Fabric connection…</option>
                   {connections.map((c) => (
                     <option key={c.id} value={c.name}>{c.name}</option>
                   ))}
                 </select>
-                <button className="btn-primary" onClick={handleSaveToMetadata} disabled={saving || !connectionName}>
-                  {saving ? "Saving…" : "Save to SourceInformationSchemaMapped"}
-                </button>
-                <button className="btn-secondary" onClick={() => downloadColumnConfig(job.job_id)}>
-                  ↓ Column Config Excel
-                </button>
+                <div className="se-actions">
+                  <button
+                    className={`se-btn ${savedToMetadata ? 'se-btn--done' : ''}`}
+                    onClick={handleSaveToMetadata}
+                    disabled={saving || !connectionName || savedToMetadata}
+                  >
+                    {savedToMetadata ? 'Saved' : saving ? 'Saving...' : 'Save'}
+                  </button>
+                  {savedToMetadata && (
+                    <button
+                      className="se-btn se-btn--ghost"
+                      onClick={handleSaveToMetadata}
+                      disabled={saving || !connectionName}
+                    >
+                      Re-save
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Step 2: Download Column Config Excel */}
+              <div className="se-step">
+                <div className={`se-num ${excelDownloaded ? 'se-num--done' : ''}`}>2</div>
+                <div className="se-step-info">
+                  <div className="se-step-title">Download Column Config Excel</div>
+                  <div className="se-step-sub">Full mapping export for this run</div>
+                </div>
+                <div className="se-actions">
+                  <button
+                    className={`se-btn ${excelDownloaded ? 'se-btn--done' : ''}`}
+                    onClick={handleDownloadExcel}
+                    disabled={downloadingExcel || excelDownloaded}
+                  >
+                    {excelDownloaded ? 'Downloaded' : downloadingExcel ? 'Downloading...' : 'Download'}
+                  </button>
+                  {excelDownloaded && (
+                    <button
+                      className="se-btn se-btn--ghost"
+                      onClick={handleDownloadExcel}
+                      disabled={downloadingExcel}
+                    >
+                      Re-download
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
+
             <StatsDashboard stats={job.result.stats || ({} as typeof job.result.stats)} />
-            <UnmappedColumns data={job.result.unmapped_source_columns || {}} />
             <ResultsTable rows={job.result.rows} jobId={job.job_id} onDownload={(f) => downloadCsv(job.job_id, f)} onDownloadXlsx={(f) => downloadXlsx(job.job_id, f)} />
-            <ChatPanel jobId={job.job_id} apiBase={apiBase} />
           </div>
         )}
       </main>

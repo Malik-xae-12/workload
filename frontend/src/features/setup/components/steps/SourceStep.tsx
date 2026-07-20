@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Database, Plus, Save, Loader2, CheckCircle2, Server } from 'lucide-react';
+import { Database, Plus, Save, Loader2, CheckCircle2, XCircle, Server } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import type { SourceConnection } from '../../types';
 import { listGateways, type GatewayInfo } from '../../../../layouts/services/fabricApi';
@@ -130,9 +130,20 @@ export const SourceStep = ({ connections, onAddConnection, loading, error, proje
                   </p>
                 </div>
               </div>
-              <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">
-                <CheckCircle2 size={11} />
-                {conn.fabricConnectionId ? 'Fabric Connected' : 'Active'}
+              <span className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border ${
+                conn.status === 'creating'
+                  ? 'text-blue-700 bg-blue-50 border-blue-100'
+                  : conn.status === 'failed'
+                  ? 'text-red-700 bg-red-50 border-red-100'
+                  : 'text-emerald-700 bg-emerald-50 border-emerald-100'
+              }`}>
+                {conn.status === 'creating' ? (
+                  <><Loader2 size={11} className="animate-spin" /> Creating…</>
+                ) : conn.status === 'failed' ? (
+                  <><XCircle size={11} /> Failed{conn.statusError ? `: ${conn.statusError}` : ''}</>
+                ) : (
+                  <><CheckCircle2 size={11} /> {conn.fabricConnectionId ? 'Fabric Connected' : 'Active'}</>
+                )}
               </span>
             </div>
           ))}
