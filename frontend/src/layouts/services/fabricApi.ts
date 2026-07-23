@@ -536,6 +536,15 @@ export function getPipelineJobStatus(projectId: string, pipelineItemId: string, 
   return request<PipelineJobStatusResponse>(`/projects/${projectId}/pipelines/${pipelineItemId}/jobs/${jobId}`);
 }
 
+// Latest job instance for an item, regardless of who triggered it — used
+// to poll child pipelines invoked internally by a parent/master pipeline
+// (we never capture our own job_id for those).
+export function getLatestItemJobStatus(projectId: string, pipelineItemId: string) {
+  return request<{ status: string; job_id?: string; error?: string }>(
+    `/projects/${projectId}/pipelines/${pipelineItemId}/latest-status`
+  );
+}
+
 // ── Pipeline Status Sync (on page refresh) ──────────────────────────
 
 export function syncPipelineStatus(projectId: string) {

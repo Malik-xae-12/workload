@@ -22,6 +22,7 @@ import {
   getMetadataConfig,
   getUploadStatus,
   updateRunStatus,
+  getLatestItemJobStatus,
   listWorkspacePipelines,
   runFabricPipeline,
   getPipelineJobStatus,
@@ -1563,16 +1564,108 @@ export const useSetupStore = (projectId: string | null) => {
    */
   const ITL_RUN_SEQUENCE = ['01_PL_WatermarkUpdate', '02_PL_Master pipeline', '06_PL_MailTrigger'];
 
+  // Child pipelines invoked internally BY the master pipeline (via its
+  // "Invoke Pipeline" activities) rather than run directly by us. Fabric
+  // still tracks a job instance for each of them individually, so we can
+  // poll each one's own latest status and flip it to "completed" the
+  // moment Fabric says so — instead of the UI leaving them stuck on
+  // "Running"/pending until the whole master pipeline finishes.
+  const ITL_INNER_PIPELINE_SUFFIXES = [
+    '03_PL_InvokePipeline',
+    '04_PL_IncrementalSourceToBronze',
+    '05_PL_SourceDelete',
+  ];
+
+  /** Poll a single inner/child pipeline's own job status until it reaches a
+   * terminal state, independent of the parent pipeline's own run. Safe to
+   * fire-and-forget in parallel with the parent's polling loop. */
+  const pollInnerPipelineStatus = useCallback(
+    async (connId: string, pipelineName: string) => {
+      if (!projectId) return;
+      const pf = (stateRef.current.itlPipelineFiles[connId] || []).find((p) => p.name === pipelineName);
+      if (!pf?.fabricItemId) return;
+      if (pf.runStatus === 'completed' || pf.runStatus === 'failed') return;
+
+      const updateInner = (runStatus: PipelineItem['runStatus']) =>
+        applyForProject(projectId, (prev) => ({
+          ...prev,
+          itlPipelineFiles: {
+            ...prev.itlPipelineFiles,
+            [connId]: (prev.itlPipelineFiles[connId] || []).map((p) =>
+              p.name === pipelineName ? { ...p, runStatus } : p
+            ),
+          },
+        }));
+
+      const pollInterval = 5_000;
+      const maxPolls = 180; // up to 15 minutes, matches the parent's own timeout
+      for (let i = 0; i < maxPolls; i++) {
+        if (i > 0) await new Promise((r) => setTimeout(r, pollInterval));
+        try {
+          const resp = await getLatestItemJobStatus(projectId, pf.fabricItemId);
+          if (resp.status === 'completed') {
+            updateInner('completed');
+            try { await updateRunStatus(projectId, { item_name: pipelineName, run_status: 'completed', job_id: resp.job_id }); } catch { /* ignore */ }
+            return;
+          }
+          if (['failed', 'error', 'cancelled'].includes(resp.status)) {
+            updateInner('failed');
+            try { await updateRunStatus(projectId, { item_name: pipelineName, run_status: 'failed', job_id: resp.job_id }); } catch { /* ignore */ }
+            return;
+          }
+          if (resp.status === 'in_progress') {
+            updateInner('running');
+          }
+          // 'not-started'/'unknown' — parent hasn't reached this activity
+          // yet, keep waiting without flipping the badge to "running".
+        } catch { /* transient poll error — keep trying */ }
+      }
+    },
+    [projectId, applyForProject],
+  );
+
   const runItlPipelineSequence = useCallback(
     async (connectionName: string) => {
       const order = ITL_RUN_SEQUENCE.map((suffix) => `${connectionName}_${suffix}`);
+      let connId = '';
       for (const name of order) {
+        if (name === `${connectionName}_02_PL_Master pipeline`) {
+          connId = stateRef.current.connections.find((c) => c.name === connectionName)?.id
+            ?? stateRef.current.selectedConnection ?? '';
+          // Fire-and-forget: these poll independently and update their own
+          // rows as soon as Fabric reports each one done, in parallel with
+          // (not blocked on) the master pipeline's own completion below.
+          ITL_INNER_PIPELINE_SUFFIXES.forEach((suffix) => {
+            void pollInnerPipelineStatus(connId, `${connectionName}_${suffix}`);
+          });
+        }
         const ok = await runItlPipeline(name);
         if (!ok) return false;
+        if (name === `${connectionName}_02_PL_Master pipeline` && projectId && connId) {
+          // Safety net: the master pipeline cannot report success if an
+          // activity it invoked (03/04/05) actually failed, so once it's
+          // done, any inner pipeline still sitting at 'not-started' or
+          // 'running' here just means our own polling hasn't caught up
+          // (or hit a transient API error) — not that it's still going.
+          // Reconcile them to 'completed' rather than leaving the badge
+          // stuck indefinitely.
+          applyForProject(projectId, (prev) => ({
+            ...prev,
+            itlPipelineFiles: {
+              ...prev.itlPipelineFiles,
+              [connId]: (prev.itlPipelineFiles[connId] || []).map((p) =>
+                ITL_INNER_PIPELINE_SUFFIXES.some((suf) => p.name === `${connectionName}_${suf}`)
+                  && p.runStatus !== 'completed' && p.runStatus !== 'failed'
+                  ? { ...p, runStatus: 'completed' as const }
+                  : p
+              ),
+            },
+          }));
+        }
       }
       return true;
     },
-    [runItlPipeline],
+    [runItlPipeline, pollInnerPipelineStatus, projectId, applyForProject],
   );
 
   return {

@@ -147,6 +147,26 @@ export const ConfigStep = ({
     }
   }, [allNotebooksDone, anyNotebookUploading, notebooksUploading, selectedConnection]);
 
+  // Guards the actual moment we decide to auto-trigger a run. Keyed by
+  // "connId:pipelineName" and set the instant we call onRunPipeline —
+  // synchronously, before any state update/re-render happens. Without
+  // this, two effects that both look for "the next eligible pipeline"
+  // (or the same effect re-entering before its own state write lands,
+  // e.g. under React StrictMode's dev double-invoke) can both observe
+  // the same pipeline as still 'not-started' and BOTH call
+  // onRunPipeline for it — which is exactly why 02_PL_SourceToBronze
+  // (or whichever pipeline is next in line at that moment) was ending up
+  // running twice per deploy, even though runPipelineFromFiles's own
+  // guard checks runStatus first: that check is on state that hasn't
+  // been updated yet in the second, near-simultaneous call.
+  const autoRunPipelineGuardRef = useRef<Set<string>>(new Set());
+  const triggerAutoRun = (connId: string, pf: PipelineItem) => {
+    const key = `${connId}:${pf.name}`;
+    if (autoRunPipelineGuardRef.current.has(key)) return;
+    autoRunPipelineGuardRef.current.add(key);
+    onRunPipeline(pf.name);
+  };
+
   // Auto-run MetaDataConfig after all pipelines deployed (scoped to the current connection)
   useEffect(() => {
     if (!selectedConnection) return;
@@ -154,7 +174,7 @@ export const ConfigStep = ({
       const metadata = sortedPipelineFiles.find((p) => p.name.includes('MetaDataConfig'));
       if (metadata?.fabricItemId && !metadata.runStatus) {
         autoRunTriggeredMap.current[selectedConnection] = true;
-        onRunPipeline(metadata.name);
+        triggerAutoRun(selectedConnection, metadata);
       }
     }
   }, [allPipelinesDone, selectedConnection]);
@@ -167,23 +187,28 @@ export const ConfigStep = ({
       if (pf.runStatus === 'completed') continue;
       if (pf.runStatus === 'running') break;
       if (i === 0 || sortedPipelineFiles[i - 1].runStatus === 'completed') {
-        if (pf.fabricItemId && (!pf.runStatus || pf.runStatus === 'not-started')) {
-          onRunPipeline(pf.name);
+        if (pf.fabricItemId && (!pf.runStatus || pf.runStatus === 'not-started') && selectedConnection) {
+          triggerAutoRun(selectedConnection, pf);
         }
       }
       break;
     }
   }, [connPipelineFiles.map(p => p.runStatus).join(',')]);
 
+  const deployInFlightMap = useRef<Record<string, boolean>>({});
+
   const deployPipelines = async () => {
     if (!selectedConn) return;
     const connId = selectedConn.id;
+    if (deployInFlightMap.current[connId]) return;
+    deployInFlightMap.current[connId] = true;
     setPipelinesUploadingMap((prev) => ({ ...prev, [connId]: true }));
     onRunTask('2');
     try {
       await onUploadPipelines(selectedConn.name, connIndex);
     } finally {
       setPipelinesUploadingMap((prev) => ({ ...prev, [connId]: false }));
+      deployInFlightMap.current[connId] = false;
     }
   };
 
@@ -253,12 +278,15 @@ export const ConfigStep = ({
   const handleGroup1Deploy = async () => {
     if (!selectedConn || group1Pipelines.length === 0) return;
     const connId = selectedConn.id;
+    if (deployInFlightMap.current[`g1:${connId}`]) return;
+    deployInFlightMap.current[`g1:${connId}`] = true;
     setGroup1PipelinesUploadingMap((prev) => ({ ...prev, [connId]: true }));
     onRunTask('2');
     try {
       await onUploadPipelines(selectedConn.name, connIndex, group1Pipelines.map((p) => p.filename), 'finin');
     } finally {
       setGroup1PipelinesUploadingMap((prev) => ({ ...prev, [connId]: false }));
+      deployInFlightMap.current[`g1:${connId}`] = false;
     }
   };
   const handleGroup2Create = async () => {
@@ -276,12 +304,15 @@ export const ConfigStep = ({
   const handleGroup2Deploy = async () => {
     if (!selectedConn || group2Pipelines.length === 0) return;
     const connId = selectedConn.id;
+    if (deployInFlightMap.current[`g2:${connId}`]) return;
+    deployInFlightMap.current[`g2:${connId}`] = true;
     setGroup2PipelinesUploadingMap((prev) => ({ ...prev, [connId]: true }));
     onRunTask('2');
     try {
       await onUploadPipelines(selectedConn.name, connIndex, group2Pipelines.map((p) => p.filename), 'finin');
     } finally {
       setGroup2PipelinesUploadingMap((prev) => ({ ...prev, [connId]: false }));
+      deployInFlightMap.current[`g2:${connId}`] = false;
     }
   };
 
@@ -853,7 +884,7 @@ const ArtifactGroupCard = ({
                   ) : row.runStatus === 'failed' ? (
                     <button
                       onClick={() => onRunPipeline(row.name)}
-                      className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600 hover:text-red-700"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-md bg-red-600 text-white hover:bg-red-700 transition-all"
                     >
                       <XCircle size={11} /> Retry
                     </button>
@@ -861,7 +892,7 @@ const ArtifactGroupCard = ({
                     <button
                       onClick={() => onRunPipeline(row.name)}
                       disabled={!row.fabricItemId}
-                      className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600 hover:text-indigo-700 disabled:opacity-40"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                     >
                       <Play size={10} /> Run
                     </button>
@@ -928,6 +959,15 @@ const ItlSection = ({
   );
   const allItlPipelinesRan = runSequenceItems.length === RUN_SEQUENCE_SUFFIXES.length && runSequenceItems.every((p) => p.runStatus === 'completed');
   const anyItlPipelineFailed = runSequenceItems.some((p) => p.runStatus === 'failed');
+  // Source of truth for "is a run in flight" — derived from the store's
+  // per-pipeline runStatus (itlPipelineFiles), not just the local
+  // `runningPipelines` flag below. The local flag alone only reflects this
+  // one mounted instance's own in-flight await; it resets to false on
+  // remount (switching connections, navigating to AI Mapping and back,
+  // etc.) even though the sequence launched via runItlPipelineSequence is
+  // still actually running server-side. Checking the persisted statuses
+  // too means the button correctly stays "Running" either way.
+  const anyItlPipelineRunning = itlPipelineFiles.some((p) => p.runStatus === 'running');
 
   // Every step for THIS connection done — download, upload, notebook run,
   // pipelines deployed, and the run sequence completed. `key={selectedConn.id}`
@@ -1220,14 +1260,14 @@ const ItlSection = ({
             <button
               type="button"
               onClick={async () => {
-                if (runningPipelines) return;
+                if (runningPipelines || anyItlPipelineRunning) return;
                 setRunningPipelines(true);
                 const ok = await onRunItlPipelines();
                 setRunningPipelines(false);
                 if (ok) toast.success('ITL pipeline run completed');
                 else toast.error('ITL pipeline run failed');
               }}
-              disabled={runningPipelines}
+              disabled={runningPipelines || anyItlPipelineRunning}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all disabled:opacity-50 ${
                 anyItlPipelineFailed
                   ? 'bg-red-50 text-red-700 hover:bg-red-100'
@@ -1236,7 +1276,7 @@ const ItlSection = ({
                   : 'bg-indigo-600 text-white hover:bg-indigo-700'
               }`}
             >
-              {runningPipelines ? (
+              {(runningPipelines || anyItlPipelineRunning) ? (
                 <><Loader2 size={12} className="animate-spin" /> Running...</>
               ) : anyItlPipelineFailed ? (
                 <><XCircle size={12} /> Failed – Retry</>

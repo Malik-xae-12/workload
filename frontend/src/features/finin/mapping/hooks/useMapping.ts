@@ -57,6 +57,7 @@ export function useMapping(projectId?: string | null, connectionName?: string | 
   const [connectionOk, setConnectionOk] = useState<boolean | null>(null);
   const [connectionMsg, setConnectionMsg] = useState("");
   const [saving, setSaving] = useState(false);
+  const [saveProgress, setSaveProgress] = useState(0);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stopPolling = useCallback(() => {
@@ -179,16 +180,36 @@ export function useMapping(projectId?: string | null, connectionName?: string | 
     return (await res.json()) as { client_id: string; tenant_id: string; has_credentials: boolean };
   };
 
+  const triggerBlobDownload = async (url: string, fallbackFilename: string) => {
+    const res = await fetch(url, { credentials: "include" });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data?.detail || "Download failed");
+    }
+    const blob = await res.blob();
+    const disposition = res.headers.get("content-disposition") || "";
+    const match = disposition.match(/filename="?([^"]+)"?/);
+    const filename = match?.[1] || fallbackFilename;
+    const objectUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(objectUrl);
+  };
+
   const downloadCsv = (jobId: string, filter: string) => {
-    window.open(`${API}/api/download/${jobId}?filter=${filter}`, "_blank");
+    void triggerBlobDownload(`${API}/api/download/${jobId}?filter=${filter}`, `mapping_${filter}.csv`);
   };
 
   const downloadXlsx = (jobId: string, filter: string) => {
-    window.open(`${API}/api/download-xlsx/${jobId}?filter=${filter}`, "_blank");
+    void triggerBlobDownload(`${API}/api/download-xlsx/${jobId}?filter=${filter}`, `mapping_${filter}.xlsx`);
   };
 
   const downloadColumnConfig = (jobId: string) => {
-    window.open(`${API}/api/download-column-config/${jobId}`, "_blank");
+    return triggerBlobDownload(`${API}/api/download-column-config/${jobId}`, `column_config.xlsx`);
   };
 
   const applyOverrides = async (jobId: string, overrides: Record<string, Override>) => {
@@ -203,20 +224,39 @@ export function useMapping(projectId?: string | null, connectionName?: string | 
     }
   };
 
-  /** Persist the current job's mapping into SourceInformationSchemaMapped. */
+  /** Persist the current job's mapping into SourceInformationSchemaMapped.
+   * Kicks off a background save job, then polls for live percentage
+   * progress (reflected in `saveProgress`) until it completes. */
   const saveToMetadata = async (jobId: string, projectId: string, connectionName: string) => {
     setSaving(true);
+    setSaveProgress(0);
     try {
-      const res = await fetch(`${API}/api/save-to-metadata/${jobId}`, {
+      const startRes = await fetch(`${API}/api/save-to-metadata/${jobId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(await authHeaders()) },
         body: JSON.stringify({ project_id: projectId, connection_name: connectionName }),
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.detail || "Failed to save mapping to metadata");
-      const key = jobStorageKey(projectId, connectionName);
-      if (key) localStorage.removeItem(key);
-      return data as { status: string; inserted: number; table: string };
+      const startData = await startRes.json().catch(() => ({}));
+      if (!startRes.ok) throw new Error(startData?.detail || "Failed to save mapping to metadata");
+      const saveJobId = startData.save_job_id as string;
+
+      // Poll every 500ms for progress until the job finishes.
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        await new Promise((r) => setTimeout(r, 500));
+        const statusRes = await fetch(`${API}/api/save-to-metadata-status/${saveJobId}`);
+        const statusData = await statusRes.json().catch(() => ({}));
+        if (!statusRes.ok) throw new Error(statusData?.detail || "Failed to check save progress");
+        setSaveProgress(statusData.progress ?? 0);
+        if (statusData.status === "done") {
+          const key = jobStorageKey(projectId, connectionName);
+          if (key) localStorage.removeItem(key);
+          return statusData.result as { status: string; inserted: number; table: string };
+        }
+        if (statusData.status === "failed") {
+          throw new Error(statusData.message || "Failed to save mapping to metadata");
+        }
+      }
     } finally {
       setSaving(false);
     }
@@ -227,20 +267,59 @@ export function useMapping(projectId?: string | null, connectionName?: string | 
 
   // Reattach to whatever job was in flight (or just finished) for this
   // project+connection when the hook mounts — including after a page
-  // reload, which previously lost track of job_id entirely and made an
+  // reload. If nothing local to reattach to, fall back to whatever was
+  // actually saved to the warehouse for this connection (Config_<name>.
+  // SourceInformationSchemaMapped). This is what makes selecting an
+  // already-mapped connection show its existing summary again instead of
+  // requiring a full re-run — the localStorage job_id above is just a fast
+  // path and is easily lost (browser cleared, different device, backend
+  // restarted since job_store is in-memory), but the saved warehouse rows
+  // persist regardless.
+  const fetchSavedMapping = useCallback(async () => {
+    if (!projectId || !connectionName) return false;
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`${API}/api/saved-mapping/${projectId}/${connectionName}`, { headers });
+      if (!res.ok) return false; // 404 = nothing saved yet for this connection, not an error
+      const data = await res.json();
+      setJob({
+        job_id: data.job_id,
+        status: "done",
+        progress: 100,
+        total: data.result?.rows?.length ?? 0,
+        message: "Loaded previously saved mapping.",
+        result: data.result,
+      });
+      const key = jobStorageKey(projectId, connectionName);
+      if (key) localStorage.setItem(key, data.job_id);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [projectId, connectionName]);
+
+  // Reattach to an in-progress or just-finished job after a page reload,
+  // which previously lost track of job_id entirely and made an
   // in-progress mapping look like it needed to start over.
   useEffect(() => {
     const key = jobStorageKey(projectId, connectionName);
     if (!key) return;
     const savedJobId = localStorage.getItem(key);
-    if (!savedJobId) return;
+    if (!savedJobId) {
+      // Nothing cached locally for this connection — it may still already
+      // have a saved mapping from a previous visit/device.
+      fetchSavedMapping();
+      return;
+    }
     (async () => {
       try {
         const res = await fetch(`${API}/api/job/${savedJobId}`);
         if (!res.ok) {
           // Job no longer exists server-side (pruned, or a different backend
-          // instance) — nothing to resume, drop the stale reference.
+          // instance) — drop the stale reference and fall back to the
+          // warehouse-saved mapping, if any, instead of just giving up.
           localStorage.removeItem(key);
+          fetchSavedMapping();
           return;
         }
         const data = await res.json();
@@ -292,6 +371,7 @@ export function useMapping(projectId?: string | null, connectionName?: string | 
     job,
     testing,
     saving,
+    saveProgress,
     connectionOk,
     connectionMsg,
     testConnection,

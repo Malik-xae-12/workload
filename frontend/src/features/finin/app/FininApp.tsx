@@ -26,7 +26,7 @@ export default function FininApp({ connections, projectId, initialConnectionName
   const [connectionName, setConnectionName] = useState(initialConnectionName || connections[0]?.name || "");
 
   const {
-    job, testing, saving, connectionOk, connectionMsg,
+    job, testing, saving, saveProgress, connectionOk, connectionMsg,
     testConnection, testConnectionForProject, runMapping, runMappingForProject,
     getProjectConnectionInfo, downloadCsv, downloadXlsx, downloadColumnConfig,
     applyOverrides, saveToMetadata, reset, apiBase,
@@ -255,7 +255,7 @@ export default function FininApp({ connections, projectId, initialConnectionName
                     onClick={handleSaveToMetadata}
                     disabled={saving || !connectionName || savedToMetadata}
                   >
-                    {savedToMetadata ? 'Saved' : saving ? 'Saving...' : 'Save'}
+                    {savedToMetadata ? 'Saved' : saving ? `Saving... ${saveProgress}%` : 'Save'}
                   </button>
                   {savedToMetadata && (
                     <button
@@ -267,6 +267,14 @@ export default function FininApp({ connections, projectId, initialConnectionName
                     </button>
                   )}
                 </div>
+                {saving && (
+                  <div className="se-progress-row">
+                    <div className="se-progress-track">
+                      <div className="se-progress-fill" style={{ width: `${saveProgress}%` }} />
+                    </div>
+                    <span className="se-progress-label">{saveProgress}%</span>
+                  </div>
+                )}
               </div>
 
               {/* Step 2: Download Column Config Excel */}

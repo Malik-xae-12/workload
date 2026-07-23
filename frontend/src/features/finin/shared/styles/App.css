@@ -467,78 +467,121 @@
 .finin-app .running-view { max-width: 600px; margin: 0 auto; padding-top: 20px; }
 .finin-app .running-view h2 { font-size: 22px; font-weight: 700; margin-bottom: 24px; }
 
-.finin-app .progress-panel {
+.finin-app .progress-panel-v2 {
   background: var(--surface);
   border: 1px solid var(--border);
   box-shadow: var(--shadow-md);
   border-radius: var(--radius-lg);
-  padding: 28px;
+  padding: 32px 28px 26px;
 }
 
-.finin-app .progress-steps {
+.finin-app .pp-steps {
   display: flex;
-  gap: 0;
-  margin-bottom: 24px;
-  position: relative;
+  align-items: center;
+  margin-bottom: 28px;
 }
 
-.finin-app .progress-steps::before {
-  content: "";
-  position: absolute;
-  top: 14px;
-  left: 14px;
-  right: 14px;
-  height: 2px;
-  background: var(--border);
-  z-index: 0;
-}
+.finin-app .pp-step-wrap { display: flex; align-items: center; flex: 1; }
+.finin-app .pp-step-wrap:last-child { flex: 0; }
 
-.finin-app .step {
-  flex: 1;
+.finin-app .pp-step {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  position: relative;
-  z-index: 1;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
-.finin-app .step-dot {
-  width: 28px; height: 28px;
+.finin-app .pp-dot {
+  width: 26px; height: 26px;
   border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-size: 12px; font-weight: 700;
+  font-size: 11px; font-weight: 700;
   background: var(--surface2);
   border: 2px solid var(--border-light);
   color: var(--text-dim);
-  transition: all 0.3s;
+  transition: background 0.35s ease, border-color 0.35s ease, color 0.35s ease, transform 0.35s ease;
 }
 
-.finin-app .step.active .step-dot { background: var(--accent); border-color: var(--accent); color: white; }
-.finin-app .step.done .step-dot { background: var(--green); border-color: var(--green); color: white; }
-.finin-app .step span { font-size: 11px; color: var(--text-secondary); }
-.finin-app .step.active span { color: var(--accent); }
-.finin-app .step.done span { color: var(--green); }
+.finin-app .pp-step.done .pp-dot { background: var(--green); border-color: var(--green); color: #fff; }
+.finin-app .pp-step.active .pp-dot {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  animation: pp-pulse 1.6s ease-in-out infinite;
+}
 
-.finin-app .progress-bar-wrap {
+.finin-app .pp-label { font-size: 11px; font-weight: 600; letter-spacing: 0.02em; color: var(--text-dim); transition: color 0.35s ease; }
+.finin-app .pp-step.active .pp-label { color: var(--accent); }
+.finin-app .pp-step.done .pp-label { color: var(--green); }
+
+.finin-app .pp-connector {
+  flex: 1;
+  height: 2px;
+  background: var(--border);
+  margin: 0 8px;
+  border-radius: 2px;
+  position: relative;
+  top: -13px;
+  overflow: hidden;
+}
+.finin-app .pp-connector::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: var(--green);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.5s ease;
+}
+.finin-app .pp-connector.filled::after { transform: scaleX(1); }
+
+.finin-app .pp-bar-wrap {
   background: var(--border);
   border-radius: 99px;
-  height: 6px;
+  height: 8px;
   overflow: hidden;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
+  position: relative;
 }
 
-.finin-app .progress-bar {
+.finin-app .pp-bar {
   height: 100%;
   background: linear-gradient(90deg, var(--accent), var(--emerald-500));
   border-radius: 99px;
-  transition: width 0.5s ease;
+  transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+.finin-app .pp-bar-indeterminate {
+  height: 100%;
+  width: 40%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, transparent, var(--accent), var(--emerald-500), transparent);
+  animation: pp-slide 1.35s ease-in-out infinite;
+}
 
-.finin-app .progress-msg { color: var(--text-secondary); font-size: 13px; text-align: center; }
+.finin-app .pp-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 13px;
+}
 
-.finin-app .error-box {
+.finin-app .pp-status-msg { color: var(--text-secondary); text-align: center; }
+.finin-app .pp-status-msg.live::before {
+  content: "";
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-right: 7px;
+  animation: pp-blink 1.4s ease-in-out infinite;
+}
+
+.finin-app .pp-pct { color: var(--text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.finin-app .pp-pct em { font-style: normal; color: var(--text-secondary); }
+
+.finin-app .pp-error-box {
   margin-top: 16px;
   background: var(--red-bg);
   border: 1px solid rgba(240,106,106,0.2);
@@ -546,6 +589,21 @@
   padding: 12px 16px;
   color: var(--red);
   font-size: 13px;
+}
+
+@keyframes pp-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(var(--accent-rgb, 99,102,241), 0.35); }
+  50% { box-shadow: 0 0 0 6px rgba(var(--accent-rgb, 99,102,241), 0); }
+}
+
+@keyframes pp-slide {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(320%); }
+}
+
+@keyframes pp-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
 }
 
 /* =============================================
@@ -1582,6 +1640,37 @@
 .finin-app .se-btn--done { background: var(--emerald-100); color: var(--emerald-700); }
 .finin-app .se-btn--ghost { background: var(--forest-50); color: var(--forest-700); }
 .finin-app .se-btn--ghost:hover:not(:disabled) { background: var(--forest-100); }
+
+.finin-app .se-progress-row {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.finin-app .se-progress-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border-light);
+  overflow: hidden;
+}
+
+.finin-app .se-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.finin-app .se-progress-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-dim);
+  min-width: 32px;
+  text-align: right;
+}
 
 /* ── Manual Mapping trigger ───────────────────────────────────────────── */
 .finin-app .btn-manual {

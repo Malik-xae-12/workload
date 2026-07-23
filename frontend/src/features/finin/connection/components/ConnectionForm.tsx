@@ -222,9 +222,14 @@ export function ConnectionForm({
         <button className={`btn-secondary${testing ? ' is-testing' : ''}`} onClick={handleTest} disabled={testing || !projectReady}>
           {testing ? "Testing…" : "Test Connection"}
         </button>
-        <button className="btn-primary" onClick={handleRun} disabled={!canRun || !projectReady}>
+        <button
+          className="btn-primary relative group"
+          onClick={handleRun}
+          disabled={!canRun || !projectReady}
+        >
           Run Mapping →
         </button>
+
       </div>
     </div>
   );
