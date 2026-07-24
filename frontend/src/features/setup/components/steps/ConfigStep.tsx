@@ -452,25 +452,48 @@ export const ConfigStep = ({
                 onRunPipeline={onRunPipeline}
               />
 
-              {group1PipelinesRan && !connConfigLoading && !isConnectionMapped && (
-                <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-[13px] font-bold text-indigo-900">Map source columns before Bronze/Silver</p>
-                    <p className="text-[11px] text-indigo-700 mt-0.5">
-                      Head to AI Mapping to build <code>SourceInformationSchemaMapped</code> for{' '}
-                      <span className="font-semibold">{selectedConn?.name}</span> — 01_NB_BronzeToSilver reads from it
-                      instead of SourceInformationSchema. You'll return here automatically once it's saved.
-                    </p>
+              {group1PipelinesRan && !connConfigLoading && (
+                isConnectionMapped ? (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center justify-between gap-4">
+                    <div className="flex items-start gap-2.5">
+                      <CheckCircle2 size={18} className="text-emerald-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-[13px] font-bold text-emerald-900">Source columns mapped</p>
+                        <p className="text-[11px] text-emerald-700 mt-0.5">
+                          <code>SourceInformationSchemaMapped</code> is built for{' '}
+                          <span className="font-semibold">{selectedConn?.name}</span>. You can review or adjust it any time.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={onGoToAIMapping}
+                      disabled={!onGoToAIMapping}
+                      className="shrink-0 flex items-center gap-1.5 px-4 py-2 text-[11px] font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition-all"
+                    >
+                      View Mapping →
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={onGoToAIMapping}
-                    disabled={!onGoToAIMapping}
-                    className="shrink-0 flex items-center gap-1.5 px-4 py-2 text-[11px] font-bold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-all"
-                  >
-                    Go to AI Mapping →
-                  </button>
-                </div>
+                ) : (
+                  <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-[13px] font-bold text-teal-900">Map source columns before Bronze/Silver</p>
+                      <p className="text-[11px] text-teal-700 mt-0.5">
+                        Head to AI Mapping to build <code>SourceInformationSchemaMapped</code> for{' '}
+                        <span className="font-semibold">{selectedConn?.name}</span> — 01_NB_BronzeToSilver reads from it
+                        instead of SourceInformationSchema. You'll return here automatically once it's saved.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={onGoToAIMapping}
+                      disabled={!onGoToAIMapping}
+                      className="shrink-0 flex items-center gap-1.5 px-4 py-2 text-[11px] font-bold rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 transition-all"
+                    >
+                      Go to AI Mapping →
+                    </button>
+                  </div>
+                )
               )}
 
               <ArtifactGroupCard
@@ -796,7 +819,7 @@ const ArtifactGroupCard = ({
             <button
               type="button"
               onClick={() => setShowDetails((v) => !v)}
-              className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800"
+              className="text-[11px] font-bold text-teal-600 hover:text-teal-800"
             >
               {showDetails ? 'Hide details' : 'View details'}
             </button>
@@ -813,7 +836,7 @@ const ArtifactGroupCard = ({
           <button
             onClick={onCreate}
             disabled={loading || notebooksUploading || !notebooksExist}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-all"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 transition-all"
           >
             {notebooksUploading ? <><Loader2 size={12} className="animate-spin" /> Creating...</> : <><Upload size={12} /> Create</>}
           </button>
@@ -821,7 +844,7 @@ const ArtifactGroupCard = ({
           <button
             onClick={onDeploy}
             disabled={loading || pipelinesUploading || !pipelinesExist}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-all"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 transition-all"
           >
             {pipelinesUploading ? <><Loader2 size={12} className="animate-spin" /> Creating...</> : <><Upload size={12} /> Deploy</>}
           </button>
@@ -892,7 +915,7 @@ const ArtifactGroupCard = ({
                     <button
                       onClick={() => onRunPipeline(row.name)}
                       disabled={!row.fabricItemId}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-md bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                     >
                       <Play size={10} /> Run
                     </button>
@@ -1013,7 +1036,7 @@ const ItlSection = ({
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
       <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
         <div className="flex items-center gap-2">
-          <Workflow size={15} className="text-indigo-600" />
+          <Workflow size={15} className="text-emerald-600" />
           <h3 className="text-[13px] font-bold text-slate-700">ITL (Incremental Load)</h3>
         </div>
         {allItlDeployed && !fullyComplete && (
@@ -1029,7 +1052,7 @@ const ItlSection = ({
             <button
               type="button"
               onClick={() => setShowDetails((v) => !v)}
-              className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800"
+              className="text-[11px] font-bold text-emerald-600 hover:text-emerald-800"
             >
               {showDetails ? 'Hide details' : 'View details'}
             </button>
@@ -1042,7 +1065,7 @@ const ItlSection = ({
         {/* Step 1: Download Excel */}
         <div className="flex items-center gap-4">
           <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold ${
-            itlConfigDownloaded ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'
+            itlConfigDownloaded ? 'bg-emerald-100 text-emerald-700' : 'bg-emerald-100 text-emerald-700'
           }`}>1</div>
           <div className="flex-1">
             <p className="text-[12px] font-medium text-slate-700">Download ITL Config Excel</p>
@@ -1055,7 +1078,7 @@ const ItlSection = ({
               className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all ${
                 itlConfigDownloaded
                   ? 'bg-emerald-50 text-emerald-700'
-                  : 'bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50'
+                  : 'bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50'
               }`}
             >
               {itlConfigDownloaded ? (
@@ -1072,7 +1095,7 @@ const ItlSection = ({
                 type="button"
                 onClick={handleDownload}
                 disabled={loading || downloading}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
               >
                 <Download size={12} /> Re-download
               </button>
@@ -1083,7 +1106,7 @@ const ItlSection = ({
         {/* Step 2: Upload Filled Excel */}
         <div className="flex items-center gap-4">
           <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold ${
-            itlConfigUploaded ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'
+            itlConfigUploaded ? 'bg-emerald-100 text-emerald-700' : 'bg-emerald-100 text-emerald-700'
           }`}>2</div>
           <div className="flex-1">
             <p className="text-[12px] font-medium text-slate-700">Upload Filled Excel</p>
@@ -1103,7 +1126,7 @@ const ItlSection = ({
               className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all ${
                 itlConfigUploaded
                   ? 'bg-emerald-50 text-emerald-700'
-                  : 'bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50'
+                  : 'bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50'
               }`}
             >
               {itlConfigUploaded ? (
@@ -1120,7 +1143,7 @@ const ItlSection = ({
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={loading || uploading}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50`}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50`}
               >
                 <Upload size={12} /> Re-upload
               </button>
@@ -1131,7 +1154,7 @@ const ItlSection = ({
         {/* Step 3: Run ITL Notebook */}
         <div className="flex items-center gap-4">
           <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold ${
-            notebookRan ? 'bg-emerald-100 text-emerald-700' : notebookFailed ? 'bg-red-100 text-red-700' : itlConfigUploaded ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-400'
+            notebookRan ? 'bg-emerald-100 text-emerald-700' : notebookFailed ? 'bg-red-100 text-red-700' : itlConfigUploaded ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'
           }`}>3</div>
           <div className="flex-1">
             <p className="text-[12px] font-medium text-slate-700">Run ITL Notebook</p>
@@ -1154,7 +1177,7 @@ const ItlSection = ({
                   ? 'bg-red-50 text-red-700 hover:bg-red-100'
                   : !itlConfigUploaded
                   ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                  : 'bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50'
+                  : 'bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50'
               }`}
             >
               {notebookRan ? (
@@ -1179,7 +1202,7 @@ const ItlSection = ({
                   else toast.error('Failed to re-run ITL notebook');
                 }}
                 disabled={runningNotebook}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
               >
                 {runningNotebook ? <><Loader2 size={12} className="animate-spin" /> Running...</> : <><Play size={12} /> Re-run</>}
               </button>
@@ -1190,7 +1213,7 @@ const ItlSection = ({
         {/* Step 4: Deploy ITL Pipelines – auto-triggered after notebook */}
         <div className="flex items-center gap-4">
           <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold ${
-            allItlDeployed ? 'bg-emerald-100 text-emerald-700' : anyItlFailed ? 'bg-red-100 text-red-700' : notebookRan ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-400'
+            allItlDeployed ? 'bg-emerald-100 text-emerald-700' : anyItlFailed ? 'bg-red-100 text-red-700' : notebookRan ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'
           }`}>4</div>
           <div className="flex-1">
             <p className="text-[12px] font-medium text-slate-700">Deploy ITL Pipelines</p>
@@ -1229,14 +1252,14 @@ const ItlSection = ({
                   });
                 }}
                 disabled={deploying || loading}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
               >
                 {deploying ? <><Loader2 size={12} className="animate-spin" /> Redeploying...</> : <><Upload size={12} /> Redeploy</>}
               </button>
             </div>
           ) : (
             <span className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg ${
-              deploying ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-400'
+              deploying ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-400'
             }`}>
               {deploying ? (
                 <><Loader2 size={12} className="animate-spin" /> Deploying...</>
@@ -1251,7 +1274,7 @@ const ItlSection = ({
         {allItlDeployed && (
           <div className="flex items-center gap-4 mt-3">
             <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold ${
-              allItlPipelinesRan ? 'bg-emerald-100 text-emerald-700' : anyItlPipelineFailed ? 'bg-red-100 text-red-700' : 'bg-indigo-100 text-indigo-700'
+              allItlPipelinesRan ? 'bg-emerald-100 text-emerald-700' : anyItlPipelineFailed ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'
             }`}>5</div>
             <div className="flex-1">
               <p className="text-[12px] font-medium text-slate-700">Run Pipelines</p>
@@ -1273,7 +1296,7 @@ const ItlSection = ({
                   ? 'bg-red-50 text-red-700 hover:bg-red-100'
                   : allItlPipelinesRan
                   ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                  : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                  : 'bg-emerald-600 text-white hover:bg-emerald-700'
               }`}
             >
               {(runningPipelines || anyItlPipelineRunning) ? (

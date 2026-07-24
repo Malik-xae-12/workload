@@ -68,6 +68,139 @@
   animation: fabric-ring 1.6s ease-out infinite;
 }
 
+/* =============================================
+   ACCELERATOR MODE BACKGROUNDS
+   Soft, layered, translucent green-family gradients that sit behind the
+   setup wizard's main content. Both accelerators stay strictly green, but
+   Fabric leans warm forest-emerald while Finin leans cool teal, so a
+   glance at the backdrop alone hints at which mode is active — reinforced
+   by the mode-switch animation below.
+   ============================================= */
+.accel-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  transition: opacity 0.6s ease;
+}
+
+.accel-bg::before,
+.accel-bg::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  animation: accel-bg-drift 22s ease-in-out infinite;
+}
+
+.accel-bg--fabric {
+  background: linear-gradient(160deg, #f3faf6 0%, #eaf6f0 45%, #e8ecf1 100%);
+}
+.accel-bg--fabric::before {
+  width: 620px;
+  height: 620px;
+  top: -220px;
+  left: -160px;
+  background: radial-gradient(circle, rgba(29, 158, 117, 0.20), transparent 70%);
+}
+.accel-bg--fabric::after {
+  width: 520px;
+  height: 520px;
+  bottom: -200px;
+  right: -140px;
+  background: radial-gradient(circle, rgba(93, 212, 168, 0.18), transparent 70%);
+  animation-delay: -9s;
+}
+
+.accel-bg--finin {
+  background: linear-gradient(160deg, #f2fbfa 0%, #e9f7f5 45%, #e8ecf1 100%);
+}
+.accel-bg--finin::before {
+  width: 620px;
+  height: 620px;
+  top: -220px;
+  right: -160px;
+  background: radial-gradient(circle, rgba(20, 184, 166, 0.20), transparent 70%);
+}
+.accel-bg--finin::after {
+  width: 520px;
+  height: 520px;
+  bottom: -200px;
+  left: -140px;
+  background: radial-gradient(circle, rgba(15, 118, 110, 0.16), transparent 70%);
+  animation-delay: -9s;
+}
+
+@keyframes accel-bg-drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(30px, -20px) scale(1.08); }
+}
+
+/* Mode-switch transition — a quick radial wipe + pill toast so switching
+ * between Fabric and Finin reads as a deliberate mode change, not a
+ * jarring re-theme. */
+@keyframes mode-switch-wipe {
+  0% { opacity: 0; transform: scale(0.4); }
+  35% { opacity: 0.55; }
+  100% { opacity: 0; transform: scale(2.6); }
+}
+
+.mode-switch-flash {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mode-switch-flash::before {
+  content: '';
+  position: absolute;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--mode-flash-color, rgba(29,158,117,0.35)), transparent 70%);
+  animation: mode-switch-wipe 0.7s ease-out forwards;
+}
+
+@keyframes mode-pill-in {
+  0% { opacity: 0; transform: translate(-50%, -8px) scale(0.92); }
+  15% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  80% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -6px) scale(0.97); }
+}
+
+.mode-switch-pill {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  z-index: 41;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #FFFFFF;
+  letter-spacing: 0.01em;
+  box-shadow: 0 10px 30px -8px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.08) inset;
+  animation: mode-pill-in 1.5s ease forwards;
+  pointer-events: none;
+}
+
+.mode-switch-pill-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #FFFFFF;
+  box-shadow: 0 0 0 4px rgba(255,255,255,0.25);
+}
+
 /* Finin Accelerator financial theme — a contained, subtle wash + accent for
  * the setup wizard when running in Finin mode. Deliberately scoped under
  * .finin-theme so it never touches Fabric Accelerator's own styling. */

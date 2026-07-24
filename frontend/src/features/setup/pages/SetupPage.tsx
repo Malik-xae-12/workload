@@ -46,6 +46,11 @@ export const SetupPage = () => {
   const navigate = useNavigate();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [activeNav, setActiveNavRaw] = useState('fabric-accelerator');
+  // Brief visual confirmation when the user switches between the Fabric
+  // and Finin accelerators (not shown for in-mode nav like Dashboard),
+  // so the re-theme reads as an intentional mode change rather than a
+  // jarring color flicker.
+  const [modeSwitchFlash, setModeSwitchFlash] = useState<{ mode: AccelMode; key: number } | null>(null);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(() => loadPersistedActiveProject(modeOf('fabric-accelerator')).id);
   const [activeProjectName, setActiveProjectName] = useState<string>(() => loadPersistedActiveProject(modeOf('fabric-accelerator')).name);
   // Finin-only: the connection selected in Config when the user is sent to
@@ -53,6 +58,11 @@ export const SetupPage = () => {
   // we know where to send them back once the mapping is saved.
   const [aiMappingConnectionName, setAiMappingConnectionName] = useState<string | null>(null);
   const [aiMappingReturnNav, setAiMappingReturnNav] = useState<string>('finin-accelerator');
+  // True when the user reached AI Mapping via "View Mapping" for a
+  // connection that's already been mapped — Manual Mapping's Save is
+  // disabled in that case so a read-only revisit can't silently overwrite
+  // a mapping that Bronze/Silver may already be reading from.
+  const [aiMappingReadOnly, setAiMappingReadOnly] = useState(false);
   // Finin-only: connections whose mapping has already been saved to
   // SourceInformationSchemaMapped. Once a connection is in this set, the
   // "Go to AI Mapping" prompt in Config stays hidden for it — no need to
@@ -87,9 +97,18 @@ export const SetupPage = () => {
       const resume = loadPersistedActiveProject(toMode);
       setActiveProjectId(resume.id);
       setActiveProjectName(resume.name);
+      setModeSwitchFlash({ mode: toMode, key: Date.now() });
     }
     setActiveNavRaw(nextNav);
   };
+
+  // Clear the flash/pill after its animation finishes so it can re-trigger
+  // cleanly on the next switch.
+  useEffect(() => {
+    if (!modeSwitchFlash) return;
+    const timeout = setTimeout(() => setModeSwitchFlash(null), 1500);
+    return () => clearTimeout(timeout);
+  }, [modeSwitchFlash]);
 
   const {
     state,
@@ -349,8 +368,10 @@ export const SetupPage = () => {
               activeNav === 'finin-accelerator'
                 ? () => {
                     const conn = state.connections.find((c) => c.id === state.selectedConnection);
+                    const alreadyMapped = !!conn && mappedConnectionNames.has(conn.name);
                     setAiMappingConnectionName(conn?.name || null);
                     setAiMappingReturnNav(activeNav);
+                    setAiMappingReadOnly(alreadyMapped);
                     setActiveNav('ai-mapping');
                   }
                 : undefined
@@ -389,8 +410,35 @@ export const SetupPage = () => {
     }
   };
 
+  const currentMode = modeOf(activeNav);
+
   return (
     <div className="min-h-screen bg-[#e8ecf1] font-sans">
+      {/* Layered, softly animated backdrop — hue shifts between Fabric's
+       * warmer forest-green and Finin's cooler teal-green depending on
+       * mode, cross-fading rather than snapping. */}
+      <div className={`accel-bg accel-bg--fabric ${currentMode === 'fabric' ? 'opacity-100' : 'opacity-0'}`} />
+      <div className={`accel-bg accel-bg--finin ${currentMode === 'finin' ? 'opacity-100' : 'opacity-0'}`} />
+
+      {/* Mode-switch confirmation: quick radial flash + pill toast */}
+      {modeSwitchFlash && (
+        <>
+          <div
+            key={`flash-${modeSwitchFlash.key}`}
+            className="mode-switch-flash"
+            style={{ ['--mode-flash-color' as any]: modeSwitchFlash.mode === 'finin' ? 'rgba(20,184,166,0.35)' : 'rgba(29,158,117,0.35)' }}
+          />
+          <div
+            key={`pill-${modeSwitchFlash.key}`}
+            className="mode-switch-pill"
+            style={{ background: modeSwitchFlash.mode === 'finin' ? 'linear-gradient(135deg, #14b8a6, #0f766e)' : 'linear-gradient(135deg, #1D9E75, #0d6e52)' }}
+          >
+            <span className="mode-switch-pill-dot" />
+            Switched to {modeSwitchFlash.mode === 'finin' ? 'Finin Accelerator' : 'Fabric Accelerator'}
+          </div>
+        </>
+      )}
+
       {/* Sidebar */}
       <SidebarStepper
         currentStep={state.currentStep}
@@ -403,11 +451,11 @@ export const SetupPage = () => {
 
       {/* Main content area */}
       <div
-        className="min-h-screen flex flex-col transition-all duration-300"
+        className="min-h-screen flex flex-col transition-all duration-300 relative z-10"
         style={{ marginLeft: sidebarWidth }}
       >
         {/* Top bar */}
-        <header className="sticky top-0 z-10 bg-white/90 backdrop-blur-sm border-b border-slate-200/80">
+        <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-slate-200/80">
           <div className="flex items-center justify-between h-14 px-8">
             {/* Left: breadcrumb + nav arrows */}
             <div className="flex items-center gap-3">
@@ -499,7 +547,7 @@ export const SetupPage = () => {
                         onClick={handleNext}
                         disabled={state.currentStep >= 5 || state.loading}
                         className="flex-1 h-9 rounded-lg flex items-center justify-center gap-1.5 text-white transition-all disabled:opacity-40 shadow-sm text-[11px] font-bold"
-                        style={{ background: activeNav === 'finin-accelerator' ? 'linear-gradient(135deg, #4F46E5, #3730A3)' : 'linear-gradient(135deg, #1D9E75, #0d6e52)' }}
+                        style={{ background: activeNav === 'finin-accelerator' ? 'linear-gradient(135deg, #14b8a6, #0f766e)' : 'linear-gradient(135deg, #1D9E75, #0d6e52)' }}
                       >
                         Next
                         <ArrowRight size={14} strokeWidth={2} />
@@ -534,6 +582,7 @@ export const SetupPage = () => {
               connections={state.connections}
               projectId={activeProjectId}
               initialConnectionName={aiMappingConnectionName}
+              readOnly={aiMappingReadOnly}
               onMappingSaved={() => {
                 if (aiMappingConnectionName) {
                   setMappedConnectionNames((prev) => new Set(prev).add(aiMappingConnectionName));

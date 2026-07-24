@@ -51,7 +51,7 @@ interface Job {
   result: JobResult | null;
 }
 
-export function useMapping(projectId?: string | null, connectionName?: string | null) {
+export function useMapping(projectId?: string | null, connectionName?: string | null, readOnly?: boolean) {
   const [job, setJob] = useState<Job | null>(null);
   const [testing, setTesting] = useState(false);
   const [connectionOk, setConnectionOk] = useState<boolean | null>(null);
@@ -275,7 +275,7 @@ export function useMapping(projectId?: string | null, connectionName?: string | 
   // path and is easily lost (browser cleared, different device, backend
   // restarted since job_store is in-memory), but the saved warehouse rows
   // persist regardless.
-  const fetchSavedMapping = useCallback(async () => {
+  const fetchSavedMapping = useCallback(async (attempt = 1): Promise<boolean> => {
     if (!projectId || !connectionName) return false;
     try {
       const headers = await authHeaders();
@@ -294,6 +294,13 @@ export function useMapping(projectId?: string | null, connectionName?: string | 
       if (key) localStorage.setItem(key, data.job_id);
       return true;
     } catch {
+      // Transient network/auth hiccup — retry once before giving up, so a
+      // single dropped request doesn't strand a "View Mapping" revisit on
+      // the landing screen with no way to recover short of a full reload.
+      if (attempt < 2) {
+        await new Promise((r) => setTimeout(r, 800));
+        return fetchSavedMapping(attempt + 1);
+      }
       return false;
     }
   }, [projectId, connectionName]);
@@ -303,7 +310,32 @@ export function useMapping(projectId?: string | null, connectionName?: string | 
   // in-progress mapping look like it needed to start over.
   useEffect(() => {
     const key = jobStorageKey(projectId, connectionName);
+
+    // Switching connections (or projects) must never leave the previous
+    // connection's job/result on screen — clear immediately so the UI shows
+    // a loading state instead of stale data while we look up the new one.
+    // Without this, picking a connection with no saved mapping yet (or a
+    // slow/failed fetch) silently left the old connection's results visible.
+    stopPolling();
+    setJob(null);
+    setConnectionOk(null);
+    setConnectionMsg("");
+
     if (!key) return;
+
+    if (readOnly) {
+      // This connection is already mapped and saved — always load that
+      // authoritative saved-to-metadata result. Trusting a locally-cached
+      // job_id here was the bug: an old, abandoned re-run (e.g. the user
+      // hit "Run" again to compare results but never saved it, or
+      // navigated away mid-run) could leave a stale/partial job_id behind,
+      // which then got shown instead of the real saved mapping — hence
+      // "5% mapped" on revisit when the saved mapping was actually 65%.
+      localStorage.removeItem(key);
+      fetchSavedMapping();
+      return;
+    }
+
     const savedJobId = localStorage.getItem(key);
     if (!savedJobId) {
       // Nothing cached locally for this connection — it may still already
@@ -331,10 +363,11 @@ export function useMapping(projectId?: string | null, connectionName?: string | 
         /* backend unreachable right now — leave the key in place, try again next mount */
       }
     })();
-    // Only re-run when we're pointed at a different project/connection —
-    // pollJob/stopPolling are stable via useCallback.
+    // Only re-run when we're pointed at a different project/connection, or
+    // the read-only-ness of this visit changes — pollJob/stopPolling are
+    // stable via useCallback.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, connectionName]);
+  }, [projectId, connectionName, readOnly]);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -385,6 +418,7 @@ export function useMapping(projectId?: string | null, connectionName?: string | 
     applyOverrides,
     saveToMetadata,
     reset,
+    fetchSavedMapping,
     apiBase: API,
   };
 }

@@ -20,6 +20,22 @@ def _is_rate_limit_error(exc: Exception) -> bool:
     return "429" in msg or "rate limit" in msg or "too many requests" in msg
 
 
+def _is_retryable_error(exc: Exception) -> bool:
+    """Rate limits, plus transient timeouts/connection errors. Without this,
+    a stalled request (no timeout was ever set on the client, so a hung
+    connection could wait indefinitely) never got retried or surfaced — the
+    job just sat at "running" forever, which is what showed up as an AI
+    Mapping run that "keeps loading" (most likely with several tables in
+    flight, since more/larger calls raise the odds of one stalling)."""
+    if _is_rate_limit_error(exc):
+        return True
+    name = type(exc).__name__.lower()
+    if "timeout" in name or "connectionerror" in name or "apiconnection" in name:
+        return True
+    msg = str(exc).lower()
+    return "timed out" in msg or "timeout" in msg or "connection error" in msg
+
+
 def _extract_retry_after(exc: Exception) -> float | None:
     """Pull a server-suggested retry delay (seconds) out of an exception,
     if the SDK/HTTP layer exposed one."""
@@ -53,7 +69,7 @@ def invoke_with_retry(llm: AzureChatOpenAI, messages: list[BaseMessage]):
         try:
             return llm.invoke(messages)
         except Exception as e:
-            if not _is_rate_limit_error(e) or attempt >= max_retries:
+            if not _is_retryable_error(e) or attempt >= max_retries:
                 raise
 
             wait = _extract_retry_after(e)
@@ -90,6 +106,8 @@ def make_llm(model: str | None = None, temperature: float = 0.1) -> AzureChatOpe
         api_version=settings.AZURE_OPENAI_API_VERSION,
         temperature=temperature,
         max_tokens=4096,
+        timeout=60,
+        max_retries=0,  # invoke_with_retry() owns retry/backoff — don't double up
     )
 
 

@@ -20,23 +20,33 @@ interface Props {
   /** Called once the mapping has been saved to SourceInformationSchemaMapped,
    * so the Config step can pull the user back to finish Bronze/Silver. */
   onMappingSaved?: () => void;
+  /** True when the user arrived via "View Mapping" for a connection that's
+   * already been mapped. Manual Mapping's Save is disabled in this case so
+   * a revisit stays read-only instead of silently overwriting the saved
+   * mapping that Bronze/Silver may already be reading from. */
+  readOnly?: boolean;
 }
 
-export default function FininApp({ connections, projectId, initialConnectionName, onMappingSaved }: Props) {
+export default function FininApp({ connections, projectId, initialConnectionName, onMappingSaved, readOnly }: Props) {
   const [connectionName, setConnectionName] = useState(initialConnectionName || connections[0]?.name || "");
 
   const {
     job, testing, saving, saveProgress, connectionOk, connectionMsg,
     testConnection, testConnectionForProject, runMapping, runMappingForProject,
     getProjectConnectionInfo, downloadCsv, downloadXlsx, downloadColumnConfig,
-    applyOverrides, saveToMetadata, reset, apiBase,
-  } = useMapping(projectId, connectionName);
+    applyOverrides, saveToMetadata, reset, fetchSavedMapping, apiBase,
+  } = useMapping(projectId, connectionName, readOnly);
 
   const [showManual, setShowManual] = useState(false);
   const [projectClientId, setProjectClientId] = useState<string | null>(null);
   const [savedToMetadata, setSavedToMetadata] = useState(false);
   const [excelDownloaded, setExcelDownloaded] = useState(false);
   const [downloadingExcel, setDownloadingExcel] = useState(false);
+  // While arriving via "View Mapping" for an already-mapped connection, we
+  // load the saved result directly rather than testing the connection —
+  // this covers the gap where that fetch shows nothing and the screen
+  // otherwise looks stuck right after the (unrelated) connection test.
+  const [loadingSavedMapping, setLoadingSavedMapping] = useState(false);
 
   useEffect(() => {
     if (!projectId) { setProjectClientId(null); return; }
@@ -63,9 +73,22 @@ export default function FininApp({ connections, projectId, initialConnectionName
       setShowManual(false);
     }
     setConnectionName(initialConnectionName);
-    testConnectionForProject({ project_id: projectId, connection_name: initialConnectionName });
+    if (readOnly) {
+      // Already mapped — go straight for the saved result instead of
+      // testing the connection first. Testing-then-landing was the gap:
+      // if the save fetch below ever missed, the user was stuck looking at
+      // a "connection OK" landing screen with no mapping in sight.
+      setLoadingSavedMapping(true);
+    } else {
+      testConnectionForProject({ project_id: projectId, connection_name: initialConnectionName });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialConnectionName, projectId]);
+  }, [initialConnectionName, projectId, readOnly]);
+
+  // Clear the loading flag as soon as a job (saved or otherwise) shows up.
+  useEffect(() => {
+    if (job) setLoadingSavedMapping(false);
+  }, [job]);
 
   const isDone = job?.status === "done";
   const isActive = job && !isDone && job.status !== "error";
@@ -77,6 +100,7 @@ export default function FininApp({ connections, projectId, initialConnectionName
   }, []);
 
   const handleManualSave = async (overrides: Record<string, { source_table: string; source_column: string }>) => {
+    if (readOnly) { console.warn("[FininApp] Save blocked — viewing a saved mapping read-only."); return; }
     if (!job?.job_id) { setShowManual(false); return; }
     try {
       await applyOverrides(job.job_id, overrides);
@@ -141,12 +165,34 @@ export default function FininApp({ connections, projectId, initialConnectionName
               onSave={handleManualSave}
               onBack={() => setShowManual(false)}
               onDownloadXlsx={(f) => downloadXlsx(job.job_id, f)}
+              readOnly={readOnly}
             />
             <ChatPanel jobId={job.job_id} apiBase={apiBase} />
           </ErrorBoundary>
         )}
 
-        {!showManual && !job && (
+        {loadingSavedMapping && !job && (
+          <div className="running-view">
+            <h2>Loading Saved Mapping</h2>
+            <p className="results-sub">Fetching the previously saved mapping for <strong>{connectionName}</strong>…</p>
+            <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
+              <button
+                className="btn-ghost"
+                onClick={async () => {
+                  const found = await fetchSavedMapping();
+                  if (!found) setLoadingSavedMapping(false);
+                }}
+              >
+                Taking a while? Retry
+              </button>
+              <button className="btn-ghost" onClick={() => setLoadingSavedMapping(false)}>
+                Set up connection manually instead
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!showManual && !job && !loadingSavedMapping && (
           <div className="landing">
             <div className="landing-hero">
               <span className="eyebrow"><span className="eyebrow-dot" />AI-Powered Column Mapping</span>

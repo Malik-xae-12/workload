@@ -25,7 +25,7 @@
                     "source": {
                         "type": "DataWarehouseSource",
                         "sqlReaderQuery": {
-                            "value": "@concat(\n  'SELECT [Id],[SourceSchemaName],[SourceTableName],[BronzeSchemaName],[BronzeTableName],[SilverSchemaName],[SilverTableName],[SourceQuery],[IsActive],[LoadType] ',\n  'FROM [WH_MetaData].[Config_', pipeline().parameters.SchemaName, '].[OneTimeConfigETL] ',\n  'WHERE [IsActive] = 1'\n)\n",
+                            "value": "@concat(\n  'SELECT top 10 [Id],[SourceSchemaName],[SourceTableName],[BronzeSchemaName],[BronzeTableName],[SilverSchemaName],[SilverTableName],[SourceQuery],[IsActive],[LoadType] ',\n  'FROM [WH_MetaData].[Config_', pipeline().parameters.SchemaName, '].[OneTimeConfigETL] ',\n  'WHERE [IsActive] = 1'\n)\n",
                             "type": "Expression"
                         },
                         "queryTimeout": "02:00:00",

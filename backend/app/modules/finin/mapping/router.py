@@ -1,10 +1,13 @@
 """FastAPI routes for the mapping module."""
 
+import asyncio
 import uuid
 import io
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse
 import pandas as pd
+
+from app.db.session import get_async_session, async_session_maker
 
 from app.modules.finin.mapping.schema import DBCredentials, ProjectMappingRequest
 from app.modules.finin.mapping.service import (
@@ -24,16 +27,22 @@ from app.modules.finin.core.config import settings
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.users.models.user import User
-from app.db.session import get_async_session
 from app.modules.auth.service import fastapi_users
 
 router = APIRouter(tags=["mapping"])
 current_active_user = fastapi_users.current_user(active=True)
 
+# asyncio.create_task() doesn't keep its task alive on its own — without a
+# strong reference held somewhere, the task is eligible for garbage
+# collection mid-run, which can silently abandon a save-to-metadata job.
+# This set exists purely to hold that reference until each task finishes.
+_BACKGROUND_SAVE_TASKS: set[asyncio.Task] = set()
+
 
 def run_mapping(job_id: str, creds: DBCredentials):
     """Background task: execute the mapping graph."""
     try:
+        update_job(job_id, status="running", message="Starting semantic mapping…")
         initial_state: MappingState = {
             "creds": creds,
             "job_id": job_id,
@@ -142,6 +151,26 @@ async def _build_creds_from_project(body: ProjectMappingRequest, user: User, db:
         batch_size=body.batch_size,
         temperature=body.temperature,
     )
+
+
+@router.get("/api/saved-mapping/{project_id}/{connection_name}")
+async def saved_mapping(
+    project_id: str,
+    connection_name: str,
+    user: User = Depends(current_active_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    """If this connection already has a saved AI Mapping (ai_mapping_saved),
+    read it back from Config_<connection_name>.SourceInformationSchemaMapped
+    and return it in the same {job_id, result} shape as a live job, so the
+    AI Mapping page can show the existing summary directly instead of
+    forcing the user through the whole mapping process again."""
+    from app.modules.fabric.service import get_saved_finin_mapping_handler
+
+    saved = await get_saved_finin_mapping_handler(project_id, connection_name, user, db)
+    if not saved:
+        raise HTTPException(status_code=404, detail="No saved mapping found for this connection")
+    return saved
 
 
 @router.get("/api/project-connection-info/{project_id}")
@@ -421,9 +450,10 @@ async def save_to_metadata(
     user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_async_session),
 ):
-    """Persist this job's mapping results into
+    """Kick off persisting this job's mapping results into
     [Config_<connection_name>].[SourceInformationSchemaMapped] in the
-    project's Fabric metadata warehouse.
+    project's Fabric metadata warehouse, as a background job. Poll
+    /api/save-to-metadata-status/{save_job_id} for live percentage progress.
     """
     project_id = body.get("project_id")
     connection_name = body.get("connection_name")
@@ -456,14 +486,47 @@ async def save_to_metadata(
         for r in config_rows
     ]
 
-    # Delegate to the fabric module — it already knows how to reach this
-    # project's warehouse and open [Config_<connection_name>].
-    from app.modules.fabric.service import save_finin_mapping_handler
+    save_job_id = f"save_{job_id}_{uuid.uuid4().hex[:8]}"
+    create_job(save_job_id)
+    update_job(save_job_id, status="running", total=len(save_rows), progress=0, message="Starting save…")
 
-    inserted = await save_finin_mapping_handler(
-        project_id, connection_name, job_id, save_rows, user, db
-    )
-    return {"status": "success", "inserted": inserted, "table": "SourceInformationSchemaMapped"}
+    # Own DB session for the background task — the request-scoped `db`
+    # session gets torn down once this endpoint returns, so reusing it here
+    # would risk operating on a closed session once the background task
+    # actually runs.
+    async def _run_save():
+        async with async_session_maker() as bg_db:
+            try:
+                from app.modules.fabric.service import save_finin_mapping_handler
+
+                inserted = await save_finin_mapping_handler(
+                    project_id, connection_name, job_id, save_rows, user, bg_db,
+                    progress_job_id=save_job_id, full_result=job["result"],
+                )
+                update_job(save_job_id, status="done", progress=100, message="Save complete",
+                            result={"inserted": inserted, "table": "SourceInformationSchemaMapped"})
+            except Exception as e:
+                update_job(save_job_id, status="failed", message=str(e))
+
+    task = asyncio.create_task(_run_save())
+    _BACKGROUND_SAVE_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_SAVE_TASKS.discard)
+    return {"status": "started", "save_job_id": save_job_id, "total": len(save_rows)}
+
+
+@router.get("/api/save-to-metadata-status/{save_job_id}")
+async def save_to_metadata_status(save_job_id: str):
+    """Poll for live progress of a background save-to-metadata job."""
+    job = get_job(save_job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Save job not found")
+    return {
+        "status": job.get("status", "running"),
+        "progress": job.get("progress", 0),
+        "total": job.get("total", 0),
+        "message": job.get("message", ""),
+        "result": job.get("result"),
+    }
 
 
 @router.get("/api/template-rows")

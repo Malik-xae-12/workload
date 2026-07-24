@@ -80,7 +80,7 @@ export function ResultsTable({ rows, onDownload, onDownloadXlsx }: Props) {
         <div className="toolbar-right">
           <select value={tableFilter} onChange={(e) => { setTableFilter(e.target.value); setPage(1); }}>
             {tables.map((t) => (
-              <option key={t} value={t}>{t === "all" ? "All template tables" : t}</option>
+              <option key={t} value={t}>{t === "all" ? "All Tables" : t}</option>
             ))}
           </select>
           <input

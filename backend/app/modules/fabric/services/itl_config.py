@@ -167,23 +167,27 @@ def write_itl_config(client_id, client_secret, server, database, config_schema_n
         conn.close()
 
 
-def ensure_watermark_sp(client_id, client_secret, server, database, config_schema_name) -> None:
+def ensure_watermark_sp(client_id, client_secret, server, database, config_schema_name, app_mode: str = "fabric") -> None:
     """Standalone entry point: open a connection and create/update UpdateWaterMarkSP
-    inside the connection's own Config_<name> schema."""
+    inside the connection's own Config_<name> schema.
+
+    *app_mode* selects which medallion source layer the SP reads from:
+    'finin' reads from LH_Bronze, everything else reads from LH_Silver."""
     conn = _connect(client_id, client_secret, server, database)
     cursor = conn.cursor()
     try:
-        _ensure_watermark_sp(cursor, config_schema_name)
+        _ensure_watermark_sp(cursor, config_schema_name, app_mode)
         conn.commit()
     finally:
         cursor.close()
         conn.close()
 
 
-def _ensure_watermark_sp(cursor, config_schema_name: str) -> None:
+def _ensure_watermark_sp(cursor, config_schema_name: str, app_mode: str = "fabric") -> None:
     """Create/update UpdateWaterMarkSP inside the connection's own Config_<name>
     schema (not Log) — schema name is substituted dynamically, never hardcoded."""
     s = config_schema_name
+    lakehouse = "LH_Bronze" if app_mode == "finin" else "LH_Silver"
     cursor.execute(f"""
         CREATE OR ALTER PROCEDURE [{s}].[UpdateWaterMarkSP]
         AS
@@ -222,19 +226,19 @@ def _ensure_watermark_sp(cursor, config_schema_name: str) -> None:
                     IF @CreatedField IS NOT NULL AND @CreatedField <> '1' AND ISNULL(@UpdatedField, '') IN ('', '1')
                     BEGIN
                         SET @Sql = N'SELECT @NewCreatedValue = MAX(' + QUOTENAME(@CreatedField) + N')
-                                     FROM LH_Silver.' + QUOTENAME(@SilverSchemaName) + N'.' + QUOTENAME(@SilverTableName);
+                                     FROM {lakehouse}.' + QUOTENAME(@SilverSchemaName) + N'.' + QUOTENAME(@SilverTableName);
                         EXEC sp_executesql @Sql, N'@NewCreatedValue DATETIME2 OUTPUT', @NewCreatedValue OUTPUT;
                     END
                     ELSE IF @UpdatedField IS NOT NULL AND @UpdatedField <> '1' AND ISNULL(@CreatedField, '') IN ('', '1')
                     BEGIN
                         SET @Sql = N'SELECT @NewUpdatedValue = MAX(' + QUOTENAME(@UpdatedField) + N')
-                                     FROM LH_Silver.' + QUOTENAME(@SilverSchemaName) + N'.' + QUOTENAME(@SilverTableName);
+                                     FROM {lakehouse}.' + QUOTENAME(@SilverSchemaName) + N'.' + QUOTENAME(@SilverTableName);
                         EXEC sp_executesql @Sql, N'@NewUpdatedValue DATETIME2 OUTPUT', @NewUpdatedValue OUTPUT;
                     END
                     ELSE IF @CreatedField IS NOT NULL AND @CreatedField <> '1' AND @UpdatedField IS NOT NULL AND @UpdatedField <> '1'
                     BEGIN
                         SET @Sql = N'SELECT @NewCreatedValue = MAX(' + QUOTENAME(@CreatedField) + N'), @NewUpdatedValue = MAX(' + QUOTENAME(@UpdatedField) + N')
-                                     FROM LH_Silver.' + QUOTENAME(@SilverSchemaName) + N'.' + QUOTENAME(@SilverTableName);
+                                     FROM {lakehouse}.' + QUOTENAME(@SilverSchemaName) + N'.' + QUOTENAME(@SilverTableName);
                         EXEC sp_executesql @Sql, N'@NewCreatedValue DATETIME2 OUTPUT, @NewUpdatedValue DATETIME2 OUTPUT',
                             @NewCreatedValue OUTPUT, @NewUpdatedValue OUTPUT;
                     END

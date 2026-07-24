@@ -7,11 +7,14 @@ ALIGN_SYSTEM = (
 )
 
 ALIGN_USER = """Align each TEMPLATE TABLE to the single best SOURCE TABLE.
+Each table below is listed with a few of its column names as context —
+use these alongside the table name itself to judge the match, especially
+when table names alone are ambiguous.
 
-TEMPLATE TABLES:
+TEMPLATE TABLES (with sample columns):
 {tmpl_tables}
 
-SOURCE TABLES:
+SOURCE TABLES (with sample columns):
 {src_tables}
 
 Rules:

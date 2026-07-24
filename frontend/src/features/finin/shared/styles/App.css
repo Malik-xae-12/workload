@@ -7,19 +7,20 @@
      Accelerator's slate + forest-green + emerald palette)
      ============================================= */
 
-  /* Primary brand scale — indigo, not Fabric Accelerator's forest-green,
-     so the two apps read as distinct at a glance. Named --forest-* still,
-     since ~40 rules below reference these variables by name; only the
-     values change, so recoloring is a single edit instead of hunting
-     through the whole file (keeps this a "same style, different color"
-     change rather than a redesign). */
-  --forest-900: #1E1B4B;
-  --forest-800: #312E81;
-  --forest-700: #3730A3;
-  --forest-600: #4338CA;
-  --forest-500: #4F46E5;
-  --forest-100: #E0E7FF;
-  --forest-50:  #EEF2FF;
+  /* Primary brand scale — deep teal-green, a cooler sibling of Fabric
+     Accelerator's warmer forest-green so the two apps still read as
+     distinct at a glance while both staying firmly in the green family.
+     Named --forest-* still, since ~40 rules below reference these
+     variables by name; only the values change, so recoloring is a single
+     edit instead of hunting through the whole file (keeps this a
+     "same style, different shade" change rather than a redesign). */
+  --forest-900: #042f2e;
+  --forest-800: #115e59;
+  --forest-700: #0f766e;
+  --forest-600: #0d9488;
+  --forest-500: #14b8a6;
+  --forest-100: #ccfbf1;
+  --forest-50:  #f0fdfa;
 
   /* Emerald — secondary accent for positive/live signals (accelerator's
      standard Tailwind emerald scale, distinct from forest) */
@@ -54,7 +55,7 @@
 
   /* Primary CTA/Accent — derives from the brand scale above */
   --accent: var(--forest-500);
-  --accent-glow: rgba(79, 70, 229, 0.16);
+  --accent-glow: rgba(20, 184, 166, 0.18);
   --accent-hover: var(--forest-700);
 
   /* Status / score colors — forest for the brand-weighted scale,
@@ -268,7 +269,7 @@
    button that reads as "nothing's going on". */
 @keyframes finin-border-pulse {
   0%   { box-shadow: 0 0 0 0 var(--accent-glow), var(--shadow-md); border-color: var(--accent); }
-  50%  { box-shadow: 0 0 0 6px rgba(79, 70, 229, 0.10), var(--shadow-md); border-color: var(--forest-700); }
+  50%  { box-shadow: 0 0 0 6px rgba(20, 184, 166, 0.12), var(--shadow-md); border-color: var(--forest-700); }
   100% { box-shadow: 0 0 0 0 var(--accent-glow), var(--shadow-md); border-color: var(--accent); }
 }
 .finin-app .form-card.is-testing {
@@ -415,7 +416,6 @@
   padding: 16px 24px;
   display: flex;
   gap: 10px;
-  border-top: 1px solid var(--border);
 }
 
 .finin-app .btn-primary {
@@ -1088,6 +1088,28 @@
   border-radius: 20px;
 }
 
+.finin-app .mm-readonly-banner {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: rgba(244, 162, 97, 0.12);
+  border: 1px solid rgba(244, 162, 97, 0.35);
+  color: #9a5b2e;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 10px 16px;
+  border-radius: var(--radius-md, 10px);
+  margin-bottom: 14px;
+}
+
+.finin-app .mm-readonly-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #f4a261;
+  flex-shrink: 0;
+}
+
 /* Per-table stats / filter bar */
 .finin-app .mm-stats-bar {
   display: flex;
@@ -1136,6 +1158,21 @@
   text-align: center;
   color: var(--text-secondary);
   font-size: 13px;
+}
+
+.finin-app .mm-empty-filter-reset {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.finin-app .mm-empty-filter-reset:hover {
+  color: var(--accent-hover);
 }
 
 /* Card */
@@ -1409,6 +1446,34 @@
   color: var(--red);
 }
 
+.finin-app .mm-td-select {
+  white-space: normal;
+  min-width: 220px;
+}
+
+.finin-app .mm-td-select-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.finin-app .mm-td-select-row .mm-select {
+  flex: 1;
+}
+
+.finin-app .mm-clear-btn--inline {
+  align-self: center;
+  flex-shrink: 0;
+  background: var(--surface2);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1;
+}
+
 /* Bottom nav */
 .finin-app .mm-nav {
   display: flex;
@@ -1490,7 +1555,7 @@
   gap: 8px;
 }
 .finin-app .btn-save-excel:hover:not(:disabled) {
-  background: linear-gradient(135deg, var(--accent-hover) 0%, #312E81 100%);
+  background: linear-gradient(135deg, var(--accent-hover) 0%, var(--forest-900) 100%);
   transform: translateY(-1px);
   box-shadow: 0 4px 14px rgba(0,0,0,0.22);
 }
@@ -1675,7 +1740,7 @@
 /* ── Manual Mapping trigger ───────────────────────────────────────────── */
 .finin-app .btn-manual {
   background: var(--surface2);
-  border: 1px solid var(--border-light);
+  border: 1px solid var(--accent-glow);
   border-radius: var(--radius-sm);
   padding: 8px 14px;
   font-family: var(--font);

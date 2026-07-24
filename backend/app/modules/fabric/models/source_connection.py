@@ -1,6 +1,6 @@
 from uuid import uuid4
 
-from sqlalchemy import Column, Boolean, ForeignKey, String
+from sqlalchemy import Column, Boolean, ForeignKey, String, Text
 
 from app.db.base import Base
 from app.db.mixins import AuditMixin, SoftDeleteMixin
@@ -32,4 +32,15 @@ class SourceConnection(Base, AuditMixin, SoftDeleteMixin):
     # Mapping" prompt stays hidden across page reloads, not just for the
     # current browser session.
     ai_mapping_saved = Column(Boolean, default=False, nullable=False)
+    # The exact {stats, rows} the live mapping job produced, saved verbatim
+    # as JSON at save time. [Config_<n>].[SourceInformationSchemaMapped] in
+    # the warehouse only stores a *derived* subset (resolved template
+    # mappings + extra "extension" source columns, for the Bronze/Silver
+    # notebooks) — reconstructing match-rate stats from that subset double
+    # counts extension columns as "unmatched" and drops genuinely-unmatched
+    # template rows entirely, which is what made the AI Mapping summary
+    # show a wildly wrong percentage (e.g. 5% instead of 65%) on revisit.
+    # Reading this column back instead guarantees the "View Mapping" resume
+    # shows exactly what the original run computed.
+    ai_mapping_result_json = Column(Text, nullable=True)
     user_id = Column(String(36), ForeignKey("user.id"), nullable=False, index=True)

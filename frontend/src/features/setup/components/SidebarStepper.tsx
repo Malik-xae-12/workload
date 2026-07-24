@@ -129,9 +129,9 @@ export const SidebarStepper = ({
         {navItems.map(({ key, label, icon: Icon }) => {
           const isActive = activeNav === key;
           const isFinin = key === 'finin-accelerator' || key === 'ai-mapping';
-          const activeBg = isFinin ? 'rgba(79,70,229,0.18)' : 'rgba(29,158,117,0.15)';
-          const activeColor = isFinin ? '#a5a8f0' : '#5dd4a8';
-          const activeBar = isFinin ? '#4F46E5' : '#1D9E75';
+          const activeBg = isFinin ? 'rgba(20,184,166,0.18)' : 'rgba(29,158,117,0.15)';
+          const activeColor = isFinin ? '#5eead4' : '#5dd4a8';
+          const activeBar = isFinin ? '#14b8a6' : '#1D9E75';
           return (
             <button
               key={key}

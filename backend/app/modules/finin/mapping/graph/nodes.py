@@ -87,18 +87,36 @@ def node_align_tables(state: MappingState) -> dict:
 
     llm = make_llm(temperature=creds.temperature)
 
+    def _with_sample_cols(name: str, cols: list[str]) -> str:
+        sample = ", ".join(cols[:6])
+        return f"- {name} ({sample})" if sample else f"- {name}"
+
+    template_by_table = state["template_by_table"]
+    source_by_table = state["source_by_table"]
     user_msg = ALIGN_USER.format(
-        tmpl_tables="\n".join(f"- {t}" for t in sorted(state["template_by_table"])),
-        src_tables="\n".join(f"- {t}" for t in sorted(state["source_by_table"])),
+        tmpl_tables="\n".join(
+            _with_sample_cols(t, template_by_table[t]) for t in sorted(template_by_table)
+        ),
+        src_tables="\n".join(
+            _with_sample_cols(t, [r["column"] for r in source_by_table[t]])
+            for t in sorted(source_by_table)
+        ),
     )
 
-    response = invoke_with_retry(llm, [
-        SystemMessage(content=ALIGN_SYSTEM),
-        HumanMessage(content=user_msg),
-    ])
-
-    parsed = parse_json_safe(response.content)
-    table_map = parsed.get("table_map", {}) if isinstance(parsed, dict) else {}
+    try:
+        response = invoke_with_retry(llm, [
+            SystemMessage(content=ALIGN_SYSTEM),
+            HumanMessage(content=user_msg),
+        ])
+        parsed = parse_json_safe(response.content)
+        table_map = parsed.get("table_map", {}) if isinstance(parsed, dict) else {}
+    except Exception as e:
+        # A malformed/unparseable Stage-1 response used to crash the whole
+        # job (job stuck on "error" with no useful message, or looking like
+        # it hung). Degrade instead: every template table falls through to
+        # Stage 2's own no-match fallback rather than losing the run.
+        print(f"⚠️ Table alignment failed, falling back to NO_MATCH for all tables: {e}")
+        table_map = {}
 
     print(f"📋 Table alignment:\n{table_map}")
     set_progress(job_id, f"Table alignment done — {len(table_map)} tables mapped.")
@@ -113,8 +131,17 @@ def _map_one_table(
     aligned_src_tbl: str,
     source_by_table: dict,
     source_records: list,
+    reserved_tables: set[str] | None = None,
 ) -> list[dict]:
-    """Call LLM for a single template table. Returns list of raw LLM rows."""
+    """Call LLM for a single template table. Returns list of raw LLM rows.
+
+    *reserved_tables*: source tables Stage 1 already assigned to a
+    *different* template table. Excluded from the fallback candidate pool so
+    a table with no alignment of its own can't cross-match columns that
+    rightfully belong elsewhere — this is what let the fallback produce
+    "completely irrelevant" matches once there were 3+ source tables and
+    Stage 1 (which only ever sees table names, not columns) missed one.
+    """
     if aligned_src_tbl != "NO_MATCH" and aligned_src_tbl in source_by_table:
         src_cols_text = "\n".join(
             f"- {s['column']}" + (f" ({s['datatype']})" if s.get("datatype") else "")
@@ -127,9 +154,11 @@ def _map_one_table(
             src_cols=src_cols_text,
         )
     else:
+        reserved = reserved_tables or set()
+        candidate_records = [s for s in source_records if s["table"] not in reserved] or source_records
         src_cols_text = "\n".join(
             f"- {s['table']}.{s['column']}" + (f" ({s['datatype']})" if s.get("datatype") else "")
-            for s in source_records
+            for s in candidate_records
         )
         user_msg = COL_USER_FALLBACK.format(
             tmpl_table=tmpl_table,
@@ -163,8 +192,14 @@ def node_map_columns(state: MappingState) -> dict:
     processed = 0
 
     table_items = list(template_by_table.items())
+    # Every source table Stage 1 confidently claimed for *some* template
+    # table — used to keep the no-match fallback from stealing columns that
+    # belong to a different, already-aligned table (see _map_one_table).
+    all_aligned_tables = {t for t in table_map.values() if t and t != "NO_MATCH"}
+
     for idx, (tmpl_table, tmpl_cols) in enumerate(table_items):
         aligned = table_map.get(tmpl_table, "NO_MATCH")
+        reserved_tables = all_aligned_tables - {aligned}
         set_progress(
             job_id,
             f"Stage 2 — mapping '{tmpl_table}' → '{aligned}' ({processed}/{state.get('total', 0)})",
@@ -180,7 +215,8 @@ def node_map_columns(state: MappingState) -> dict:
 
         try:
             llm_rows = _map_one_table(
-                llm, tmpl_table, tmpl_cols, aligned, source_by_table, source_records
+                llm, tmpl_table, tmpl_cols, aligned, source_by_table, source_records,
+                reserved_tables=reserved_tables,
             )
         except Exception as e:
             print(f"⚠️ Column mapping failed for '{tmpl_table}': {e}")

@@ -139,6 +139,34 @@ def create_log_objects(
             )
         )
 
+        # Table: ETLBatchGoldLogDetails
+        messages.append(
+            _execute_if_not_exists(
+                cursor,
+                "TABLE: Log.ETLBatchGoldLogDetails",
+                """
+                SELECT COUNT(*) FROM sys.tables t
+                JOIN sys.schemas s ON t.schema_id = s.schema_id
+                WHERE s.name = 'Log' AND t.name = 'ETLBatchGoldLogDetails'
+                """,
+                """
+                CREATE TABLE Log.ETLBatchGoldLogDetails
+                (
+                    BatchId                 INT,
+                    TableName               VARCHAR(255),
+                    TableId                 INT,
+                    SchemaName              VARCHAR(255),
+                    ExtractedRowCount       BIGINT,
+                    StartTime               DATETIME2(6),
+                    EndTime                 DATETIME2(6),
+                    Status                  VARCHAR(255),
+                    ErrorMessage            VARCHAR(8000),
+                    SourceName              VARCHAR(255)
+                )
+                """,
+            )
+        )
+
         # Procedure: SP_ETLBatchHeader
         messages.append(
             _execute_if_not_exists(
@@ -239,6 +267,41 @@ def create_log_objects(
                 AS
                 BEGIN
                     INSERT INTO Log.ETLBatchBronzeDetails
+                    (BatchId, TableName, SchemaName, ExtractedRowCount,
+                     StartTime, EndTime, Status, ErrorMessage, SourceName, TableId)
+                    VALUES
+                    (@BatchId, @TableName, @SchemaName, @ExtractedRowCount,
+                     @StartTime, @EndTime, @Status, @ErrorMessage, @SourceName, @TableId);
+                END
+                """,
+            )
+        )
+
+        # Procedure: SP_ETLBatchGoldLogDetails
+        messages.append(
+            _execute_if_not_exists(
+                cursor,
+                "PROCEDURE: Log.SP_ETLBatchGoldLogDetails",
+                """
+                SELECT COUNT(*) FROM sys.procedures p
+                JOIN sys.schemas s ON p.schema_id = s.schema_id
+                WHERE s.name = 'Log' AND p.name = 'SP_ETLBatchGoldLogDetails'
+                """,
+                """
+                CREATE PROCEDURE Log.SP_ETLBatchGoldLogDetails
+                    @BatchId                INT,
+                    @TableName              VARCHAR(255),
+                    @TableId                INT,
+                    @SchemaName             VARCHAR(255),
+                    @ExtractedRowCount      BIGINT          = NULL,
+                    @StartTime              DATETIME2(6)    = NULL,
+                    @EndTime                DATETIME2(6)    = NULL,
+                    @Status                 VARCHAR(255)    = NULL,
+                    @ErrorMessage           VARCHAR(8000)   = NULL,
+                    @SourceName             VARCHAR(255)
+                AS
+                BEGIN
+                    INSERT INTO Log.ETLBatchGoldLogDetails
                     (BatchId, TableName, SchemaName, ExtractedRowCount,
                      StartTime, EndTime, Status, ErrorMessage, SourceName, TableId)
                     VALUES

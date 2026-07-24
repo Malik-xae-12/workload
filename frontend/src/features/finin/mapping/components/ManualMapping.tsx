@@ -7,6 +7,11 @@ interface Props {
   onSave: (overrides: Record<string, { source_table: string; source_column: string }>) => void;
   onBack: () => void;
   onDownloadXlsx?: (filter: "all" | "matched" | "unmatched") => void;
+  /** True when this is a revisit of an already-saved mapping (reached via
+   * Config's "View Mapping" button). Save is disabled so a read-only
+   * revisit can't silently overwrite the mapping Bronze/Silver may already
+   * be reading from. */
+  readOnly?: boolean;
 }
 
 export default function ManualMapping({
@@ -15,6 +20,7 @@ export default function ManualMapping({
   onSave,
   onBack,
   onDownloadXlsx,
+  readOnly,
 }: Props) {
   const [overrides, setOverrides] = useState<
     Record<string, { source_table: string; source_column: string }>
@@ -22,6 +28,7 @@ export default function ManualMapping({
   const [tableIndex, setTableIndex] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const [savedDone, setSavedDone] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<"all" | "matched" | "unmatched">("all");
 
   // DEFENSIVE: Log props on every render
   console.log("[ManualMapping] render — rows.length:", rows?.length, "showManual active");
@@ -95,6 +102,7 @@ export default function ManualMapping({
     console.log("[ManualMapping] goToPage called:", index);
     if (totalTables === 0) return;
     setTableIndex(Math.min(Math.max(index, 0), totalTables - 1));
+    setStatusFilter("all");
   }, [totalTables]);
 
   const rowKey = useCallback((row: MappingRow) => {
@@ -113,6 +121,13 @@ export default function ManualMapping({
       return undefined;
     }
   }, [overrides, rowKey]);
+
+  // A manual override always counts as "matched" for filtering purposes,
+  // even if the row's original auto-match status was unmatched.
+  const isRowMatched = useCallback((row: MappingRow) => {
+    if (getOverride(row)) return true;
+    return row.status === "matched" && row.mapped_source_column !== "NO_MATCH";
+  }, [getOverride]);
 
   const setTable = useCallback((row: MappingRow, table: string) => {
     console.log("[ManualMapping] setTable called:", table);
@@ -186,6 +201,13 @@ export default function ManualMapping({
 
   const [tableName, tableRows] = currentGroup;
 
+  const matchedCount = tableRows.filter((r) => isRowMatched(r)).length;
+  const unmatchedCount = tableRows.length - matchedCount;
+  const visibleRows = tableRows.filter((r) => {
+    if (statusFilter === "all") return true;
+    return statusFilter === "matched" ? isRowMatched(r) : !isRowMatched(r);
+  });
+
   return (
     <div className="mm-wrap">
       <div className="mm-page-header">
@@ -203,131 +225,169 @@ export default function ManualMapping({
         </div>
       </div>
 
+      {readOnly && (
+        <div className="mm-readonly-banner">
+          <span className="mm-readonly-dot" />
+          Viewing a saved mapping — this connection is already mapped, so Save is disabled here.
+        </div>
+      )}
+
       <div className="mm-card">
-        <div className="mm-card-header">
-          <div className="mm-col-label">
-            <span className="mm-table-badge">{tableName}</span>
-            <span className="mm-col-head">Template Column</span>
-          </div>
-          <div className="mm-col-label">
-            <span className="mm-col-head">Mapped Source Column</span>
-          </div>
+        <div className="mm-stats-bar" style={{ padding: "12px 24px", borderBottom: "1px solid var(--border)" }} role="group" aria-label="Filter by mapping status">
+          <button
+            type="button"
+            className={`mm-stat-tab ${statusFilter === "all" ? "active" : ""}`}
+            onClick={() => setStatusFilter("all")}
+          >
+            All
+            <span className="mm-stat-count">{tableRows.length}</span>
+          </button>
+          <button
+            type="button"
+            className={`mm-stat-tab ${statusFilter === "matched" ? "active" : ""}`}
+            onClick={() => setStatusFilter("matched")}
+          >
+            Matched
+            <span className="mm-stat-count">{matchedCount}</span>
+          </button>
+          <button
+            type="button"
+            className={`mm-stat-tab ${statusFilter === "unmatched" ? "active" : ""}`}
+            onClick={() => setStatusFilter("unmatched")}
+          >
+            Unmatched
+            <span className="mm-stat-count">{unmatchedCount}</span>
+          </button>
         </div>
 
-        <div className="mm-rows">
-          {tableRows.map((row, idx) => {
-            if (!row || typeof row !== "object") {
-              console.error(`[ManualMapping] Invalid row at index ${idx}:`, row);
-              return null;
-            }
+        {visibleRows.length === 0 ? (
+          <div className="mm-empty-filter">
+            No {statusFilter} columns in <strong>{tableName}</strong>.{" "}
+            <button className="mm-empty-filter-reset" onClick={() => setStatusFilter("all")}>
+              Show all
+            </button>
+          </div>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Status</th>
+                  <th>Template Table</th>
+                  <th>Template Column</th>
+                  <th>Source Table</th>
+                  <th>Source Column</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleRows.map((row, idx) => {
+                  if (!row || typeof row !== "object") {
+                    console.error(`[ManualMapping] Invalid row at index ${idx}:`, row);
+                    return null;
+                  }
 
-            let ov;
-            try {
-              ov = getOverride(row);
-            } catch (e) {
-              console.error("[ManualMapping] getOverride failed in render:", e);
-              ov = undefined;
-            }
+                  let ov;
+                  try {
+                    ov = getOverride(row);
+                  } catch (e) {
+                    console.error("[ManualMapping] getOverride failed in render:", e);
+                    ov = undefined;
+                  }
 
-            const selectedTable = ov?.source_table ?? "";
-            const selectedCol = ov?.source_column ?? "";
-            const colOptions = selectedTable ? (sourceOptions[selectedTable] ?? []) : [];
-            const safeCol = selectedCol && colOptions.includes(selectedCol) ? selectedCol : "";
+                  // Auto-matched rows start the dropdowns pre-filled with
+                  // their current match (instead of a blank "Select…"), so
+                  // the table always shows what's actually mapped right now
+                  // — an override only replaces that starting point.
+                  const autoTable =
+                    row.status === "matched" && row.mapped_source_table !== "NO_MATCH"
+                      ? row.mapped_source_table
+                      : "";
+                  const autoCol =
+                    row.status === "matched" && row.mapped_source_column !== "NO_MATCH"
+                      ? row.mapped_source_column
+                      : "";
 
-            const autoMatch =
-              row.status === "matched" && row.mapped_source_column !== "NO_MATCH"
-                ? `${row.mapped_source_table}.${row.mapped_source_column}`
-                : null;
+                  const selectedTable = ov?.source_table ?? autoTable;
+                  const selectedCol = ov?.source_column ?? autoCol;
+                  const colOptions = selectedTable ? (sourceOptions[selectedTable] ?? []) : [];
+                  const safeCol = selectedCol && colOptions.includes(selectedCol) ? selectedCol : "";
 
-            const isOverridden = !!ov;
-            const isUnmatched = row.status === "unmatched" && !ov;
+                  const isOverridden = !!ov;
+                  const matched = isRowMatched(row);
 
-            return (
-              <div
-                key={`${row.template_table ?? "t"}-${row.template_column ?? "c"}-${idx}`}
-                className={[
-                  "mm-row",
-                  isOverridden ? "mm-row--overridden" : "",
-                  isUnmatched ? "mm-row--unmatched" : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-              >
-                <div className="mm-cell mm-cell--template">
-                  <span className="mm-col-name">{row.template_column ?? "—"}</span>
-                  {isOverridden ? (
-                    <span className="mm-score-chip mm-score-chip--manual">manual</span>
-                  ) : row.status === "matched" ? (
-                    <span className="mm-score-chip mm-score-chip--auto">
-                      auto · {row.mapping_score ?? "—"}
-                    </span>
-                  ) : (
-                    <span className="mm-score-chip mm-score-chip--none">unmatched</span>
-                  )}
-                </div>
-
-                <div className="mm-cell mm-cell--source">
-                  {!isOverridden && autoMatch && (
-                    <div className="mm-auto-hint">{autoMatch}</div>
-                  )}
-                  {isOverridden && selectedTable && safeCol && (
-                    <div className="mm-auto-hint mm-override-hint">
-                      {selectedTable}.{safeCol}
-                    </div>
-                  )}
-
-                  <select
-                    className="mm-select"
-                    value={selectedTable}
-                    onChange={(e) => {
-                      console.log("[ManualMapping] table select onChange:", e.target.value);
-                      setTable(row, e.target.value);
-                    }}
-                  >
-                    <option value="">
-                      {autoMatch ? "Override source table…" : "Select source table…"}
-                    </option>
-                    {sourceTables.map((table) => (
-                      <option key={`tbl-${table}`} value={table}>
-                        {table}
-                      </option>
-                    ))}
-                  </select>
-
-                  <select
-                    key={`col-${selectedTable}-${rowKey(row)}`}
-                    className="mm-select"
-                    value={safeCol}
-                    disabled={!selectedTable}
-                    onChange={(e) => {
-                      console.log("[ManualMapping] column select onChange:", e.target.value);
-                      setColumn(row, e.target.value);
-                    }}
-                  >
-                    <option value="">
-                      {selectedTable ? "Select source column…" : "Select table first…"}
-                    </option>
-                    {colOptions.map((column) => (
-                      <option key={`opt-${column}`} value={column}>
-                        {column}
-                      </option>
-                    ))}
-                  </select>
-
-                  {isOverridden && (
-                    <button
-                      className="mm-clear-btn"
-                      onClick={() => clearOverride(row)}
-                      title="Clear override"
+                  return (
+                    <tr
+                      key={`${row.template_table ?? "t"}-${row.template_column ?? "c"}-${idx}`}
+                      className={isOverridden ? "mm-row--overridden" : matched ? "" : "mm-row--unmatched"}
                     >
-                      ✕ clear
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+                      <td>
+                        <span className={`status-pill ${matched ? "matched" : "unmatched"}`}>
+                          {matched ? "✓ Matched" : "✗ No Match"}
+                        </span>
+                        {isOverridden && (
+                          <span className="mm-score-chip mm-score-chip--manual" style={{ marginLeft: 6 }}>
+                            manual
+                          </span>
+                        )}
+                      </td>
+                      <td className="mono dim">{row.template_table ?? "—"}</td>
+                      <td className="mono">{row.template_column ?? "—"}</td>
+                      <td className="mm-td-select">
+                        <select
+                          className="mm-select"
+                          value={selectedTable}
+                          onChange={(e) => {
+                            console.log("[ManualMapping] table select onChange:", e.target.value);
+                            setTable(row, e.target.value);
+                          }}
+                        >
+                          <option value="">Select source table…</option>
+                          {sourceTables.map((table) => (
+                            <option key={`tbl-${table}`} value={table}>
+                              {table}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="mm-td-select">
+                        <div className="mm-td-select-row">
+                          <select
+                            key={`col-${selectedTable}-${rowKey(row)}`}
+                            className="mm-select"
+                            value={safeCol}
+                            disabled={!selectedTable}
+                            onChange={(e) => {
+                              console.log("[ManualMapping] column select onChange:", e.target.value);
+                              setColumn(row, e.target.value);
+                            }}
+                          >
+                            <option value="">
+                              {selectedTable ? "Select source column…" : "Select table first…"}
+                            </option>
+                            {colOptions.map((column) => (
+                              <option key={`opt-${column}`} value={column}>
+                                {column}
+                              </option>
+                            ))}
+                          </select>
+                          {isOverridden && (
+                            <button
+                              className="mm-clear-btn mm-clear-btn--inline"
+                              onClick={() => clearOverride(row)}
+                              title="Clear override"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <div className="mm-nav">
@@ -361,7 +421,8 @@ export default function ManualMapping({
           <>
             <button
               className="btn-secondary mm-nav-btn"
-              disabled={overrideCount === 0}
+              disabled={overrideCount === 0 || readOnly}
+              title={readOnly ? "Save is disabled — viewing a saved mapping" : undefined}
               onClick={() => {
                 console.log("[ManualMapping] Save clicked");
                 onSave(overrides);
@@ -384,7 +445,8 @@ export default function ManualMapping({
           // Last page — show Save & Download Excel
           <button
             className={`btn-save-excel mm-nav-btn${isSaving ? " mm-saving" : ""}${savedDone ? " mm-saved" : ""}`}
-            disabled={isSaving}
+            disabled={isSaving || readOnly}
+            title={readOnly ? "Save is disabled — viewing a saved mapping" : undefined}
             onClick={async () => {
               console.log("[ManualMapping] Save & Download Excel clicked");
               setIsSaving(true);

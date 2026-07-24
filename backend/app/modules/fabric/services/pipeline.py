@@ -211,6 +211,63 @@ def get_pipeline_job_status(
     return {"status": "in_progress", "job_id": job_id}
  
  
+def get_latest_item_job_status(
+    token: str,
+    workspace_id: str,
+    pipeline_item_id: str,
+) -> dict:
+    """Look up the most recent job instance for a pipeline item, regardless of
+    who triggered it.
+
+    Some pipelines (e.g. child pipelines invoked internally by an "Invoke
+    Pipeline" activity inside a parent/master pipeline) never get run
+    directly by our own run_fabric_pipeline() call, so we never capture a
+    job_id for them via get_pipeline_job_status(). Fabric still records a
+    job instance for them though (triggered by the parent), so we list the
+    item's recent job instances and report the status of the latest one.
+    This lets the UI reflect an inner/child pipeline as "completed" as soon
+    as Fabric says so, instead of only ever showing it as pending/running
+    until the outer parent pipeline itself finishes.
+    """
+    url = f"{FABRIC_API_BASE}/workspaces/{workspace_id}/items/{pipeline_item_id}/jobs/instances"
+    resp = httpx.get(
+        url,
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=_TIMEOUT,
+    )
+    if resp.status_code != 200:
+        logger.warning(
+            "Latest job instance lookup failed for item %s (%s): %s",
+            pipeline_item_id, resp.status_code, resp.text,
+        )
+        return {"status": "unknown"}
+
+    instances = resp.json().get("value") or []
+    if not instances:
+        # No job instance recorded yet — the parent hasn't reached this
+        # child activity yet, so treat it as still pending, not failed.
+        return {"status": "not-started"}
+
+    # The API doesn't document a guaranteed ordering (and doesn't support a
+    # `top`/sort query param), so sort by start time ourselves rather than
+    # trusting element [0] to be the latest — getting this wrong silently
+    # locks the UI onto a stale instance's status forever.
+    def _start_key(inst: dict) -> str:
+        return inst.get("startTimeUtc") or inst.get("submittedTimeUtc") or ""
+
+    latest = max(instances, key=_start_key)
+    job_id = latest.get("id")
+    status = (latest.get("status") or "").lower()
+    if status == "completed":
+        return {"status": "completed", "job_id": job_id}
+    if status in ("failed", "error", "cancelled"):
+        fail_error = latest.get("failureReason") or latest.get("error", {})
+        return {"status": status, "job_id": job_id, "error": str(fail_error) if fail_error else None}
+    if status in ("notstarted", "not_started", ""):
+        return {"status": "not-started", "job_id": job_id}
+    return {"status": "in_progress", "job_id": job_id}
+
+
 def list_local_pipelines(directory: str | None = None) -> list[dict]:
     """Return metadata for every .json pipeline file. Uses module-level cache for speed."""
     global _pipelines_cache
@@ -549,6 +606,15 @@ def build_replacements(
     replacements.update(_ITL_STORED_PROCS)
     replacements["Replace_MetaData_Workspace_Id"] = workspace_id
     replacements["Replace_Source_Type"] = _SOURCE_TYPE_MAP.get(db_type, "SqlServerSource")
+
+    # Mailbox the MailTrigger pipeline sends notifications from via Microsoft
+    # Graph app-only auth (see auth.get_graph_token / send_mail_via_graph).
+    # Same value for every project/connection -- one tenant-wide mailbox, no
+    # per-project interactive Office365 sign-in required.
+    import os
+    replacements["Replace_Notification_Sender_UPN"] = (
+        os.environ.get("NOTIFICATION_SENDER_UPN") or ""
+    )
  
     _CRITICAL_KEYS = [
         "Replace_Workspace_Id",
@@ -654,6 +720,20 @@ def _upload_single_pipeline(
         payload["folderId"] = folder_id
  
     logger.info("Uploading pipeline '%s' to workspace %s (folder=%s)", pipeline_name, workspace_id, folder_id)
+
+    # Guard against duplicate deploys: Fabric does not reliably reject a
+    # second item with the same displayName (it doesn't enforce name
+    # uniqueness the way the 409 branch below assumes), so a retried or
+    # double-fired deploy call would otherwise create a second DataPipeline
+    # item with an identical name instead of updating the first one. Check
+    # up front and update in place if it already exists.
+    preexisting = _find_pipeline_by_name(token, workspace_id, pipeline_name)
+    if preexisting:
+        logger.info("Pipeline '%s' already exists (id=%s) – updating definition instead of re-creating", pipeline_name, preexisting.get("id"))
+        updated = _update_pipeline_definition(token, workspace_id, preexisting["id"], definition_body)
+        if updated:
+            return preexisting
+
     resp = httpx.post(url, headers=_headers(token), json=payload, timeout=_TIMEOUT)
     print(f"[FABRIC API] Upload pipeline '{pipeline_name}' -> status {resp.status_code}")
     if resp.status_code not in (200, 201, 202, 409):

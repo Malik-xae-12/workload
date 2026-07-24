@@ -362,6 +362,23 @@ async def get_pipeline_job_status(
     )
 
 
+@router.get(
+    "/projects/{project_id}/pipelines/{pipeline_item_id}/latest-status",
+)
+async def get_latest_item_job_status(
+    project_id: str,
+    pipeline_item_id: str,
+    user: User = Depends(current_active_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Latest job instance status for an item, regardless of who triggered
+    it — used to poll child pipelines invoked internally by a parent/master
+    pipeline (we never have a job_id for those ourselves)."""
+    return await svc.get_latest_item_job_status_handler(
+        project_id, pipeline_item_id, user, db
+    )
+
+
 @router.patch(
     "/projects/{project_id}/upload-status",
     response_model=ConfigUploadRead,

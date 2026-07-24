@@ -3,6 +3,7 @@
 Orchestrates repository calls and external Fabric API service calls.
 """
  
+import asyncio
 import logging
  
 import httpx
@@ -35,6 +36,7 @@ from app.modules.fabric.services.metadata import setup_metadata_layer
 from app.modules.fabric.services.pipeline import (
     build_replacements,
     get_pipeline_job_status,
+    get_latest_item_job_status,
     list_local_pipelines,
     list_workspace_pipelines,
     run_fabric_pipeline,
@@ -45,13 +47,30 @@ from app.modules.fabric.services.itl_config import read_otl_config, generate_itl
 from app.modules.fabric.services.notebook import list_local_notebooks, upload_notebooks, upload_itl_notebooks
 from app.modules.fabric.services.workspace import provision_workspace
 from app.modules.fabric.services.mapping_metadata import save_mapping_rows as _save_mapping_rows
+from app.modules.fabric.services.mapping_metadata import read_latest_saved_mapping as _read_latest_saved_mapping
 from app.core.config import settings
  
 logger = logging.getLogger(__name__)
+
+# Serializes concurrent pipeline-deploy calls for the same project+connection.
+# Without this, two overlapping deploy requests (e.g. the frontend's
+# auto-deploy-after-notebook-create effect firing at nearly the same moment
+# as a manual retry/click) can both pass the "does this pipeline already
+# exist?" check before either has actually created it, and each independently
+# create a duplicate DataPipeline item in Fabric.
+_deploy_locks: dict[str, asyncio.Lock] = {}
+
+
+def _get_deploy_lock(project_id: str, connection_name: str) -> asyncio.Lock:
+    key = f"{project_id}:{connection_name}"
+    lock = _deploy_locks.get(key)
+    if lock is None:
+        lock = asyncio.Lock()
+        _deploy_locks[key] = lock
+    return lock
  
  
 # ── Helpers ──────────────────────────────────────────────────────────
- 
  
 async def _require_project(project_id: str, user: User, db: AsyncSession):
     project = await repo.get_project(db, project_id, str(user.id))
@@ -557,17 +576,18 @@ async def upload_pipelines_handler(
                 "Ensure previous setup steps completed successfully and resources are fully provisioned."
             )
  
-        results = await asyncio.to_thread(
-            upload_pipelines,
-            token=token,
-            workspace_id=project.workspace_id,
-            connection_name=payload.connection_name,
-            connection_index=payload.connection_index,
-            replacements=replacements,
-            db_type=db_type,
-            filenames=payload.filenames,
-            app_mode=payload.app_mode,
-        )
+        async with _get_deploy_lock(project_id, payload.connection_name):
+            results = await asyncio.to_thread(
+                upload_pipelines,
+                token=token,
+                workspace_id=project.workspace_id,
+                connection_name=payload.connection_name,
+                connection_index=payload.connection_index,
+                replacements=replacements,
+                db_type=db_type,
+                filenames=payload.filenames,
+                app_mode=payload.app_mode,
+            )
     except (RuntimeError, ValueError) as e:
         logger.error("Pipeline upload error: %s", e)
         raise HTTPException(status_code=502, detail=str(e))
@@ -675,6 +695,31 @@ async def get_pipeline_job_status_handler(
     )
  
  
+async def get_latest_item_job_status_handler(
+    project_id: str,
+    pipeline_item_id: str,
+    user: User,
+    db: AsyncSession,
+):
+    """Latest job instance status for an item, regardless of who started it.
+
+    Used for pipelines that are only ever invoked internally by a parent
+    pipeline (e.g. an "Invoke Pipeline" activity) — we never have our own
+    job_id for those, so get_pipeline_job_status_handler can't be used.
+    """
+    import asyncio
+
+    project = await _require_workspace(project_id, user, db)
+    token, _ = await _get_project_token(project_id, db)
+
+    return await asyncio.to_thread(
+        get_latest_item_job_status,
+        token=token,
+        workspace_id=project.workspace_id,
+        pipeline_item_id=pipeline_item_id,
+    )
+
+
 async def update_run_status_handler(
     project_id: str,
     payload: RunStatusUpdate,
@@ -1107,6 +1152,7 @@ async def upload_itl_config_handler(
                 server=warehouse_conn_str,
                 database=mc.warehouse_name or "WH_MetaData",
                 config_schema_name=f"Config_{connection_name}",
+                app_mode=getattr(project, "app_type", "fabric") or "fabric",
             )
             logger.info("UpdateWaterMarkSP ensured in Config_%s", connection_name)
         else:
@@ -1303,8 +1349,52 @@ async def resolve_project_fabric_connection(
     }
 
 
+async def get_saved_finin_mapping_handler(
+    project_id: str, connection_name: str, user: User, db: AsyncSession,
+) -> dict | None:
+    """Look up a previously-saved Finin mapping for this connection.
+
+    Prefers the exact {stats, rows} JSON captured at save time
+    (`ai_mapping_result_json`) — reconstructing it from
+    [Config_<connection_name>].[SourceInformationSchemaMapped] instead is
+    lossy, since that table only holds resolved template mappings plus
+    "extension" (unmapped) source columns for the Bronze/Silver notebooks,
+    not the original per-template-row match/unmatched status. Falls back to
+    that warehouse reconstruction only for mappings saved before this column
+    existed.
+    """
+    sc = await repo.find_project_connection_by_name(db, project_id, connection_name)
+    if not sc or not sc.ai_mapping_saved:
+        return None
+
+    if sc.ai_mapping_result_json:
+        import json
+
+        try:
+            result = json.loads(sc.ai_mapping_result_json)
+            return {"job_id": f"saved_{sc.id}", "result": result}
+        except (ValueError, TypeError):
+            logger.warning("ai_mapping_result_json for connection %s was unreadable — "
+                            "falling back to warehouse reconstruction.", connection_name)
+
+    conn = await resolve_project_fabric_connection(project_id, user, db)
+
+    import anyio
+
+    return await anyio.to_thread.run_sync(
+        lambda: _read_latest_saved_mapping(
+            client_id=conn["client_id"],
+            client_secret=conn["client_secret"],
+            server=conn["server"],
+            database=conn["warehouse_name"],
+            config_schema_name=f"Config_{connection_name}",
+        )
+    )
+
+
 async def save_finin_mapping_handler(
-    project_id: str, connection_name: str, job_id: str, rows: list[dict], user: User, db: AsyncSession
+    project_id: str, connection_name: str, job_id: str, rows: list[dict], user: User, db: AsyncSession,
+    progress_job_id: str | None = None, full_result: dict | None = None,
 ) -> int:
     """Persist Finin mapping results into [Config_<connection_name>].[SourceInformationSchemaMapped]."""
     sc = await repo.find_project_connection_by_name(db, project_id, connection_name)
@@ -1315,6 +1405,14 @@ async def save_finin_mapping_handler(
 
     import anyio
 
+    on_progress = None
+    if progress_job_id:
+        from app.modules.finin.shared.job_store import update_job as _update_save_job
+
+        def on_progress(done: int, total: int) -> None:  # noqa: E306
+            pct = int((done / total) * 100) if total else 100
+            _update_save_job(progress_job_id, progress=pct, message=f"Saved {done}/{total} rows")
+
     inserted = await anyio.to_thread.run_sync(
         lambda: _save_mapping_rows(
             client_id=conn["client_id"],
@@ -1324,12 +1422,20 @@ async def save_finin_mapping_handler(
             config_schema_name=f"Config_{connection_name}",
             job_id=job_id,
             rows=rows,
+            on_progress=on_progress,
         )
     )
 
     # Persist the "already mapped" flag locally so the frontend can restore
-    # this on page reload without re-querying the Fabric warehouse.
+    # this on page reload without re-querying the Fabric warehouse. Also
+    # persist the exact result the live job computed (see
+    # get_saved_finin_mapping_handler for why this is the source of truth
+    # for the "View Mapping" resume view, rather than the warehouse table).
     sc.ai_mapping_saved = True
+    if full_result is not None:
+        import json
+
+        sc.ai_mapping_result_json = json.dumps(full_result)
     db.add(sc)
     await db.commit()
 
