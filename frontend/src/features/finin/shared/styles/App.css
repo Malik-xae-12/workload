@@ -1755,6 +1755,14 @@
   animation: mm-picker-in 0.12s ease-out;
 }
 
+/* AI Mapping home page's table picker (ResultsTable) — identical in every
+   way to the ManualMapping picker above except it isn't right-anchored,
+   since its trigger sits at the left of the toolbar rather than the
+   right of the header. */
+.finin-app .rt-table-picker-menu {
+  right: auto;
+}
+
 @keyframes mm-picker-in {
   from { opacity: 0; transform: translateY(-4px); }
   to { opacity: 1; transform: translateY(0); }
@@ -2328,6 +2336,16 @@
   outline: none;
   cursor: pointer;
   max-width: 220px;
+}
+
+.finin-app .se-select-wrap {
+  flex: 0 0 220px;
+  max-width: 220px;
+}
+
+.finin-app .se-select-wrap .mm-dd-trigger,
+.finin-app .se-select-wrap .mm-dd-item {
+  font-size: 12px;
 }
 
 .finin-app .se-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }

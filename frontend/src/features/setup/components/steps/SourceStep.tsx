@@ -7,6 +7,7 @@ import { Database, Plus, Save, Loader2, CheckCircle2, XCircle, Server } from 'lu
 import { useState, useEffect } from 'react';
 import type { SourceConnection } from '../../types';
 import { listGateways, type GatewayInfo } from '../../../../layouts/services/fabricApi';
+import { SelectDropdown } from '../../../../shared/components/selectdropdown';
 
 interface SourceStepProps {
   connections: SourceConnection[];
@@ -205,17 +206,12 @@ export const SourceStep = ({ connections, onAddConnection, loading, error, proje
               <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                 Database Type <span className="text-rose-400">*</span>
               </label>
-              <select
+              <SelectDropdown
                 value={formData.databaseType}
-                onChange={(e) => setFormData({ ...formData, databaseType: e.target.value })}
-                className="w-full h-9 px-3.5 text-[13px] rounded-lg border border-slate-300 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-50 text-slate-800 bg-slate-50"
-              >
-                <option>Azure SQL</option>
-                <option>PostgreSQL</option>
-                <option>MySQL</option>
-                <option>Oracle</option>
-                <option>SQL Server</option>
-              </select>
+                options={['Azure SQL', 'PostgreSQL', 'MySQL', 'Oracle', 'SQL Server']}
+                placeholder="Select database type…"
+                onChange={(val) => setFormData({ ...formData, databaseType: val })}
+              />
             </div>
 
             {/* Authentication type for PostgreSQL */}

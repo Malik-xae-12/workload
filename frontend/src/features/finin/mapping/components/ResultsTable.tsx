@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { MappingRow } from "../../shared/types";
 
 
@@ -16,21 +16,66 @@ const PAGE_SIZE = 20;
 export function ResultsTable({ rows, onDownload, onDownloadXlsx }: Props) {
   const [filter, setFilter] = useState<"all" | "matched" | "unmatched">("all");
   const [search, setSearch] = useState("");
-  const [tableFilter, setTableFilter] = useState("all");
+  // null = no filter applied (every table included).
+  const [selectedTables, setSelectedTables] = useState<Set<string> | null>(null);
+  const [tablePickerOpen, setTablePickerOpen] = useState(false);
+  const tablePickerRef = useRef<HTMLDivElement>(null);
   const [page, setPage] = useState(1);
   const [sortKey, setSortKey] = useState<keyof MappingRow>("mapping_score");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
-  const tables = useMemo(() => {
-
-    const set = new Set(rows.map((r) => r.template_table));
-    return ["all", ...Array.from(set).sort()];
+  const tableCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const r of rows) counts.set(r.template_table, (counts.get(r.template_table) || 0) + 1);
+    return counts;
   }, [rows]);
+
+  const allTableNames = useMemo(
+    () => Array.from(tableCounts.keys()).sort(),
+    [tableCounts]
+  );
+
+  useEffect(() => {
+    if (!tablePickerOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (tablePickerRef.current && !tablePickerRef.current.contains(e.target as Node)) {
+        setTablePickerOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [tablePickerOpen]);
+
+  const toggleTableSelection = (name: string) => {
+    setSelectedTables((prev) => {
+      const base = prev ? new Set(prev) : new Set(allTableNames);
+      if (base.has(name)) base.delete(name);
+      else base.add(name);
+      return base;
+    });
+    setPage(1);
+  };
+
+  const selectAllTables = () => {
+    setSelectedTables(null);
+    setPage(1);
+  };
+
+  const isTableSelected = (name: string) => !selectedTables || selectedTables.has(name);
+
+  const selectedTablesLabel =
+    !selectedTables || selectedTables.size === allTableNames.length
+      ? "All tables"
+      : selectedTables.size === 0
+      ? "No tables"
+      : `${selectedTables.size} of ${allTableNames.length} tables`;
 
   const filtered = useMemo(() => {
     let r = rows;
     if (filter !== "all") r = r.filter((x) => x.status === filter);
-    if (tableFilter !== "all") r = r.filter((x) => x.template_table === tableFilter);
+    if (selectedTables && selectedTables.size < allTableNames.length) {
+      r = r.filter((x) => selectedTables.has(x.template_table));
+    }
     if (search.trim()) {
       const q = search.toLowerCase();
       r = r.filter(
@@ -48,7 +93,7 @@ export function ResultsTable({ rows, onDownload, onDownloadXlsx }: Props) {
       if (av > bv) return sortDir === "asc" ? 1 : -1;
       return 0;
     });
-  }, [rows, filter, tableFilter, search, sortKey, sortDir]);
+  }, [rows, filter, selectedTables, allTableNames, search, sortKey, sortDir]);
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const pageRows = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -78,11 +123,57 @@ export function ResultsTable({ rows, onDownload, onDownloadXlsx }: Props) {
         </div>
 
         <div className="toolbar-right">
-          <select value={tableFilter} onChange={(e) => { setTableFilter(e.target.value); setPage(1); }}>
-            {tables.map((t) => (
-              <option key={t} value={t}>{t === "all" ? "All Tables" : t}</option>
-            ))}
-          </select>
+          <div className="mm-table-picker rt-table-picker" ref={tablePickerRef}>
+            <button
+              type="button"
+              className={`mm-table-picker-trigger ${tablePickerOpen ? "open" : ""}`}
+              onClick={() => setTablePickerOpen((o) => !o)}
+              aria-haspopup="listbox"
+              aria-expanded={tablePickerOpen}
+            >
+              <span className="mm-table-picker-icon" aria-hidden="true">▤</span>
+              <span className="mm-table-picker-label">{selectedTablesLabel}</span>
+              <span className={`mm-table-picker-chevron ${tablePickerOpen ? "open" : ""}`} aria-hidden="true">
+                ▾
+              </span>
+            </button>
+
+            {tablePickerOpen && (
+              <div className="mm-table-picker-menu rt-table-picker-menu" role="listbox" aria-multiselectable="true">
+                <div className="mm-table-picker-menu-header">
+                  <span>Select tables</span>
+                  <button
+                    type="button"
+                    className="mm-table-picker-selectall"
+                    onClick={selectAllTables}
+                    disabled={!selectedTables}
+                  >
+                    Select all
+                  </button>
+                </div>
+                <div className="mm-table-picker-list">
+                  {allTableNames.map((name) => {
+                    const checked = isTableSelected(name);
+                    return (
+                      <label
+                        key={`pick-${name}`}
+                        className={`mm-table-picker-item ${checked ? "checked" : ""}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleTableSelection(name)}
+                        />
+                        <span className="mm-table-picker-checkbox" aria-hidden="true" />
+                        <span className="mm-table-picker-name">{name}</span>
+                        <span className="mm-table-picker-count">{tableCounts.get(name)}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
           <input
             className="search-input"
             placeholder="Search columns…"

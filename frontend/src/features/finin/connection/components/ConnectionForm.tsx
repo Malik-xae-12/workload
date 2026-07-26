@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { DBCredentials, ProjectMappingParams } from "../../shared/types";
 import type { SourceConnection } from "../../../setup/types";
+import { SelectDropdown } from "../../../../shared/components/selectdropdown";
 
 const DEFAULT: DBCredentials = {
   server: "",
@@ -148,16 +149,12 @@ export function ConnectionForm({
           {useProjectCreds ? (
             <div className="field">
               <label>Source Connection</label>
-              <select
-                className="mm-select"
+              <SelectDropdown
                 value={connectionName || ""}
-                onChange={(e) => onConnectionNameChange?.(e.target.value)}
-              >
-                <option value="">Select Fabric connection…</option>
-                {connections.map((c) => (
-                  <option key={c.id} value={c.name}>{c.name}</option>
-                ))}
-              </select>
+                options={connections.map((c) => c.name)}
+                placeholder="Select Fabric connection…"
+                onChange={(val) => onConnectionNameChange?.(val)}
+              />
               <span style={{ fontSize: 12, color: "var(--text-muted, #667085)", marginTop: 4, display: "block" }}>
                 Reads columns from this connection's SourceInformationSchema — no live source connection needed.
               </span>

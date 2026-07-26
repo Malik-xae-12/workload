@@ -6,6 +6,7 @@ import { ResultsTable } from "../mapping/components/ResultsTable";
 import ManualMapping from "../mapping/components/ManualMapping";
 import ChatPanel from "../mapping/components/ChatPanel";
 import ErrorBoundary from "../shared/components/ErrorBoundary";
+import { SelectDropdown } from "../../../shared/components/selectdropdown";
 import { useMapping } from "../mapping/hooks/useMapping";
 import "../shared/styles/App.css";
 import type { SourceConnection } from "../../setup/types";
@@ -293,16 +294,14 @@ export default function FininApp({ connections, projectId, initialConnectionName
                   <div className="se-step-title">Save to SourceInformationSchemaMapped</div>
                   <div className="se-step-sub">Writes mapping rows into Config_{connectionName || '…'}</div>
                 </div>
-                <select
-                  value={connectionName}
-                  onChange={(e) => setConnectionName(e.target.value)}
-                  className="se-select"
-                >
-                  <option value="">Select Fabric connection…</option>
-                  {connections.map((c) => (
-                    <option key={c.id} value={c.name}>{c.name}</option>
-                  ))}
-                </select>
+                <div className="se-select-wrap">
+                  <SelectDropdown
+                    value={connectionName}
+                    options={connections.map((c) => c.name)}
+                    placeholder="Select Fabric connection…"
+                    onChange={setConnectionName}
+                  />
+                </div>
                 <div className="se-actions">
                   <button
                     className={`se-btn ${savedToMetadata ? 'se-btn--done' : ''}`}
