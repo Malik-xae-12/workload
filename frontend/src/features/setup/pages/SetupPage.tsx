@@ -420,23 +420,18 @@ export const SetupPage = () => {
       <div className={`accel-bg accel-bg--fabric ${currentMode === 'fabric' ? 'opacity-100' : 'opacity-0'}`} />
       <div className={`accel-bg accel-bg--finin ${currentMode === 'finin' ? 'opacity-100' : 'opacity-0'}`} />
 
-      {/* Mode-switch confirmation: quick radial flash + pill toast */}
+      {/* Mode-switch confirmation: pill toast only (the center radial
+       * flash was removed — it read as a stray popping circle rather
+       * than a deliberate transition). */}
       {modeSwitchFlash && (
-        <>
-          <div
-            key={`flash-${modeSwitchFlash.key}`}
-            className="mode-switch-flash"
-            style={{ ['--mode-flash-color' as any]: modeSwitchFlash.mode === 'finin' ? 'rgba(20,184,166,0.35)' : 'rgba(29,158,117,0.35)' }}
-          />
-          <div
-            key={`pill-${modeSwitchFlash.key}`}
-            className="mode-switch-pill"
-            style={{ background: modeSwitchFlash.mode === 'finin' ? 'linear-gradient(135deg, #14b8a6, #0f766e)' : 'linear-gradient(135deg, #1D9E75, #0d6e52)' }}
-          >
-            <span className="mode-switch-pill-dot" />
-            Switched to {modeSwitchFlash.mode === 'finin' ? 'Finin Accelerator' : 'Fabric Accelerator'}
-          </div>
-        </>
+        <div
+          key={`pill-${modeSwitchFlash.key}`}
+          className="mode-switch-pill"
+          style={{ background: modeSwitchFlash.mode === 'finin' ? 'linear-gradient(135deg, #14b8a6, #0f766e)' : 'linear-gradient(135deg, #1D9E75, #0d6e52)' }}
+        >
+          <span className="mode-switch-pill-dot" />
+          Switched to {modeSwitchFlash.mode === 'finin' ? 'Finin Accelerator' : 'Fabric Accelerator'}
+        </div>
       )}
 
       {/* Sidebar */}

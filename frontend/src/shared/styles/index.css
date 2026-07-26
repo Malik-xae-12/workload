@@ -95,40 +95,40 @@
 }
 
 .accel-bg--fabric {
-  background: linear-gradient(160deg, #f3faf6 0%, #eaf6f0 45%, #e8ecf1 100%);
+  background: linear-gradient(160deg, #eef8f2 0%, #e2f3e8 45%, #dfe9ee 100%);
 }
 .accel-bg--fabric::before {
-  width: 620px;
-  height: 620px;
+  width: 680px;
+  height: 680px;
   top: -220px;
   left: -160px;
-  background: radial-gradient(circle, rgba(29, 158, 117, 0.20), transparent 70%);
+  background: radial-gradient(circle, rgba(29, 158, 117, 0.32), transparent 70%);
 }
 .accel-bg--fabric::after {
-  width: 520px;
-  height: 520px;
+  width: 580px;
+  height: 580px;
   bottom: -200px;
   right: -140px;
-  background: radial-gradient(circle, rgba(93, 212, 168, 0.18), transparent 70%);
+  background: radial-gradient(circle, rgba(93, 212, 168, 0.28), transparent 70%);
   animation-delay: -9s;
 }
 
 .accel-bg--finin {
-  background: linear-gradient(160deg, #f2fbfa 0%, #e9f7f5 45%, #e8ecf1 100%);
+  background: linear-gradient(160deg, #ecfbf9 0%, #dff5f2 45%, #fef6e7 100%);
 }
 .accel-bg--finin::before {
-  width: 620px;
-  height: 620px;
+  width: 680px;
+  height: 680px;
   top: -220px;
   right: -160px;
-  background: radial-gradient(circle, rgba(20, 184, 166, 0.20), transparent 70%);
+  background: radial-gradient(circle, rgba(20, 184, 166, 0.32), transparent 70%);
 }
 .accel-bg--finin::after {
-  width: 520px;
-  height: 520px;
+  width: 580px;
+  height: 580px;
   bottom: -200px;
   left: -140px;
-  background: radial-gradient(circle, rgba(15, 118, 110, 0.16), transparent 70%);
+  background: radial-gradient(circle, rgba(245, 158, 11, 0.24), transparent 70%);
   animation-delay: -9s;
 }
 
@@ -137,34 +137,9 @@
   50% { transform: translate(30px, -20px) scale(1.08); }
 }
 
-/* Mode-switch transition — a quick radial wipe + pill toast so switching
- * between Fabric and Finin reads as a deliberate mode change, not a
- * jarring re-theme. */
-@keyframes mode-switch-wipe {
-  0% { opacity: 0; transform: scale(0.4); }
-  35% { opacity: 0.55; }
-  100% { opacity: 0; transform: scale(2.6); }
-}
-
-.mode-switch-flash {
-  position: fixed;
-  inset: 0;
-  z-index: 40;
-  pointer-events: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.mode-switch-flash::before {
-  content: '';
-  position: absolute;
-  width: 60px;
-  height: 60px;
-  border-radius: 50%;
-  background: radial-gradient(circle, var(--mode-flash-color, rgba(29,158,117,0.35)), transparent 70%);
-  animation: mode-switch-wipe 0.7s ease-out forwards;
-}
+/* Mode-switch transition — pill toast only now; the old radial "flash"
+ * circle was removed since it read as a stray popup rather than a
+ * deliberate transition. */
 
 @keyframes mode-pill-in {
   0% { opacity: 0; transform: translate(-50%, -8px) scale(0.92); }

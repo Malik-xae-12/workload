@@ -1,6 +1,6 @@
 from uuid import uuid4
 
-from sqlalchemy import Column, ForeignKey, String
+from sqlalchemy import Boolean, Column, ForeignKey, String
 from sqlalchemy.orm import relationship
 
 from app.db.base import Base
@@ -17,6 +17,11 @@ class Project(Base, AuditMixin, SoftDeleteMixin):
     status = Column(String(50), nullable=False, default="active")
     workspace_id = Column(String(255), nullable=True)
     workspace_name = Column(String(255), nullable=True)
+    # Whether the workspace was ever successfully assigned to a Fabric
+    # capacity. Set once, on successful provisioning, and never cleared —
+    # re-fetching the project (e.g. after reload) must keep reporting the
+    # same answer instead of recomputing it and losing the fact.
+    capacity_assigned = Column(Boolean, nullable=False, default=False, server_default="0")
 
     # 'fabric' or 'finin' — which accelerator this project belongs to. Projects
     # are fully isolated per accelerator: a project created under one never

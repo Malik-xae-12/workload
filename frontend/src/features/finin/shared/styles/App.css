@@ -3,18 +3,18 @@
    ============================================= */
 .finin-app {
   /* =============================================
-     DESIGN TOKENS (matched to Fabric Solution
-     Accelerator's slate + forest-green + emerald palette)
+     DESIGN TOKENS — v3 "Glass Teal" theme
+     Teal/emerald primary (matches the teal identity
+     already used for Finin's accel-bg backdrop) with
+     a warm amber secondary accent, glassy translucent
+     surfaces, and soft colored glows instead of flat
+     shadows. Still named --forest---emerald-* below
+     since ~40 rules reference these by name — only the
+     values change here, recoloring stays a single edit.
      ============================================= */
 
-  /* Primary brand scale — deep teal-green, a cooler sibling of Fabric
-     Accelerator's warmer forest-green so the two apps still read as
-     distinct at a glance while both staying firmly in the green family.
-     Named --forest-* still, since ~40 rules below reference these
-     variables by name; only the values change, so recoloring is a single
-     edit instead of hunting through the whole file (keeps this a
-     "same style, different shade" change rather than a redesign). */
-  --forest-900: #042f2e;
+  /* Primary brand scale — teal (was indigo/violet) */
+  --forest-900: #134e4a;
   --forest-800: #115e59;
   --forest-700: #0f766e;
   --forest-600: #0d9488;
@@ -22,31 +22,32 @@
   --forest-100: #ccfbf1;
   --forest-50:  #f0fdfa;
 
-  /* Emerald — secondary accent for positive/live signals (accelerator's
-     standard Tailwind emerald scale, distinct from forest) */
-  --emerald-900: #064E3B;
-  --emerald-700: #047857;
-  --emerald-600: #059669;
-  --emerald-500: #10B981;
-  --emerald-400: #34D399;
-  --emerald-100: #D1FAE5;
-  --emerald-50:  #ECFDF5;
+  /* Secondary accent — warm amber, for live/positive signals & contrast pops */
+  --emerald-900: #78350f;
+  --emerald-700: #b45309;
+  --emerald-600: #d97706;
+  --emerald-500: #f59e0b;
+  --emerald-400: #fbbf24;
+  --emerald-100: #fef3c7;
+  --emerald-50:  #fffbeb;
 
-  /* Slate neutrals for surfaces/borders/text, matching the
-     accelerator's bg-white + border-slate-200 card convention */
-  --slate-50: #F8FAFC;
-  --slate-100: #F1F5F9;
-  --slate-200: #E2E8F0;
-  --slate-500: #64748B;
-  --slate-600: #47556A;
-  --slate-900: #0F172B;
+  /* Slate neutrals for surfaces/borders/text */
+  --slate-50: #f8fafc;
+  --slate-100: #f1f5f9;
+  --slate-200: #e2e8f0;
+  --slate-500: #64748b;
+  --slate-600: #47556a;
+  --slate-900: #0f172b;
 
-  /* App surfaces */
+  /* App surfaces — translucent "glass" panels over a soft gradient page bg */
   --bg: var(--slate-50);
-  --surface: #FFFFFF; /* Cards / Surfaces */
-  --surface2: var(--slate-100); /* subtle tinted panels */
+  --surface: rgba(255, 255, 255, 0.72); /* Cards / Surfaces — glass */
+  --surface-solid: #FFFFFF; /* fallback for places that need opaque white */
+  --surface2: rgba(241, 245, 249, 0.65); /* subtle tinted glass panels */
   --border: var(--slate-200);
   --border-light: var(--slate-100);
+  --glass-blur: 18px;
+  --glass-border: rgba(255, 255, 255, 0.5);
 
   /* Text */
   --text-primary: var(--slate-900);
@@ -54,23 +55,27 @@
   --text-dim: var(--slate-500);
 
   /* Primary CTA/Accent — derives from the brand scale above */
-  --accent: var(--forest-500);
-  --accent-glow: rgba(20, 184, 166, 0.18);
-  --accent-hover: var(--forest-700);
+  --accent: var(--forest-600);
+  --accent-glow: rgba(13, 148, 136, 0.18);
+  --accent-hover: var(--forest-800);
+  --accent-rgb: 13, 148, 136;
 
-  /* Status / score colors — forest for the brand-weighted scale,
-     genuine emerald reserved for "live/positive" accents (badges,
-     pulsing indicators) so the palette isn't monotone like before */
-  --green: var(--emerald-600);
-  --green-bg: var(--emerald-50);
+  /* Two-tone gradient used for hero surfaces, primary buttons, and the
+     logo mark — the signature "modern" touch of this theme. */
+  --accent-gradient: linear-gradient(135deg, var(--forest-600) 0%, var(--emerald-500) 100%);
+  --accent-gradient-soft: linear-gradient(135deg, rgba(13,148,136,0.12) 0%, rgba(245,158,11,0.10) 100%);
 
-  --red: #B42318;
-  --red-bg: rgba(180, 35, 24, 0.08);
+  /* Status / score colors */
+  --green: var(--forest-600);
+  --green-bg: var(--forest-50);
 
-  --purple: var(--forest-600);
+  --red: #e11d48;
+  --red-bg: rgba(225, 29, 72, 0.08);
+
+  --purple: var(--forest-700);
   --purple-bg: var(--forest-50);
 
-  --score-high: var(--forest-600);
+  --score-high: var(--forest-700);
   --score-high-bg: var(--forest-50);
 
   --score-med: var(--emerald-600);
@@ -81,21 +86,18 @@
 
   --track: var(--slate-200);
 
-  --success: var(--emerald-500);
+  --success: var(--forest-500);
 
-  /* Radius scale — the accelerator leans into soft, heavily-rounded
-     panels (rounded-2xl/3xl, even rounded-[2.5rem] on hero blocks) */
-  --radius-sm: 12px;    /* ~ Tailwind rounded-xl */
-  --radius: 20px;       /* ~ Tailwind rounded-2xl */
-  --radius-lg: 32px;    /* ~ Tailwind rounded-3xl, for hero/feature panels */
+  /* Radius scale — soft, heavily-rounded panels */
+  --radius-sm: 12px;
+  --radius: 20px;
+  --radius-lg: 32px;
 
-  /* Shadows — tinted/colored glows (shadow-slate-100/50,
-     shadow-forest-500/5, shadow-emerald-500/5 in the accelerator),
-     not flat neutral grey */
+  /* Shadows — tinted/colored glows, not flat neutral grey */
   --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05), 0 1px 1px rgba(15, 23, 42, 0.03);
-  --shadow-md: 0 12px 32px -8px rgba(15, 23, 42, 0.10), 0 4px 12px rgba(0, 77, 61, 0.04);
-  --shadow-accent: 0 20px 40px -12px rgba(0, 77, 61, 0.18);
-  --shadow-emerald: 0 16px 32px -10px rgba(16, 185, 129, 0.20);
+  --shadow-md: 0 12px 32px -8px rgba(15, 23, 42, 0.10), 0 4px 12px rgba(13, 148, 136, 0.06);
+  --shadow-accent: 0 20px 40px -12px rgba(13, 148, 136, 0.28);
+  --shadow-emerald: 0 16px 32px -10px rgba(245, 158, 11, 0.24);
 
   --font: "Inter", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", "Fira Code", monospace;
@@ -108,15 +110,179 @@
 .finin-app *, .finin-app *::before, .finin-app *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 .finin-app {
+  position: relative;
+  isolation: isolate;
   background: var(--bg);
   color: var(--text-primary);
   font-family: var(--font);
   font-size: 14px;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* Animated gradient/blob backdrop — fixed behind all content, drifting
+   slowly. This is the same technique already used for the accelerator
+   mode backgrounds (accel-bg) elsewhere in the app, so it's proven to
+   render; made bold enough here to be unmistakable rather than a faint
+   tint. Pure ::before/::after with transform + background-position
+   animation — compositor only, no layout/repaint cost. */
+.finin-app::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(900px 700px at 10% -10%, rgba(13, 148, 136, 0.28), transparent 60%),
+    radial-gradient(800px 650px at 105% 10%, rgba(245, 158, 11, 0.22), transparent 58%),
+    radial-gradient(700px 600px at 30% 115%, rgba(20, 184, 166, 0.20), transparent 60%),
+    radial-gradient(600px 500px at 95% 100%, rgba(251, 191, 36, 0.16), transparent 55%),
+    linear-gradient(160deg, #f0fdfa 0%, #fffbeb 45%, #f0fdfa 100%);
+  background-size: 140% 140%, 140% 140%, 140% 140%, 140% 140%, 200% 200%;
+  animation: finin-bg-drift 24s ease-in-out infinite alternate;
+}
+
+@keyframes finin-bg-drift {
+  0%   { background-position: 0% 0%, 100% 0%, 20% 100%, 100% 100%, 0% 0%; }
+  100% { background-position: 6% 4%, 92% 8%, 28% 92%, 90% 94%, 100% 100%; }
+}
+
+.finin-app > * { position: relative; z-index: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  .finin-app::before { animation: none; }
+}
+
+/* Glass surfaces — every card-like panel gets a blurred, translucent
+   backdrop instead of flat white, so the teal/amber backdrop shows
+   through clearly. Grouped into one rule so it's a single cheap paint
+   layer per element (backdrop-filter is the only non-trivial cost, and
+   these are large, infrequent panels — not per-row elements). */
+.finin-app .chat-panel,
+.finin-app .ext-chip,
+.finin-app .ext-chip-list,
+.finin-app .ext-section,
+.finin-app .form-card,
+.finin-app .matched-list-section,
+.finin-app .mm-card,
+.finin-app .progress-panel-v2,
+.finin-app .results-section,
+.finin-app .se-card,
+.finin-app .stat-card {
+  background: linear-gradient(155deg, rgba(255,255,255,0.78) 0%, rgba(255,255,255,0.55) 100%) !important;
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border: 1px solid var(--glass-border) !important;
+  box-shadow: 0 8px 32px -12px rgba(13, 148, 136, 0.18), inset 0 1px 0 rgba(255,255,255,0.6);
+}
+
+/* Smooth, GPU-cheap entrance for freshly-mounted cards/panels. Transform +
+   opacity only, so it's compositor-driven and doesn't touch layout. */
+@keyframes finin-rise-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.finin-app .mm-card,
+.finin-app .form-card,
+.finin-app .stat-card,
+.finin-app .results-section,
+.finin-app .progress-panel-v2 {
+  animation: finin-rise-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Subtle hover "lift" with a touch of 3D tilt on interactive cards/buttons —
+   perspective + rotateX/translateZ are compositor-only transforms, so this
+   doesn't trigger layout or paint on every frame. */
+.finin-app .stat-card,
+.finin-app .form-card,
+.finin-app .se-card {
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.finin-app .stat-card:hover,
+.finin-app .form-card:hover,
+.finin-app .se-card:hover {
+  transform: translateY(-3px) perspective(600px) rotateX(1.5deg);
+  box-shadow: var(--shadow-accent);
+}
+
+.finin-app .btn-primary,
+.finin-app .btn-secondary,
+.finin-app .btn-save-excel {
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s ease, filter 0.18s ease;
+}
+
+.finin-app .btn-primary:hover,
+.finin-app .btn-save-excel:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.04);
+}
+
+.finin-app .btn-primary:active,
+.finin-app .btn-secondary:active,
+.finin-app .btn-save-excel:active {
+  transform: translateY(0) scale(0.98);
+}
+
+/* Respect motion preferences — disable the decorative motion, keep the
+   theme/colors untouched. */
+@media (prefers-reduced-motion: reduce) {
+  .finin-app .mm-card,
+  .finin-app .form-card,
+  .finin-app .stat-card,
+  .finin-app .results-section,
+  .finin-app .progress-panel-v2 {
+    animation: none;
+  }
+  .finin-app .stat-card,
+  .finin-app .form-card,
+  .finin-app .se-card,
+  .finin-app .btn-primary,
+  .finin-app .btn-secondary,
+  .finin-app .btn-save-excel {
+    transition: none;
+  }
+  .finin-app .stat-card:hover,
+  .finin-app .form-card:hover,
+  .finin-app .se-card:hover {
+    transform: none;
+  }
 }
 
 .finin-app a { color: inherit; }
+
+/* =============================================
+   GLOBAL ANIMATIONS
+   ============================================= */
+@keyframes finin-fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes finin-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes finin-gradient-pan {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+@keyframes finin-shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+.finin-app .app-header,
+.finin-app .form-card,
+.finin-app .se-card,
+.finin-app .running-view,
+.finin-app .results-view {
+  animation: finin-fade-up 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
 
 
 /* =============================================
@@ -125,8 +291,11 @@
 .finin-app .app { min-height: 0; display: flex; flex-direction: column; }
 
 .finin-app .app-header {
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
+  /* border: 1px solid var(--border);
+  border-top: 2px solid transparent; */
+  border-image: linear-gradient(90deg, var(--forest-600), var(--emerald-500)) 1;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(10px);
   border-radius: var(--radius);
   margin-bottom: 8px;
   box-shadow: var(--shadow-sm);
@@ -145,17 +314,26 @@
 .finin-app .logo { display: flex; align-items: center; gap: 12px; }
 
 .finin-app .logo-mark {
+  position: relative;
   width: 36px;
   height: 36px;
-  background: var(--accent);
-  border-radius: 8px;
+  background: var(--accent-gradient);
+  background-size: 200% 200%;
+  animation: finin-gradient-pan 6s ease infinite;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 800;
   font-size: 16px;
   color: #FFFFFF;
-  box-shadow: 0 0 20px var(--accent-glow);
+  box-shadow: 0 4px 16px -2px rgba(79, 70, 229, 0.45);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.finin-app .logo-mark:hover {
+  transform: rotate(-4deg) scale(1.05);
+  box-shadow: 0 6px 20px -2px rgba(79, 70, 229, 0.55);
 }
 
 .finin-app .logo-title { display: block; font-weight: 700; font-size: 15px; letter-spacing: -0.02em; }
@@ -261,15 +439,16 @@
   box-shadow: var(--shadow-md);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  transition: box-shadow 0.25s ease, border-color 0.25s ease;
+  transition: box-shadow 0.25s ease, border-color 0.25s ease, transform 0.25s ease;
 }
+.finin-app .form-card:hover { box-shadow: var(--shadow-accent); }
 
 /* Connection test in progress — an unmissable glowing/animated border so
    the user knows something is happening, instead of a static disabled
    button that reads as "nothing's going on". */
 @keyframes finin-border-pulse {
   0%   { box-shadow: 0 0 0 0 var(--accent-glow), var(--shadow-md); border-color: var(--accent); }
-  50%  { box-shadow: 0 0 0 6px rgba(20, 184, 166, 0.12), var(--shadow-md); border-color: var(--forest-700); }
+  50%  { box-shadow: 0 0 0 6px rgba(13, 148, 136, 0.14), var(--shadow-md); border-color: var(--forest-700); }
   100% { box-shadow: 0 0 0 0 var(--accent-glow), var(--shadow-md); border-color: var(--accent); }
 }
 .finin-app .form-card.is-testing {
@@ -419,8 +598,11 @@
 }
 
 .finin-app .btn-primary {
+  position: relative;
+  overflow: hidden;
   flex: 1;
-  background: var(--accent);
+  background: var(--accent-gradient);
+  background-size: 200% 200%;
   color: white;
   border: none;
   border-radius: var(--radius-sm);
@@ -429,9 +611,21 @@
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s, opacity 0.15s, box-shadow 0.2s, transform 0.15s;
+  transition: background-position 0.4s ease, box-shadow 0.2s, transform 0.15s;
 }
-.finin-app .btn-primary:hover:not(:disabled) { background: var(--accent-hover); box-shadow: var(--shadow-accent); transform: translateY(-1px); }
+.finin-app .btn-primary::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 30%, rgba(255,255,255,0.28) 48%, transparent 66%);
+  background-size: 250% 100%;
+  background-position: 150% 0;
+  transition: background-position 0.6s ease;
+  pointer-events: none;
+}
+.finin-app .btn-primary:hover:not(:disabled) { background-position: 100% 50%; box-shadow: var(--shadow-accent); transform: translateY(-1px); }
+.finin-app .btn-primary:hover:not(:disabled)::after { background-position: -50% 0; }
+.finin-app .btn-primary:active:not(:disabled) { transform: translateY(0); }
 .finin-app .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .finin-app .btn-secondary {
@@ -443,10 +637,10 @@
   font-family: var(--font);
   font-size: 13px;
   cursor: pointer;
-  transition: border-color 0.15s;
+  transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
   white-space: nowrap;
 }
-.finin-app .btn-secondary:hover:not(:disabled) { border-color: var(--accent); }
+.finin-app .btn-secondary:hover:not(:disabled) { border-color: var(--accent); transform: translateY(-1px); box-shadow: 0 6px 16px -6px rgba(79, 70, 229, 0.25); }
 .finin-app .btn-secondary:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .finin-app .btn-ghost {
@@ -466,6 +660,119 @@
    ============================================= */
 .finin-app .running-view { max-width: 600px; margin: 0 auto; padding-top: 20px; }
 .finin-app .running-view h2 { font-size: 22px; font-weight: 700; margin-bottom: 24px; }
+
+/* Loading Saved Mapping — orbiting-ring card, in the same forest/teal
+   language as the rest of the app (finin-spin / border-pulse family). */
+.finin-app .saved-mapping-loading {
+  max-width: 480px;
+  margin: 48px auto 0;
+  padding: 40px 32px 32px;
+  text-align: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  animation: sml-card-in 0.35s ease both;
+}
+
+@keyframes sml-card-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.finin-app .sml-orbit {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.finin-app .sml-orbit-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2.5px solid transparent;
+  border-top-color: var(--accent);
+  border-right-color: var(--accent);
+  animation: finin-spin 1.1s cubic-bezier(0.6, 0.1, 0.4, 0.9) infinite;
+}
+
+.finin-app .sml-orbit-ring--delay {
+  inset: 9px;
+  border-top-color: var(--emerald-500, var(--accent));
+  border-right-color: transparent;
+  border-left-color: var(--emerald-500, var(--accent));
+  animation-duration: 1.6s;
+  animation-direction: reverse;
+  opacity: 0.65;
+}
+
+.finin-app .sml-orbit-core {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--accent-glow);
+  color: var(--accent-hover);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 700;
+  animation: sml-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes sml-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--accent-glow); }
+  50%      { box-shadow: 0 0 0 8px rgba(13, 148, 136, 0); }
+}
+
+.finin-app .saved-mapping-loading h2 {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  color: var(--text-primary);
+}
+
+.finin-app .saved-mapping-loading .results-sub {
+  margin: 0 auto 20px;
+  max-width: 360px;
+}
+
+.finin-app .sml-progress {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--forest-50, var(--surface2));
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+.finin-app .sml-progress-bar {
+  height: 100%;
+  width: 40%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, var(--accent), var(--emerald-500, var(--accent)), transparent);
+  animation: sml-progress-slide 1.3s ease-in-out infinite;
+}
+
+@keyframes sml-progress-slide {
+  0%   { transform: translateX(-120%); }
+  100% { transform: translateX(320%); }
+}
+
+.finin-app .sml-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.finin-app .sml-actions .btn-ghost {
+  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
 
 .finin-app .progress-panel-v2 {
   background: var(--surface);
@@ -592,8 +899,8 @@
 }
 
 @keyframes pp-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(var(--accent-rgb, 99,102,241), 0.35); }
-  50% { box-shadow: 0 0 0 6px rgba(var(--accent-rgb, 99,102,241), 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(var(--accent-rgb, 13,148,136), 0.35); }
+  50% { box-shadow: 0 0 0 6px rgba(var(--accent-rgb, 13,148,136), 0); }
 }
 
 @keyframes pp-slide {
@@ -864,11 +1171,16 @@
   font-size: 13px;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.finin-app .tab:hover { color: var(--text-primary); }
-.finin-app .tab.active { background: var(--accent-glow); border-color: rgba(19,107,78,0.35); color: var(--accent); }
+.finin-app .tab:hover { color: var(--text-primary); background: var(--surface2); }
+.finin-app .tab.active {
+  background: var(--accent-gradient-soft);
+  border-color: rgba(13, 148, 136, 0.35);
+  color: var(--accent-hover);
+  box-shadow: 0 2px 8px -2px rgba(13, 148, 136, 0.25);
+}
 
 .finin-app .toolbar-right {
   display: flex;
@@ -878,15 +1190,40 @@
 }
 
 .finin-app select {
-  background: var(--surface2);
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--surface2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23888' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 10px center;
+  background-size: 10px 6px;
   border: 1px solid var(--border-light);
   border-radius: var(--radius-sm);
-  padding: 7px 10px;
+  padding: 7px 30px 7px 10px;
   color: var(--text-primary);
   font-family: var(--font);
   font-size: 13px;
   outline: none;
   cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s;
+}
+
+.finin-app select:hover {
+  border-color: var(--accent, #0d9488);
+  background-color: var(--surface);
+}
+
+.finin-app select:focus {
+  outline: none;
+  border-color: var(--accent, #0d9488);
+  box-shadow: 0 0 0 3px var(--accent-glow, rgba(13, 148, 136, 0.18));
+}
+
+.finin-app select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.finin-app select option {
+  color: var(--text-primary);
+  background: var(--surface);
 }
 
 .finin-app .search-input {
@@ -1110,13 +1447,8 @@
   flex-shrink: 0;
 }
 
-/* Per-table stats / filter bar */
-.finin-app .mm-stats-bar {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
+/* Per-table stats / filter bar (layout rule lives further below, near
+   the table picker, since the two are laid out together) */
 .finin-app .mm-stat-tab {
   display: flex;
   align-items: center;
@@ -1136,7 +1468,7 @@
 
 .finin-app .mm-stat-tab.active {
   background: var(--accent-glow);
-  border-color: rgba(19,107,78,0.35);
+  border-color: rgba(13,148,136,0.35);
   color: var(--accent);
 }
 
@@ -1149,7 +1481,7 @@
 }
 
 .finin-app .mm-stat-tab.active .mm-stat-count {
-  background: rgba(19,107,78,0.15);
+  background: rgba(13,148,136,0.15);
   color: var(--accent);
 }
 
@@ -1203,7 +1535,7 @@
 .finin-app .mm-table-badge {
   display: inline-block;
   background: var(--accent-glow);
-  border: 1px solid rgba(19,107,78,0.25);
+  border: 1px solid rgba(13,148,136,0.25);
   color: var(--accent);
   font-size: 12px;
   font-weight: 700;
@@ -1320,16 +1652,330 @@
 
 .finin-app .mm-select {
   width: 100%;
-  background: var(--surface2);
+  background-color: var(--surface2);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-sm);
   color: var(--text-primary);
   font-size: 13px;
   font-family: var(--font-mono);
-  padding: 7px 10px;
+  padding: 7px 28px 7px 10px;
 }
 
+.finin-app .mm-select:hover { border-color: var(--accent); }
+
 .finin-app .mm-select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+
+/* Stats bar now splits status tabs (left) from the table picker (right) */
+.finin-app .mm-stats-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.finin-app .mm-stats-bar-left {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Multi-select table picker */
+.finin-app .mm-table-picker {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.finin-app .mm-table-picker-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface2);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 7px 12px;
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
+}
+
+.finin-app .mm-table-picker-trigger:hover {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+.finin-app .mm-table-picker-trigger.open {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.finin-app .mm-table-picker-icon {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1;
+}
+
+.finin-app .mm-table-picker-label {
+  white-space: nowrap;
+}
+
+.finin-app .mm-table-picker-chevron {
+  font-size: 10px;
+  color: var(--text-secondary);
+  transition: transform 0.15s;
+  line-height: 1;
+}
+
+.finin-app .mm-table-picker-chevron.open {
+  transform: rotate(180deg);
+}
+
+.finin-app .mm-table-picker-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 260px;
+  max-width: 340px;
+  /* Floating menus sit over dense table text, so unlike card surfaces
+     they need to be solid, not glassy translucent — otherwise whatever
+     is underneath shows through the options. */
+  background: #FFFFFF;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 10px);
+  box-shadow: var(--shadow-lg, 0 12px 32px -8px rgba(0,0,0,0.25));
+  z-index: 30;
+  overflow: hidden;
+  animation: mm-picker-in 0.12s ease-out;
+}
+
+@keyframes mm-picker-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.finin-app .mm-table-picker-menu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-light);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.finin-app .mm-table-picker-selectall {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: normal;
+  cursor: pointer;
+  padding: 0;
+}
+
+.finin-app .mm-table-picker-selectall:hover { color: var(--accent-hover); }
+.finin-app .mm-table-picker-selectall:disabled {
+  color: var(--text-dim);
+  cursor: default;
+}
+
+.finin-app .mm-table-picker-list {
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.finin-app .mm-table-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-primary);
+  transition: background-color 0.12s;
+}
+
+.finin-app .mm-table-picker-item:hover { background: var(--surface2); }
+
+.finin-app .mm-table-picker-item input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.finin-app .mm-table-picker-checkbox {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1.5px solid var(--border-light);
+  background: var(--surface2);
+  position: relative;
+  transition: background-color 0.12s, border-color 0.12s;
+}
+
+.finin-app .mm-table-picker-item.checked .mm-table-picker-checkbox {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.finin-app .mm-table-picker-item.checked .mm-table-picker-checkbox::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 5px;
+  height: 9px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.finin-app .mm-table-picker-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+}
+
+.finin-app .mm-table-picker-count {
+  flex-shrink: 0;
+  background: rgba(0,0,0,0.06);
+  border-radius: 20px;
+  padding: 1px 7px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+/* Single-select styled dropdown (source table / source column pickers) */
+.finin-app .mm-dd {
+  position: relative;
+  width: 100%;
+}
+
+.finin-app .mm-dd-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 7px 10px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
+}
+
+.finin-app .mm-dd-trigger:hover { border-color: var(--accent); background: var(--surface); }
+
+.finin-app .mm-dd-trigger.open {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.finin-app .mm-dd-trigger--placeholder .mm-dd-value {
+  color: var(--text-dim);
+  font-family: var(--font);
+  font-style: italic;
+}
+
+.finin-app .mm-dd--disabled .mm-dd-trigger {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: var(--surface2);
+}
+
+.finin-app .mm-dd-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.finin-app .mm-dd-chevron {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--text-secondary);
+  transition: transform 0.15s;
+  line-height: 1;
+}
+
+.finin-app .mm-dd-chevron.open { transform: rotate(180deg); }
+
+.finin-app .mm-dd-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  min-width: 180px;
+  /* Solid, not glassy — this floats directly over the table's other rows
+     of text, so translucency made whatever was underneath bleed through
+     the option list. */
+  background: #FFFFFF;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 10px);
+  box-shadow: var(--shadow-lg, 0 12px 32px -8px rgba(0,0,0,0.25));
+  z-index: 30;
+  overflow: hidden;
+  animation: mm-picker-in 0.12s ease-out;
+}
+
+.finin-app .mm-dd-list {
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.finin-app .mm-dd-item {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: background-color 0.12s;
+}
+
+.finin-app .mm-dd-item:hover { background: var(--surface2); }
+
+.finin-app .mm-dd-item.selected {
+  background: var(--accent-glow);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.finin-app .mm-dd-empty {
+  padding: 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+  text-align: center;
+}
 
 .finin-app .mm-datatype-field {
   display: flex;

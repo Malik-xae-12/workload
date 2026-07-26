@@ -71,7 +71,28 @@ def _get_deploy_lock(project_id: str, connection_name: str) -> asyncio.Lock:
  
  
 # ── Helpers ──────────────────────────────────────────────────────────
- 
+
+def _ensure_job_registered(job_id: str, result: dict) -> None:
+    """The 'View Mapping' resume flow hands the AI Mapping page a synthetic
+    job_id (e.g. 'saved_<connection-id>') carrying a previously-saved
+    result, so the summary can render without re-running the mapping. But
+    every other AI Mapping action — Download CSV/Excel, Save to Metadata,
+    manual-mapping overrides — is implemented as a lookup against the
+    finin job_store by job_id, and that synthetic id was never written
+    there, so those calls all 404'd with 'Job not ready'.
+
+    Registering it here as a completed job (idempotent — a real, still-
+    live job with this id is never overwritten) makes every job-based
+    action work transparently for a resumed/saved mapping too.
+    """
+    from app.modules.finin.shared.job_store import get_job, create_job, update_job
+
+    if get_job(job_id) is not None:
+        return
+    create_job(job_id)
+    update_job(job_id, status="done", progress=100, total=100, message="Loaded saved mapping.", result=result)
+
+
 async def _require_project(project_id: str, user: User, db: AsyncSession):
     project = await repo.get_project(db, project_id, str(user.id))
     if not project:
@@ -823,6 +844,7 @@ async def provision_workspace_handler(
         db, project,
         workspace_id=result["workspace_id"],
         workspace_name=result.get("workspace_name", payload.workspace_name),
+        capacity_assigned=result.get("capacity_assigned", False),
     )
  
     # Update workspace_id on stored credentials
@@ -1372,7 +1394,9 @@ async def get_saved_finin_mapping_handler(
 
         try:
             result = json.loads(sc.ai_mapping_result_json)
-            return {"job_id": f"saved_{sc.id}", "result": result}
+            job_id = f"saved_{sc.id}"
+            _ensure_job_registered(job_id, result)
+            return {"job_id": job_id, "result": result}
         except (ValueError, TypeError):
             logger.warning("ai_mapping_result_json for connection %s was unreadable — "
                             "falling back to warehouse reconstruction.", connection_name)
@@ -1381,7 +1405,7 @@ async def get_saved_finin_mapping_handler(
 
     import anyio
 
-    return await anyio.to_thread.run_sync(
+    reconstructed = await anyio.to_thread.run_sync(
         lambda: _read_latest_saved_mapping(
             client_id=conn["client_id"],
             client_secret=conn["client_secret"],
@@ -1390,6 +1414,9 @@ async def get_saved_finin_mapping_handler(
             config_schema_name=f"Config_{connection_name}",
         )
     )
+    if reconstructed:
+        _ensure_job_registered(reconstructed["job_id"], reconstructed["result"])
+    return reconstructed
 
 
 async def save_finin_mapping_handler(

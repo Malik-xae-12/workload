@@ -1,5 +1,78 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import type { MappingRow } from "../../shared/types";
+
+/** Single-select dropdown styled like the table picker, but for one value
+ * at a time (source table / source column pickers). */
+function SelectDropdown({
+  value,
+  options,
+  placeholder,
+  disabled,
+  onChange,
+}: {
+  value: string;
+  options: string[];
+  placeholder: string;
+  disabled?: boolean;
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
+
+  return (
+    <div className={`mm-dd ${disabled ? "mm-dd--disabled" : ""}`} ref={ref}>
+      <button
+        type="button"
+        className={`mm-dd-trigger ${open ? "open" : ""} ${!value ? "mm-dd-trigger--placeholder" : ""}`}
+        onClick={() => !disabled && setOpen((o) => !o)}
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <span className="mm-dd-value">{value || placeholder}</span>
+        <span className={`mm-dd-chevron ${open ? "open" : ""}`} aria-hidden="true">▾</span>
+      </button>
+
+      {open && (
+        <div className="mm-dd-menu" role="listbox">
+          <div className="mm-dd-list">
+            {options.length === 0 ? (
+              <div className="mm-dd-empty">No options</div>
+            ) : (
+              options.map((opt) => (
+                <div
+                  key={opt}
+                  role="option"
+                  aria-selected={opt === value}
+                  className={`mm-dd-item ${opt === value ? "selected" : ""}`}
+                  onClick={() => {
+                    onChange(opt);
+                    setOpen(false);
+                  }}
+                >
+                  {opt}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface Props {
   rows: MappingRow[];
@@ -29,6 +102,11 @@ export default function ManualMapping({
   const [isSaving, setIsSaving] = useState(false);
   const [savedDone, setSavedDone] = useState(false);
   const [statusFilter, setStatusFilter] = useState<"all" | "matched" | "unmatched">("all");
+  // null = no filter applied (all tables in sequence). Once the user picks
+  // specific tables, only those are shown, in original order, one by one.
+  const [selectedTables, setSelectedTables] = useState<Set<string> | null>(null);
+  const [tablePickerOpen, setTablePickerOpen] = useState(false);
+  const tablePickerRef = useRef<HTMLDivElement>(null);
 
   // DEFENSIVE: Log props on every render
   console.log("[ManualMapping] render — rows.length:", rows?.length, "showManual active");
@@ -54,7 +132,16 @@ export default function ManualMapping({
     return Array.from(map.entries());
   }, [rows]);
 
-  const totalTables = tableGroups.length;
+  const allTableNames = useMemo(() => tableGroups.map(([name]) => name), [tableGroups]);
+
+  // The sequence actually navigated: every table, or just the ones the
+  // user picked in the table filter (still walked one by one, in order).
+  const filteredTableGroups = useMemo(() => {
+    if (!selectedTables || selectedTables.size === 0) return tableGroups;
+    return tableGroups.filter(([name]) => selectedTables.has(name));
+  }, [tableGroups, selectedTables]);
+
+  const totalTables = filteredTableGroups.length;
 
   useEffect(() => {
     console.log("[ManualMapping] clamp effect — totalTables:", totalTables);
@@ -64,6 +151,45 @@ export default function ManualMapping({
     }
     setTableIndex((prev) => Math.min(Math.max(prev, 0), totalTables - 1));
   }, [totalTables]);
+
+  // Close the table picker on outside click.
+  useEffect(() => {
+    if (!tablePickerOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (tablePickerRef.current && !tablePickerRef.current.contains(e.target as Node)) {
+        setTablePickerOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [tablePickerOpen]);
+
+  const toggleTableSelection = useCallback((name: string) => {
+    setSelectedTables((prev) => {
+      const base = prev ? new Set(prev) : new Set(allTableNames);
+      if (base.has(name)) base.delete(name);
+      else base.add(name);
+      return base;
+    });
+    setTableIndex(0);
+  }, [allTableNames]);
+
+  const selectAllTables = useCallback(() => {
+    setSelectedTables(null);
+    setTableIndex(0);
+  }, []);
+
+  const isTableSelected = useCallback(
+    (name: string) => !selectedTables || selectedTables.has(name),
+    [selectedTables]
+  );
+
+  const selectedCountLabel =
+    !selectedTables || selectedTables.size === allTableNames.length
+      ? "All tables"
+      : selectedTables.size === 0
+      ? "No tables"
+      : `${selectedTables.size} of ${allTableNames.length} tables`;
 
   const sourceOptions = useMemo<Record<string, string[]>>(() => {
     console.log("[ManualMapping] rebuilding sourceOptions");
@@ -173,7 +299,7 @@ export default function ManualMapping({
     }
   }, [rowKey]);
 
-  if (totalTables === 0) {
+  if (allTableNames.length === 0) {
     return (
       <div className="mm-wrap">
         <div className="mm-empty">
@@ -184,8 +310,19 @@ export default function ManualMapping({
     );
   }
 
+  if (totalTables === 0) {
+    return (
+      <div className="mm-wrap">
+        <div className="mm-empty">
+          <p>No tables selected.</p>
+          <button className="btn-ghost" onClick={selectAllTables}>Show all tables</button>
+        </div>
+      </div>
+    );
+  }
+
   const safeIndex = Math.min(Math.max(tableIndex, 0), totalTables - 1);
-  const currentGroup = tableGroups[safeIndex];
+  const currentGroup = filteredTableGroups[safeIndex];
 
   if (!currentGroup) {
     console.error("[ManualMapping] FATAL: currentGroup is undefined at index", safeIndex);
@@ -233,31 +370,85 @@ export default function ManualMapping({
       )}
 
       <div className="mm-card">
-        <div className="mm-stats-bar" style={{ padding: "12px 24px", borderBottom: "1px solid var(--border)" }} role="group" aria-label="Filter by mapping status">
-          <button
-            type="button"
-            className={`mm-stat-tab ${statusFilter === "all" ? "active" : ""}`}
-            onClick={() => setStatusFilter("all")}
-          >
-            All
-            <span className="mm-stat-count">{tableRows.length}</span>
-          </button>
-          <button
-            type="button"
-            className={`mm-stat-tab ${statusFilter === "matched" ? "active" : ""}`}
-            onClick={() => setStatusFilter("matched")}
-          >
-            Matched
-            <span className="mm-stat-count">{matchedCount}</span>
-          </button>
-          <button
-            type="button"
-            className={`mm-stat-tab ${statusFilter === "unmatched" ? "active" : ""}`}
-            onClick={() => setStatusFilter("unmatched")}
-          >
-            Unmatched
-            <span className="mm-stat-count">{unmatchedCount}</span>
-          </button>
+        <div className="mm-stats-bar" role="group" aria-label="Filter by mapping status">
+          <div className="mm-stats-bar-left">
+            <button
+              type="button"
+              className={`mm-stat-tab ${statusFilter === "all" ? "active" : ""}`}
+              onClick={() => setStatusFilter("all")}
+            >
+              All
+              <span className="mm-stat-count">{tableRows.length}</span>
+            </button>
+            <button
+              type="button"
+              className={`mm-stat-tab ${statusFilter === "matched" ? "active" : ""}`}
+              onClick={() => setStatusFilter("matched")}
+            >
+              Matched
+              <span className="mm-stat-count">{matchedCount}</span>
+            </button>
+            <button
+              type="button"
+              className={`mm-stat-tab ${statusFilter === "unmatched" ? "active" : ""}`}
+              onClick={() => setStatusFilter("unmatched")}
+            >
+              Unmatched
+              <span className="mm-stat-count">{unmatchedCount}</span>
+            </button>
+          </div>
+
+          <div className="mm-table-picker" ref={tablePickerRef}>
+            <button
+              type="button"
+              className={`mm-table-picker-trigger ${tablePickerOpen ? "open" : ""}`}
+              onClick={() => setTablePickerOpen((o) => !o)}
+              aria-haspopup="listbox"
+              aria-expanded={tablePickerOpen}
+            >
+              <span className="mm-table-picker-icon" aria-hidden="true">▤</span>
+              <span className="mm-table-picker-label">{selectedCountLabel}</span>
+              <span className={`mm-table-picker-chevron ${tablePickerOpen ? "open" : ""}`} aria-hidden="true">
+                ▾
+              </span>
+            </button>
+
+            {tablePickerOpen && (
+              <div className="mm-table-picker-menu" role="listbox" aria-multiselectable="true">
+                <div className="mm-table-picker-menu-header">
+                  <span>Select tables</span>
+                  <button
+                    type="button"
+                    className="mm-table-picker-selectall"
+                    onClick={selectAllTables}
+                    disabled={!selectedTables}
+                  >
+                    Select all
+                  </button>
+                </div>
+                <div className="mm-table-picker-list">
+                  {tableGroups.map(([name, groupRows]) => {
+                    const checked = isTableSelected(name);
+                    return (
+                      <label
+                        key={`pick-${name}`}
+                        className={`mm-table-picker-item ${checked ? "checked" : ""}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleTableSelection(name)}
+                        />
+                        <span className="mm-table-picker-checkbox" aria-hidden="true" />
+                        <span className="mm-table-picker-name">{name}</span>
+                        <span className="mm-table-picker-count">{groupRows.length}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {visibleRows.length === 0 ? (
@@ -333,43 +524,29 @@ export default function ManualMapping({
                       <td className="mono dim">{row.template_table ?? "—"}</td>
                       <td className="mono">{row.template_column ?? "—"}</td>
                       <td className="mm-td-select">
-                        <select
-                          className="mm-select"
+                        <SelectDropdown
                           value={selectedTable}
-                          onChange={(e) => {
-                            console.log("[ManualMapping] table select onChange:", e.target.value);
-                            setTable(row, e.target.value);
+                          options={sourceTables}
+                          placeholder="Select source table…"
+                          onChange={(val) => {
+                            console.log("[ManualMapping] table select onChange:", val);
+                            setTable(row, val);
                           }}
-                        >
-                          <option value="">Select source table…</option>
-                          {sourceTables.map((table) => (
-                            <option key={`tbl-${table}`} value={table}>
-                              {table}
-                            </option>
-                          ))}
-                        </select>
+                        />
                       </td>
                       <td className="mm-td-select">
                         <div className="mm-td-select-row">
-                          <select
+                          <SelectDropdown
                             key={`col-${selectedTable}-${rowKey(row)}`}
-                            className="mm-select"
                             value={safeCol}
+                            options={colOptions}
+                            placeholder={selectedTable ? "Select source column…" : "Select table first…"}
                             disabled={!selectedTable}
-                            onChange={(e) => {
-                              console.log("[ManualMapping] column select onChange:", e.target.value);
-                              setColumn(row, e.target.value);
+                            onChange={(val) => {
+                              console.log("[ManualMapping] column select onChange:", val);
+                              setColumn(row, val);
                             }}
-                          >
-                            <option value="">
-                              {selectedTable ? "Select source column…" : "Select table first…"}
-                            </option>
-                            {colOptions.map((column) => (
-                              <option key={`opt-${column}`} value={column}>
-                                {column}
-                              </option>
-                            ))}
-                          </select>
+                          />
                           {isOverridden && (
                             <button
                               className="mm-clear-btn mm-clear-btn--inline"
@@ -403,7 +580,7 @@ export default function ManualMapping({
         </button>
 
         <div className="mm-nav-pages">
-          {tableGroups.map(([name], idx) => (
+          {filteredTableGroups.map(([name], idx) => (
             <button
               key={`dot-${idx}`}
               className={`mm-page-dot ${idx === safeIndex ? "active" : ""}`}

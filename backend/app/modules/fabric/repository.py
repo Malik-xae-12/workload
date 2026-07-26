@@ -63,10 +63,16 @@ async def soft_delete_project(db: AsyncSession, project: Project) -> None:
 
 
 async def update_project_workspace(
-    db: AsyncSession, project: Project, workspace_id: str, workspace_name: str
+    db: AsyncSession, project: Project, workspace_id: str, workspace_name: str, capacity_assigned: bool = False
 ) -> Project:
     project.workspace_id = workspace_id
     project.workspace_name = workspace_name
+    # Only ever flip this on — a later provisioning call that happens to
+    # come back with capacity_assigned=False (e.g. a transient capacity
+    # API hiccup) must not erase a capacity assignment that already
+    # succeeded once.
+    if capacity_assigned:
+        project.capacity_assigned = True
     await db.commit()
     await db.refresh(project)
     return project

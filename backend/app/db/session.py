@@ -153,6 +153,30 @@ async def _migrate_existing_db() -> None:
                 await conn.execute(text(
                     "ALTER TABLE source_connections ADD COLUMN status_error VARCHAR(1000)"
                 ))
+
+            # capacity_assigned was only ever returned in the workspace-
+            # provisioning API response, never persisted — so reloading the
+            # page (which re-fetches the project, not that one-off response)
+            # always showed "No" even for a workspace whose capacity really
+            # was assigned. Add the column, and for existing projects that
+            # already have a workspace_id, backfill it to true: they only
+            # ever got a workspace_id by completing provisioning, which
+            # already only succeeds once capacity assignment succeeds (or
+            # was intentionally skipped) — that state shouldn't reset just
+            # because we started tracking it now.
+            project_cols = {
+                row[1]
+                for row in (
+                    await conn.execute(text("PRAGMA table_info(projects)"))
+                ).fetchall()
+            }
+            if "capacity_assigned" not in project_cols:
+                await conn.execute(text(
+                    "ALTER TABLE projects ADD COLUMN capacity_assigned BOOLEAN NOT NULL DEFAULT 0"
+                ))
+                await conn.execute(text(
+                    "UPDATE projects SET capacity_assigned = 1 WHERE workspace_id IS NOT NULL"
+                ))
         # Dedupe project<->connection links created by the (now-fixed)
         # non-idempotent create_project_link — a connection could get TWO
         # link rows for the same project (one from the atomic create+link

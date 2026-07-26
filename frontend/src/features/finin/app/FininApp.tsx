@@ -172,10 +172,18 @@ export default function FininApp({ connections, projectId, initialConnectionName
         )}
 
         {loadingSavedMapping && !job && (
-          <div className="running-view">
+          <div className="saved-mapping-loading">
+            <div className="sml-orbit">
+              <div className="sml-orbit-ring" />
+              <div className="sml-orbit-ring sml-orbit-ring--delay" />
+              <div className="sml-orbit-core">⌘</div>
+            </div>
             <h2>Loading Saved Mapping</h2>
-            <p className="results-sub">Fetching the previously saved mapping for <strong>{connectionName}</strong>…</p>
-            <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
+            <p className="results-sub">
+              Fetching the previously saved mapping for <strong>{connectionName}</strong>…
+            </p>
+            <div className="sml-progress"><div className="sml-progress-bar" /></div>
+            <div className="sml-actions">
               <button
                 className="btn-ghost"
                 onClick={async () => {

@@ -147,6 +147,7 @@ export interface ProjectResponse {
   status: string;
   workspace_id: string | null;
   workspace_name: string | null;
+  capacity_assigned: boolean;
   app_type: 'fabric' | 'finin';
   created_at: string | null;
 }

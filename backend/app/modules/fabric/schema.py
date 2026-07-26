@@ -204,6 +204,7 @@ class ProjectRead(BaseModel):
     status: str
     workspace_id: str | None = None
     workspace_name: str | None = None
+    capacity_assigned: bool = False
     app_type: str = "fabric"
     created_at: datetime | None = None
 

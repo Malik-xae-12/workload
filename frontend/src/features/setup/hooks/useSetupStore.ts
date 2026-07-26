@@ -368,6 +368,7 @@ export const useSetupStore = (projectId: string | null) => {
             workspaceId: project.workspace_id || '',
             userObjectId: '',
             workspaceName: project.workspace_name || '',
+            capacityAssigned: project.capacity_assigned,
           },
         }));
       } else {
