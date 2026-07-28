@@ -40,6 +40,7 @@ interface ConfigStepProps {
   onRunItlNotebook: (connectionName: string) => Promise<boolean>;
   onRunItlPipelines: (connectionName: string) => Promise<boolean>;
   itlNotebookRunStatus: Record<string, string | null>;
+  onDeployGoldStoredProcedures: () => Promise<{ batches_executed: number; procedures_deployed: number; database: string }>;
   loading: boolean;
   configLoading: Record<string, boolean>;
   /** Finin-only: jump to the AI Mapping page (to build
@@ -73,6 +74,7 @@ export const ConfigStep = ({
   onRunItlNotebook,
   onRunItlPipelines,
   itlNotebookRunStatus,
+  onDeployGoldStoredProcedures,
   loading,
   configLoading,
   onGoToAIMapping,
@@ -740,6 +742,7 @@ export const ConfigStep = ({
               onRunItlNotebook={onRunItlNotebook}
               onRunItlPipelines={() => onRunItlPipelines(selectedConn!.name)}
               itlNotebookRunStatus={connItlNotebookRunStatus}
+              onDeployGoldStoredProcedures={onDeployGoldStoredProcedures}
             />
           )}
         </div>
@@ -944,6 +947,7 @@ interface ItlSectionProps {
   onRunItlNotebook: (connectionName: string) => Promise<boolean>;
   onRunItlPipelines: () => Promise<boolean>;
   itlNotebookRunStatus: string;
+  onDeployGoldStoredProcedures: () => Promise<{ batches_executed: number; procedures_deployed: number; database: string }>;
 }
 
 const ItlSection = ({
@@ -958,11 +962,14 @@ const ItlSection = ({
   onRunItlNotebook,
   onRunItlPipelines,
   itlNotebookRunStatus,
+  onDeployGoldStoredProcedures,
 }: ItlSectionProps): JSX.Element => {
   const [downloading, setDownloading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [runningNotebook, setRunningNotebook] = useState(false);
   const [deploying, setDeploying] = useState(false);
+  const [deployingSp, setDeployingSp] = useState(false);
+  const [spDeployed, setSpDeployed] = useState<{ procedures_deployed: number; database: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const autoDeployTriggeredRef = useRef(false);
 
@@ -997,7 +1004,7 @@ const ItlSection = ({
   // on ItlSection remounts this component per connection, so showDetails
   // below is naturally isolated per source rather than leaking across them.
   const fullyComplete = itlConfigDownloaded && itlConfigUploaded && notebookRan && allItlDeployed && allItlPipelinesRan;
-  const [showDetails, setShowDetails] = useState(false);
+  const [showDetails, setShowDetails] = useState(true);
 
   // Auto-deploy ITL pipelines once notebook succeeds
   useEffect(() => {
@@ -1032,6 +1039,19 @@ const ItlSection = ({
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  const handleDeployStoredProcedures = async () => {
+    setDeployingSp(true);
+    try {
+      const res = await onDeployGoldStoredProcedures();
+      setSpDeployed({ procedures_deployed: res.procedures_deployed, database: res.database });
+      toast.success(`${res.procedures_deployed} stored procedures deployed to ${res.database}`);
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to deploy stored procedures');
+    } finally {
+      setDeployingSp(false);
+    }
+  };
+
   return (
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
       <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
@@ -1039,28 +1059,28 @@ const ItlSection = ({
           <Workflow size={15} className="text-emerald-600" />
           <h3 className="text-[13px] font-bold text-slate-700">ITL (Incremental Load)</h3>
         </div>
-        {allItlDeployed && !fullyComplete && (
-          <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-emerald-50 text-emerald-700">
-            <CheckCircle2 size={12} /> Done
-          </span>
-        )}
-        {fullyComplete && (
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2">
+          {allItlDeployed && !fullyComplete && (
+            <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-emerald-50 text-emerald-700">
+              <CheckCircle2 size={12} /> Done
+            </span>
+          )}
+          {fullyComplete && (
             <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-emerald-50 text-emerald-700">
               <CheckCircle2 size={12} /> Completed
             </span>
-            <button
-              type="button"
-              onClick={() => setShowDetails((v) => !v)}
-              className="text-[11px] font-bold text-emerald-600 hover:text-emerald-800"
-            >
-              {showDetails ? 'Hide details' : 'View details'}
-            </button>
-          </div>
-        )}
+          )}
+          <button
+            type="button"
+            onClick={() => setShowDetails((v) => !v)}
+            className="text-[11px] font-bold text-emerald-600 hover:text-emerald-800"
+          >
+            {showDetails ? 'Hide details' : 'View details'}
+          </button>
+        </div>
       </div>
 
-      {(!fullyComplete || showDetails) && (
+      {showDetails && (
       <div className="p-5 space-y-4">
         {/* Step 1: Download Excel */}
         <div className="flex items-center gap-4">
@@ -1358,6 +1378,37 @@ const ItlSection = ({
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* Step 5: Deploy the ims-schema stored procedures to WH_Gold —
+            only meaningful once the ITL pipelines have actually run. */}
+        {(
+          <div className="mt-3 border-t border-slate-100 pt-4 flex items-center gap-4">
+            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 ${spDeployed ? 'bg-emerald-100 text-emerald-700' : 'bg-emerald-50 text-emerald-700'}`}>5</div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[12px] font-medium text-slate-700">Create Stored Procedures for WH_Gold</p>
+              <p className="text-[10px] text-slate-500">
+                {spDeployed
+                  ? `${spDeployed.procedures_deployed} procedures deployed under [ims] in ${spDeployed.database}`
+                  : 'Creates the [ims] schema and its 89 stored procedures in WH_Gold'}
+              </p>
+            </div>
+            <button
+              onClick={handleDeployStoredProcedures}
+              disabled={deployingSp}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all disabled:opacity-50 ${
+                spDeployed ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'bg-emerald-600 text-white hover:bg-emerald-700'
+              }`}
+            >
+              {deployingSp ? (
+                <><Loader2 size={12} className="animate-spin" /> Deploying...</>
+              ) : spDeployed ? (
+                <><CheckCircle2 size={12} /> Re-run</>
+              ) : (
+                <><Upload size={12} /> Create Stored Procedure for WH_Gold</>
+              )}
+            </button>
           </div>
         )}
       </div>

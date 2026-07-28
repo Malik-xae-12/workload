@@ -1467,3 +1467,47 @@ async def save_finin_mapping_handler(
     await db.commit()
 
     return inserted
+
+
+async def deploy_gold_stored_procedures_handler(
+    project_id: str, user: User, db: AsyncSession
+) -> dict:
+    """Run the bundled Combined_SP_Deployment_ims.sql script against WH_Gold,
+    creating the `ims` schema and its 89 stored procedures (or updating them,
+    since the script uses CREATE OR ALTER — safe to re-run).
+    """
+    project = await _require_workspace(project_id, user, db)
+
+    medallion = await repo.get_medallion_config(db, project_id)
+    if not medallion or not medallion.gold_item_id:
+        raise HTTPException(
+            status_code=404,
+            detail="Gold warehouse not found — complete the Medallion step first.",
+        )
+
+    cred = await repo.get_fabric_credential(db, project_id)
+    if not cred:
+        raise HTTPException(status_code=400, detail="Fabric credentials not configured for this project")
+
+    token, _ = await _get_project_token(project_id, db)
+
+    from app.modules.fabric.services.metadata import get_warehouse_connection_string
+    from app.modules.fabric.services.gold_stored_procedures import deploy_stored_procedures
+
+    server, display_name = get_warehouse_connection_string(
+        token, project.workspace_id, medallion.gold_item_id
+    )
+    database = display_name or medallion.gold_name or "WH_Gold"
+
+    import anyio
+
+    result = await anyio.to_thread.run_sync(
+        lambda: deploy_stored_procedures(
+            client_id=cred.client_id,
+            client_secret=cred.client_secret,
+            server=server,
+            database=database,
+        )
+    )
+    result["database"] = database
+    return result

@@ -33,6 +33,7 @@ import {
   uploadItlPipelines,
   runItlNotebook as runItlNotebookApi,
   getItlNotebookStatus,
+  deployGoldStoredProcedures as deployGoldStoredProceduresApi,
   saveFabricCredentials,
   getFabricCredentials,
 } from '../../../layouts/services/fabricApi';
@@ -1471,6 +1472,16 @@ export const useSetupStore = (projectId: string | null) => {
   }, [projectId, applyForProject]);
 
   /**
+   * Deploy the bundled ims-schema stored procedure script to WH_Gold.
+   * Runs synchronously on the backend (no job polling needed) — the
+   * request just stays open until every batch has executed.
+   */
+  const deployGoldStoredProcedures = useCallback(async () => {
+    if (!projectId) throw new Error('No active project');
+    return deployGoldStoredProceduresApi(projectId);
+  }, [projectId]);
+
+  /**
    * Run a single deployed ITL pipeline by name (from itlPipelineFiles), polling until done.
    */
   const runItlPipeline = useCallback(
@@ -1700,6 +1711,7 @@ export const useSetupStore = (projectId: string | null) => {
     runItlNotebook,
     runItlPipeline,
     runItlPipelineSequence,
+    deployGoldStoredProcedures,
     clearError,
   };
 };

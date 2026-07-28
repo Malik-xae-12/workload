@@ -138,6 +138,7 @@ export const SetupPage = () => {
     uploadItlPipelinesToFabric,
     runItlNotebook,
     runItlPipelineSequence,
+    deployGoldStoredProcedures,
     clearError,
   } = useSetupStore(activeProjectId);
 
@@ -399,6 +400,7 @@ export const SetupPage = () => {
             }}
             itlNotebookRunStatus={state.itlNotebookRunStatus}
             onRunItlPipelines={runItlPipelineSequence}
+            onDeployGoldStoredProcedures={deployGoldStoredProcedures}
             loading={state.loading}
             configLoading={state.configLoading}
           />

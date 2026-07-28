@@ -176,11 +176,13 @@
   box-shadow: 0 0 0 4px rgba(255,255,255,0.25);
 }
 
+.gradientbg{
+  background: radial-gradient(circle at top left, rgba(13, 148, 136, 0.05), transparent 45%);
+}
 /* Finin Accelerator financial theme — a contained, subtle wash + accent for
  * the setup wizard when running in Finin mode. Deliberately scoped under
  * .finin-theme so it never touches Fabric Accelerator's own styling. */
 .finin-theme {
-  background: radial-gradient(circle at top left, rgba(13, 148, 136, 0.05), transparent 45%);
   border-radius: 16px;
 }
 

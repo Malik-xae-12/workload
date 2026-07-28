@@ -523,6 +523,17 @@ async def run_itl_notebook(
     return await svc.run_itl_notebook_handler(project_id, notebook_name, user, db)
 
 
+@router.post("/projects/{project_id}/gold/deploy-stored-procedures")
+async def deploy_gold_stored_procedures(
+    project_id: str,
+    user: User = Depends(current_active_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Run the bundled ims-schema stored procedure script against WH_Gold.
+    Available once ITL is complete for at least one connection."""
+    return await svc.deploy_gold_stored_procedures_handler(project_id, user, db)
+
+
 @router.get(
     "/projects/{project_id}/itl-notebook/{notebook_name}/jobs/{job_id}",
     response_model=NotebookJobStatusResponse,

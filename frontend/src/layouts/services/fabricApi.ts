@@ -631,3 +631,16 @@ export function getItlNotebookStatus(
     `/projects/${projectId}/itl-notebook/${encodeURIComponent(notebookName)}/jobs/${jobId}`
   );
 }
+
+export interface DeployGoldStoredProceduresResponse {
+  batches_executed: number;
+  procedures_deployed: number;
+  database: string;
+}
+
+export function deployGoldStoredProcedures(projectId: string) {
+  return request<DeployGoldStoredProceduresResponse>(
+    `/projects/${projectId}/gold/deploy-stored-procedures`,
+    { method: 'POST' }
+  );
+}
