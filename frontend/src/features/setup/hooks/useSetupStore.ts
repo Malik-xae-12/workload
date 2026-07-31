@@ -33,7 +33,11 @@ import {
   uploadItlPipelines,
   runItlNotebook as runItlNotebookApi,
   getItlNotebookStatus,
-  deployGoldStoredProcedures as deployGoldStoredProceduresApi,
+  startDeployGoldStoredProcedures as startDeployGoldStoredProceduresApi,
+  getDeployGoldStoredProceduresStatus as getDeployGoldStoredProceduresStatusApi,
+  deployMasterExecutor as deployMasterExecutorApi,
+  startExecuteMasterSp as startExecuteMasterSpApi,
+  getExecuteMasterSpStatus as getExecuteMasterSpStatusApi,
   saveFabricCredentials,
   getFabricCredentials,
 } from '../../../layouts/services/fabricApi';
@@ -98,6 +102,7 @@ const initialState: SetupState = {
   itlConfigUploaded: {},
   itlPipelineFiles: {},
   itlNotebookRunStatus: {},
+  itlStatusChecked: {},
 };;
 
 // Persist wizard progress (current step + selected connection) per project so a
@@ -878,6 +883,13 @@ export const useSetupStore = (projectId: string | null) => {
                   ...prev.itlPipelineFiles,
                   [connId]: hasLiveDeploy || restoredPipelines.length === 0 ? prevItlPipelineFiles : restoredPipelines,
                 },
+                // Mark this connection's ITL status as confirmed from the
+                // backend — from this point on, an empty itlPipelineFiles
+                // array genuinely means "nothing deployed" rather than
+                // "haven't asked yet", so it's now safe for the UI to act
+                // on that (show "Pending", allow auto-deploy) without risk
+                // of jumping the gun mid-restore.
+                itlStatusChecked: { ...prev.itlStatusChecked, [connId]: true },
               };
             });
 
@@ -926,7 +938,12 @@ export const useSetupStore = (projectId: string | null) => {
                 })();
               }
             }
-          }).catch(() => { /* non-fatal */ });
+          }).catch(() => {
+            applyForProject(projectId, (prev) => ({
+              ...prev,
+              itlStatusChecked: { ...prev.itlStatusChecked, [connId]: true },
+            }));
+          });
         }
 
         // Resume polling for any pipelines persisted as 'running' (handles page-refresh case)
@@ -1050,17 +1067,38 @@ export const useSetupStore = (projectId: string | null) => {
           filenames,
           app_mode: appMode,
         });
-        applyForProject(projectId, (prev) => ({
-          ...prev,
-          pipelineFiles: {
-            ...prev.pipelineFiles,
-            [connId]: (prev.pipelineFiles[connId] || []).map((p) => {
-              const match = resp.results.find((r: any) => r.filename === p.filename || r.name === p.name || isUploadMatch(r.name, p.name, p.filename, connectionName));
-              if (match) return { ...p, uploadStatus: match.status === 'success' ? 'success' as const : 'failed' as const, error: match.error, fabricItemId: match.id, runStatus: 'not-started' as const };
-              return p;
-            }),
-          },
-        }));
+        applyForProject(projectId, (prev) => {
+          const existing = prev.pipelineFiles[connId] || [];
+          const matchedFilenames = new Set<string>();
+          const updated = existing.map((p) => {
+            const match = resp.results.find((r: any) => r.filename === p.filename || r.name === p.name || isUploadMatch(r.name, p.name, p.filename, connectionName));
+            if (match) {
+              matchedFilenames.add(match.filename || match.name);
+              return { ...p, uploadStatus: match.status === 'success' ? 'success' as const : 'failed' as const, error: match.error, fabricItemId: match.id, runStatus: 'not-started' as const };
+            }
+            return p;
+          });
+          // Any deploy result that didn't match an already-known template
+          // (e.g. a db-type-specific file like 01_PL_SQL_ConfigCreation
+          // that wasn't in the initially-fetched list) still really
+          // deployed to Fabric — surface it instead of dropping it, which
+          // is what previously left it invisible until a page refresh.
+          const unmatched = resp.results
+            .filter((r: any) => !matchedFilenames.has(r.filename || r.name))
+            .map((r: any) => ({
+              filename: r.filename || `${r.name}.json`,
+              name: r.name,
+              sizeBytes: 0,
+              uploadStatus: r.status === 'success' ? 'success' as const : 'failed' as const,
+              error: r.error,
+              fabricItemId: r.id,
+              runStatus: 'not-started' as const,
+            }));
+          return {
+            ...prev,
+            pipelineFiles: { ...prev.pipelineFiles, [connId]: [...updated, ...unmatched] },
+          };
+        });
         return true;
       } catch (e: any) {
         applyForProject(projectId, (prev) => ({
@@ -1473,12 +1511,60 @@ export const useSetupStore = (projectId: string | null) => {
 
   /**
    * Deploy the bundled ims-schema stored procedure script to WH_Gold.
-   * Runs synchronously on the backend (no job polling needed) — the
-   * request just stays open until every batch has executed.
+   * Starts a background job and polls its status until done/failed,
+   * invoking `onProgress` (batch count, total, message) along the way so
+   * the UI can drive a live progress bar instead of just spinning for the
+   * ~90 batches this script runs.
    */
-  const deployGoldStoredProcedures = useCallback(async () => {
+  const deployGoldStoredProcedures = useCallback(async (
+    onProgress?: (progress: number, total: number, message: string) => void
+  ) => {
     if (!projectId) throw new Error('No active project');
-    return deployGoldStoredProceduresApi(projectId);
+    const { job_id, total } = await startDeployGoldStoredProceduresApi(projectId);
+    onProgress?.(0, total, 'Starting deployment…');
+
+    while (true) {
+      await new Promise((r) => setTimeout(r, 1000));
+      const status = await getDeployGoldStoredProceduresStatusApi(projectId, job_id);
+      onProgress?.(status.progress, status.total, status.message);
+      if (status.status === 'done' && status.result) return status.result;
+      if (status.status === 'failed') throw new Error(status.message || 'Deployment failed');
+    }
+  }, [projectId]);
+
+  /**
+   * Create [MasterExecuter].[sp_GoldExecute] in WH_Gold. Small script, runs
+   * synchronously — no progress bar needed for this part.
+   */
+  const deployMasterExecutor = useCallback(async () => {
+    if (!projectId) throw new Error('No active project');
+    return deployMasterExecutorApi(projectId);
+  }, [projectId]);
+
+  /**
+   * Run [MasterExecuter].[sp_GoldExecute] (executes every active procedure
+   * from Config_Gold.finin_gold_sp_details) as a background job, polling for
+   * live per-SP progress the same way deployGoldStoredProcedures does.
+   */
+  const executeMasterSp = useCallback(async (
+    silverLakehouse?: string,
+    onProgress?: (progress: number, total: number, message: string) => void
+  ) => {
+    if (!projectId) throw new Error('No active project');
+    const { job_id, total } = await startExecuteMasterSpApi(projectId, silverLakehouse);
+    onProgress?.(0, total, 'Starting execution…');
+
+    while (true) {
+      await new Promise((r) => setTimeout(r, 1500));
+      const status = await getExecuteMasterSpStatusApi(projectId, job_id);
+      onProgress?.(status.progress, status.total, status.message);
+      if (status.status === 'done' && status.result) return status.result;
+      if (status.status === 'failed') {
+        const err: any = new Error(status.message || 'Master SP execution failed');
+        err.result = status.result;
+        throw err;
+      }
+    }
   }, [projectId]);
 
   /**
@@ -1637,8 +1723,27 @@ export const useSetupStore = (projectId: string | null) => {
   );
 
   const runItlPipelineSequence = useCallback(
-    async (connectionName: string) => {
-      const order = ITL_RUN_SEQUENCE.map((suffix) => `${connectionName}_${suffix}`);
+    async (connectionName: string, resumeFromFailed?: boolean) => {
+      let order = ITL_RUN_SEQUENCE.map((suffix) => `${connectionName}_${suffix}`);
+
+      if (resumeFromFailed) {
+        const connIdForResume = stateRef.current.connections.find((c) => c.name === connectionName)?.id
+          ?? stateRef.current.selectedConnection ?? '';
+        const files = stateRef.current.itlPipelineFiles[connIdForResume] || [];
+        // Resume at the first step in the sequence that isn't already
+        // 'completed' — this is Fabric's own "rerun from failed activity"
+        // semantics applied to *our* run sequence: everything before the
+        // failure is left alone, the run picks back up at (and re-attempts)
+        // the step that broke. Fabric doesn't expose a public REST API for
+        // true in-pipeline activity-level resume, so re-running our own
+        // failed step is the closest honest equivalent achievable here.
+        const resumeIdx = order.findIndex((name) => {
+          const pf = files.find((p) => p.name === name);
+          return pf?.runStatus !== 'completed';
+        });
+        if (resumeIdx > 0) order = order.slice(resumeIdx);
+      }
+
       let connId = '';
       for (const name of order) {
         if (name === `${connectionName}_02_PL_Master pipeline`) {
@@ -1712,6 +1817,8 @@ export const useSetupStore = (projectId: string | null) => {
     runItlPipeline,
     runItlPipelineSequence,
     deployGoldStoredProcedures,
+    deployMasterExecutor,
+    executeMasterSp,
     clearError,
   };
 };

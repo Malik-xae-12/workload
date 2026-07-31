@@ -139,6 +139,8 @@ export const SetupPage = () => {
     runItlNotebook,
     runItlPipelineSequence,
     deployGoldStoredProcedures,
+    deployMasterExecutor,
+    executeMasterSp,
     clearError,
   } = useSetupStore(activeProjectId);
 
@@ -399,8 +401,11 @@ export const SetupPage = () => {
               }
             }}
             itlNotebookRunStatus={state.itlNotebookRunStatus}
+            itlStatusChecked={state.itlStatusChecked}
             onRunItlPipelines={runItlPipelineSequence}
             onDeployGoldStoredProcedures={deployGoldStoredProcedures}
+            onDeployMasterExecutor={deployMasterExecutor}
+            onExecuteMasterSp={executeMasterSp}
             loading={state.loading}
             configLoading={state.configLoading}
           />

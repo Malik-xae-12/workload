@@ -1951,6 +1951,19 @@
   animation: mm-picker-in 0.12s ease-out;
 }
 
+/* Portaled into document.body (see selectdropdown.tsx) — position is set
+   inline via top/left/width from the trigger's own bounding rect, so this
+   only needs to override the inline-positioning rules above and sit above
+   literally everything else (it's now a sibling of the whole app, not
+   nested inside .mm-card's overflow:hidden, so a very high z-index is
+   safe and necessary here). */
+.mm-dd-menu--portal {
+  top: auto;
+  left: auto;
+  right: auto;
+  z-index: 10000;
+}
+
 .finin-app .mm-dd-list {
   max-height: 240px;
   overflow-y: auto;

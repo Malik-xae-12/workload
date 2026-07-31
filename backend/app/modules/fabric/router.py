@@ -31,6 +31,7 @@ from app.modules.fabric.schema import (
     ProjectRead,
     ProjectSourceConnectionRead,
     RunStatusUpdate,
+    ExecuteMasterSpRequest,
     SourceConnectionCreate,
     SourceConnectionRead,
     WorkspacePipelineRead,
@@ -529,9 +530,58 @@ async def deploy_gold_stored_procedures(
     user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_async_session),
 ):
-    """Run the bundled ims-schema stored procedure script against WH_Gold.
+    """Start deploying the bundled ims-schema stored procedure script against
+    WH_Gold as a background job — returns immediately with a job_id; poll
+    /gold/deploy-stored-procedures-status/{job_id} for live batch progress.
     Available once ITL is complete for at least one connection."""
-    return await svc.deploy_gold_stored_procedures_handler(project_id, user, db)
+    return await svc.start_deploy_gold_stored_procedures_handler(project_id, user, db)
+
+
+@router.get("/projects/{project_id}/gold/deploy-stored-procedures-status/{job_id}")
+async def deploy_gold_stored_procedures_status(
+    project_id: str,
+    job_id: str,
+    user: User = Depends(current_active_user),
+):
+    """Poll for live progress of a background gold stored-procedure deploy."""
+    return svc.get_deploy_gold_stored_procedures_status(job_id)
+
+
+@router.post("/projects/{project_id}/gold/deploy-master-executor")
+async def deploy_master_executor(
+    project_id: str,
+    user: User = Depends(current_active_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Create [MasterExecuter].[sp_GoldExecute] (+ schema/log table) in WH_Gold.
+    Small script, runs synchronously — no job/progress needed for this part."""
+    return await svc.deploy_master_executer_handler(project_id, user, db)
+
+
+@router.post("/projects/{project_id}/gold/execute-master-sp")
+async def execute_master_sp(
+    project_id: str,
+    payload: ExecuteMasterSpRequest,
+    user: User = Depends(current_active_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Start EXEC [MasterExecuter].[sp_GoldExecute] as a background job — the
+    procedure runs every active stored procedure from
+    Config_Gold.finin_gold_sp_details. Returns immediately with a job_id; poll
+    /gold/execute-master-sp-status/{job_id} for live per-SP progress."""
+    return await svc.start_execute_master_sp_handler(
+        project_id, payload.silver_lakehouse, user, db
+    )
+
+
+@router.get("/projects/{project_id}/gold/execute-master-sp-status/{job_id}")
+async def execute_master_sp_status(
+    project_id: str,
+    job_id: str,
+    user: User = Depends(current_active_user),
+):
+    """Poll for live progress of a background Master SP execution."""
+    return svc.get_execute_master_sp_status(job_id)
 
 
 @router.get(

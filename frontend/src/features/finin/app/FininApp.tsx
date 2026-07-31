@@ -38,6 +38,8 @@ export default function FininApp({ connections, projectId, initialConnectionName
     applyOverrides, saveToMetadata, reset, fetchSavedMapping, apiBase,
   } = useMapping(projectId, connectionName, readOnly);
 
+  const unmatchedCount = job?.result?.stats?.unmatched ?? 0;
+
   const [showManual, setShowManual] = useState(false);
   const [projectClientId, setProjectClientId] = useState<string | null>(null);
   const [savedToMetadata, setSavedToMetadata] = useState(false);
@@ -104,9 +106,14 @@ export default function FininApp({ connections, projectId, initialConnectionName
     if (readOnly) { console.warn("[FininApp] Save blocked — viewing a saved mapping read-only."); return; }
     if (!job?.job_id) { setShowManual(false); return; }
     try {
-      await applyOverrides(job.job_id, overrides);
+      await applyOverrides(job.job_id, overrides, projectId, connectionName);
     } catch (e) {
       console.error(e);
+      // Don't leave the manual mapping screen as if the save succeeded —
+      // that was how a failed apply-overrides call went unnoticed before:
+      // the UI silently returned to Results still showing stale stats.
+      alert(e instanceof Error ? e.message : "Failed to save manual mapping overrides.");
+      return;
     }
     setShowManual(false);
   };
@@ -120,6 +127,7 @@ export default function FininApp({ connections, projectId, initialConnectionName
     if (!job?.job_id) return;
     if (!projectId) { alert("Open a Fabric project first (Projects tab) so mappings have a destination."); return; }
     if (!connectionName) { alert("Select a source connection to save into."); return; }
+    if (unmatchedCount > 0) { alert(`${unmatchedCount} column(s) are still unmatched. Resolve them in Manual Mapping before saving.`); return; }
     try {
       const res = await saveToMetadata(job.job_id, projectId, connectionName);
       setSavedToMetadata(true);
@@ -292,7 +300,11 @@ export default function FininApp({ connections, projectId, initialConnectionName
                 <div className={`se-num ${savedToMetadata ? 'se-num--done' : ''}`}>1</div>
                 <div className="se-step-info">
                   <div className="se-step-title">Save to SourceInformationSchemaMapped</div>
-                  <div className="se-step-sub">Writes mapping rows into Config_{connectionName || '…'}</div>
+                  <div className="se-step-sub">
+                    {unmatchedCount > 0
+                      ? `${unmatchedCount} column${unmatchedCount === 1 ? '' : 's'} still unmatched — resolve them in Manual Mapping before saving`
+                      : `Writes mapping rows into Config_${connectionName || '…'}`}
+                  </div>
                 </div>
                 <div className="se-select-wrap">
                   <SelectDropdown
@@ -306,7 +318,8 @@ export default function FininApp({ connections, projectId, initialConnectionName
                   <button
                     className={`se-btn ${savedToMetadata ? 'se-btn--done' : ''}`}
                     onClick={handleSaveToMetadata}
-                    disabled={saving || !connectionName || savedToMetadata}
+                    disabled={saving || !connectionName || savedToMetadata || unmatchedCount > 0}
+                    title={unmatchedCount > 0 ? `${unmatchedCount} unmatched column(s) must be resolved first` : undefined}
                   >
                     {savedToMetadata ? 'Saved' : saving ? `Saving... ${saveProgress}%` : 'Save'}
                   </button>
@@ -314,7 +327,7 @@ export default function FininApp({ connections, projectId, initialConnectionName
                     <button
                       className="se-btn se-btn--ghost"
                       onClick={handleSaveToMetadata}
-                      disabled={saving || !connectionName}
+                      disabled={saving || !connectionName || unmatchedCount > 0}
                     >
                       Re-save
                     </button>

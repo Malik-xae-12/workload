@@ -52,6 +52,11 @@ from app.core.config import settings
  
 logger = logging.getLogger(__name__)
 
+# asyncio.create_task() doesn't keep its task alive on its own — hold a
+# strong reference here until each background deploy finishes.
+_BACKGROUND_GOLD_SP_TASKS: set[asyncio.Task] = set()
+_BACKGROUND_MASTER_SP_TASKS: set[asyncio.Task] = set()
+
 # Serializes concurrent pipeline-deploy calls for the same project+connection.
 # Without this, two overlapping deploy requests (e.g. the frontend's
 # auto-deploy-after-notebook-create effect firing at nearly the same moment
@@ -1469,12 +1474,13 @@ async def save_finin_mapping_handler(
     return inserted
 
 
-async def deploy_gold_stored_procedures_handler(
+async def start_deploy_gold_stored_procedures_handler(
     project_id: str, user: User, db: AsyncSession
 ) -> dict:
-    """Run the bundled Combined_SP_Deployment_ims.sql script against WH_Gold,
-    creating the `ims` schema and its 89 stored procedures (or updating them,
-    since the script uses CREATE OR ALTER — safe to re-run).
+    """Kick off the WH_Gold stored-procedure deploy as a background job and
+    return its job_id immediately, so the frontend can show live batch
+    progress instead of blocking on one long request (89 procedures / ~90
+    SQL batches was enough to feel like a hang with no feedback).
     """
     project = await _require_workspace(project_id, user, db)
 
@@ -1489,25 +1495,282 @@ async def deploy_gold_stored_procedures_handler(
     if not cred:
         raise HTTPException(status_code=400, detail="Fabric credentials not configured for this project")
 
+    mc = await repo.get_metadata_config(db, project_id)
+
     token, _ = await _get_project_token(project_id, db)
 
     from app.modules.fabric.services.metadata import get_warehouse_connection_string
-    from app.modules.fabric.services.gold_stored_procedures import deploy_stored_procedures
+    from app.modules.fabric.services import gold_stored_procedures as gsp
+    from app.modules.finin.shared.job_store import create_job, update_job
+    import anyio
+    import uuid
 
     server, display_name = get_warehouse_connection_string(
         token, project.workspace_id, medallion.gold_item_id
     )
     database = display_name or medallion.gold_name or "WH_Gold"
 
+    # Metadata (WH_MetaData) connection, resolved up front — best-effort:
+    # if metadata config isn't set up, we still deploy the procedures, we
+    # just skip recording them in Config_Gold.finin_gold_sp_details.
+    meta_server = meta_database = None
+    if mc and mc.warehouse_id:
+        try:
+            meta_server, meta_display_name = get_warehouse_connection_string(
+                token, project.workspace_id, mc.warehouse_id
+            )
+            meta_database = meta_display_name or mc.warehouse_name or "WH_MetaData"
+        except Exception as e:
+            logger.warning(f"Could not resolve WH_MetaData connection for SP recording: {e}")
+
+    job_id = f"gold_sp_{project_id}_{uuid.uuid4().hex[:8]}"
+    total_batches = gsp.count_batches()
+    create_job(job_id)
+    update_job(job_id, status="running", total=total_batches, progress=0, message="Starting deployment…")
+
+    async def _run():
+        def on_progress(completed: int, total: int):
+            update_job(job_id, progress=completed, total=total, message=f"Executing batch {completed}/{total}…")
+
+        try:
+            result = await anyio.to_thread.run_sync(
+                lambda: gsp.deploy_stored_procedures(
+                    client_id=cred.client_id,
+                    client_secret=cred.client_secret,
+                    server=server,
+                    database=database,
+                    on_progress=on_progress,
+                )
+            )
+            result["database"] = database
+
+            if meta_server and meta_database:
+                try:
+                    sp_names = gsp.extract_procedure_names()
+                    recorded = await anyio.to_thread.run_sync(
+                        lambda: gsp.record_sp_details(
+                            client_id=cred.client_id,
+                            client_secret=cred.client_secret,
+                            server=meta_server,
+                            database=meta_database,
+                            sp_names=sp_names,
+                        )
+                    )
+                    result["sp_details_recorded"] = recorded
+                except Exception as e:
+                    # Deployment itself succeeded — don't fail the whole job
+                    # over the bookkeeping step; just surface it in the result.
+                    logger.warning(f"Deployed SPs but failed to record Config_Gold.finin_gold_sp_details: {e}")
+                    result["sp_details_recorded"] = 0
+                    result["sp_details_error"] = str(e)
+
+            update_job(job_id, status="done", progress=result["batches_executed"],
+                       total=result["batches_executed"], message="Deployment complete", result=result)
+        except Exception as e:
+            update_job(job_id, status="failed", message=str(e))
+
+    task = asyncio.create_task(_run())
+    _BACKGROUND_GOLD_SP_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_GOLD_SP_TASKS.discard)
+
+    return {"status": "started", "job_id": job_id, "total": total_batches}
+
+def get_deploy_gold_stored_procedures_status(job_id: str) -> dict:
+    from app.modules.finin.shared.job_store import get_job
+    job = get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {
+        "status": job.get("status", "unknown"),
+        "progress": job.get("progress", 0),
+        "total": job.get("total", 0),
+        "message": job.get("message", ""),
+        "result": job.get("result"),
+    }
+
+
+async def _resolve_gold_and_meta(project_id: str, user: User, db: AsyncSession):
+    """Shared setup for both master-executer endpoints: workspace, Fabric
+    credential, WH_Gold connection, and (best-effort) WH_MetaData connection."""
+    project = await _require_workspace(project_id, user, db)
+
+    medallion = await repo.get_medallion_config(db, project_id)
+    if not medallion or not medallion.gold_item_id:
+        raise HTTPException(
+            status_code=404,
+            detail="Gold warehouse not found — complete the Medallion step first.",
+        )
+
+    cred = await repo.get_fabric_credential(db, project_id)
+    if not cred:
+        raise HTTPException(status_code=400, detail="Fabric credentials not configured for this project")
+
+    mc = await repo.get_metadata_config(db, project_id)
+    token, _ = await _get_project_token(project_id, db)
+
+    from app.modules.fabric.services.metadata import get_warehouse_connection_string
+
+    gold_server, gold_display_name = get_warehouse_connection_string(
+        token, project.workspace_id, medallion.gold_item_id
+    )
+    gold_database = gold_display_name or medallion.gold_name or "WH_Gold"
+
+    meta_server = meta_database = None
+    if mc and mc.warehouse_id:
+        try:
+            meta_server, meta_display_name = get_warehouse_connection_string(
+                token, project.workspace_id, mc.warehouse_id
+            )
+            meta_database = meta_display_name or mc.warehouse_name or "WH_MetaData"
+        except Exception as e:
+            logger.warning(f"Could not resolve WH_MetaData connection: {e}")
+
+    return cred, gold_server, gold_database, meta_server, meta_database
+
+
+async def deploy_master_executer_handler(project_id: str, user: User, db: AsyncSession) -> dict:
+    """Create [MasterExecuter].[sp_GoldExecute] (+ its schema/log table) in
+    WH_Gold. Only 3 objects — fast enough to run synchronously, no job/
+    progress bar needed for this part (only for actually *running* it)."""
+    cred, gold_server, gold_database, _, _ = await _resolve_gold_and_meta(project_id, user, db)
+
+    from app.modules.fabric.services import master_executer as mx
     import anyio
 
     result = await anyio.to_thread.run_sync(
-        lambda: deploy_stored_procedures(
+        lambda: mx.deploy_master_executer(
             client_id=cred.client_id,
             client_secret=cred.client_secret,
-            server=server,
-            database=database,
+            server=gold_server,
+            database=gold_database,
         )
     )
-    result["database"] = database
+    result["database"] = gold_database
     return result
+
+
+async def start_execute_master_sp_handler(
+    project_id: str, silver_lakehouse: str, user: User, db: AsyncSession
+) -> dict:
+    """Kick off EXEC [MasterExecuter].[sp_GoldExecute] as a background job.
+
+    The procedure itself does all the work (loops over every active row in
+    Config_Gold.finin_gold_sp_details and EXECs each [ims] procedure) — this
+    just runs that single call on a background thread, while a second
+    connection polls [MasterExecuter].[ExecutionLog] every couple seconds
+    so the frontend gets a real "X of Y" progress bar instead of one long
+    spinner for however many procedures are active.
+    """
+    cred, gold_server, gold_database, meta_server, meta_database = await _resolve_gold_and_meta(
+        project_id, user, db
+    )
+
+    from app.modules.fabric.services import master_executer as mx
+    from app.modules.finin.shared.job_store import create_job, update_job
+    import anyio
+    import uuid
+
+    # Best-effort total for the progress bar — the run itself re-reads the
+    # same table from inside SQL regardless of whether this succeeds.
+    total = 0
+    if meta_server and meta_database:
+        total = await anyio.to_thread.run_sync(
+            lambda: mx.get_active_sp_count(
+                client_id=cred.client_id,
+                client_secret=cred.client_secret,
+                server=meta_server,
+                database=meta_database,
+            )
+        )
+
+    batch_id = mx.new_batch_id()
+    job_id = f"master_sp_{project_id}_{uuid.uuid4().hex[:8]}"
+    create_job(job_id)
+    update_job(job_id, status="running", total=total, progress=0,
+               message="Starting execution…", result={"batch_id": batch_id})
+
+    async def _run():
+        run_task = asyncio.create_task(
+            anyio.to_thread.run_sync(
+                lambda: mx.run_master_execute(
+                    client_id=cred.client_id,
+                    client_secret=cred.client_secret,
+                    server=gold_server,
+                    database=gold_database,
+                    batch_id=batch_id,
+                    silver_lakehouse=silver_lakehouse,
+                )
+            )
+        )
+
+        last_snapshot: dict = {"done": 0, "succeeded": 0, "failed": 0, "failed_names": []}
+        while not run_task.done():
+            await asyncio.sleep(2)
+            try:
+                last_snapshot = await anyio.to_thread.run_sync(
+                    lambda: mx.poll_execution_log(
+                        client_id=cred.client_id,
+                        client_secret=cred.client_secret,
+                        server=gold_server,
+                        database=gold_database,
+                        batch_id=batch_id,
+                    )
+                )
+                update_job(
+                    job_id,
+                    progress=last_snapshot["done"],
+                    total=max(total, last_snapshot["done"]),
+                    message=f"Executed {last_snapshot['done']}/{max(total, last_snapshot['done']) or '?'} stored procedures…",
+                )
+            except Exception as e:
+                # Transient polling error — the run itself keeps going
+                # regardless; just skip this snapshot.
+                logger.warning(f"Master SP progress poll failed: {e}")
+
+        try:
+            run_task.result()  # re-raise if run_master_execute failed
+        except Exception as e:
+            update_job(job_id, status="failed", message=str(e), result={"batch_id": batch_id, **last_snapshot})
+            return
+
+        # Final snapshot, now that the run has actually finished.
+        try:
+            last_snapshot = await anyio.to_thread.run_sync(
+                lambda: mx.poll_execution_log(
+                    client_id=cred.client_id,
+                    client_secret=cred.client_secret,
+                    server=gold_server,
+                    database=gold_database,
+                    batch_id=batch_id,
+                )
+            )
+        except Exception as e:
+            logger.warning(f"Master SP final progress poll failed: {e}")
+
+        result = {"batch_id": batch_id, "database": gold_database, **last_snapshot}
+        status = "failed" if last_snapshot["failed"] and last_snapshot["succeeded"] == 0 else "done"
+        update_job(
+            job_id, status=status,
+            progress=last_snapshot["done"], total=max(total, last_snapshot["done"]),
+            message="Execution complete", result=result,
+        )
+
+    task = asyncio.create_task(_run())
+    _BACKGROUND_MASTER_SP_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_MASTER_SP_TASKS.discard)
+
+    return {"status": "started", "job_id": job_id, "total": total, "batch_id": batch_id}
+
+
+def get_execute_master_sp_status(job_id: str) -> dict:
+    from app.modules.finin.shared.job_store import get_job
+    job = get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {
+        "status": job.get("status", "unknown"),
+        "progress": job.get("progress", 0),
+        "total": job.get("total", 0),
+        "message": job.get("message", ""),
+        "result": job.get("result"),
+    }

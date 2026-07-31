@@ -153,10 +153,9 @@ def create_log_objects(
                 CREATE TABLE Log.ETLBatchGoldLogDetails
                 (
                     BatchId                 INT,
-                    TableName               VARCHAR(255),
-                    TableId                 INT,
                     SchemaName              VARCHAR(255),
-                    ExtractedRowCount       BIGINT,
+                    TableName               VARCHAR(255),
+                    ProcessedRowCount       BIGINT,
                     StartTime               DATETIME2(6),
                     EndTime                 DATETIME2(6),
                     Status                  VARCHAR(255),
@@ -290,10 +289,9 @@ def create_log_objects(
                 """
                 CREATE PROCEDURE Log.SP_ETLBatchGoldLogDetails
                     @BatchId                INT,
-                    @TableName              VARCHAR(255),
-                    @TableId                INT,
                     @SchemaName             VARCHAR(255),
-                    @ExtractedRowCount      BIGINT          = NULL,
+                    @TableName              VARCHAR(255),
+                    @ProcessedRowCount      BIGINT          = NULL,
                     @StartTime              DATETIME2(6)    = NULL,
                     @EndTime                DATETIME2(6)    = NULL,
                     @Status                 VARCHAR(255)    = NULL,
@@ -302,11 +300,11 @@ def create_log_objects(
                 AS
                 BEGIN
                     INSERT INTO Log.ETLBatchGoldLogDetails
-                    (BatchId, TableName, SchemaName, ExtractedRowCount,
-                     StartTime, EndTime, Status, ErrorMessage, SourceName, TableId)
+                    (BatchId, SchemaName, TableName, ProcessedRowCount,
+                     StartTime, EndTime, Status, ErrorMessage, SourceName)
                     VALUES
-                    (@BatchId, @TableName, @SchemaName, @ExtractedRowCount,
-                     @StartTime, @EndTime, @Status, @ErrorMessage, @SourceName, @TableId);
+                    (@BatchId, @SchemaName, @TableName, @ProcessedRowCount,
+                     @StartTime, @EndTime, @Status, @ErrorMessage, @SourceName);
                 END
                 """,
             )

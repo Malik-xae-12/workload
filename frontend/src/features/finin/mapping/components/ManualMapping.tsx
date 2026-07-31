@@ -36,12 +36,9 @@ export default function ManualMapping({
   const [tablePickerOpen, setTablePickerOpen] = useState(false);
   const tablePickerRef = useRef<HTMLDivElement>(null);
 
-  // DEFENSIVE: Log props on every render
-  console.log("[ManualMapping] render — rows.length:", rows?.length, "showManual active");
 
   // Group rows by template table
   const tableGroups = useMemo(() => {
-    console.log("[ManualMapping] rebuilding tableGroups");
     const map = new Map<string, MappingRow[]>();
     if (!Array.isArray(rows)) {
       console.error("[ManualMapping] FATAL: rows is not an array!", rows);
@@ -72,7 +69,6 @@ export default function ManualMapping({
   const totalTables = filteredTableGroups.length;
 
   useEffect(() => {
-    console.log("[ManualMapping] clamp effect — totalTables:", totalTables);
     if (totalTables === 0) {
       setTableIndex(0);
       return;
@@ -120,7 +116,6 @@ export default function ManualMapping({
       : `${selectedTables.size} of ${allTableNames.length} tables`;
 
   const sourceOptions = useMemo<Record<string, string[]>>(() => {
-    console.log("[ManualMapping] rebuilding sourceOptions");
     const map: Record<string, Set<string>> = {};
 
     if (sourceColumnsByTable && typeof sourceColumnsByTable === "object") {
@@ -152,8 +147,23 @@ export default function ManualMapping({
   const sourceTables = useMemo(() => Object.keys(sourceOptions).sort(), [sourceOptions]);
   const overrideCount = Object.keys(overrides).length;
 
+  // Only overrides with BOTH a source table AND a source column filled in
+  // are valid to send to the backend or count as "matched". Selecting only
+  // the table (source_column still "") must NOT count — that's the bug:
+  // picking just the table was flipping the row to "Matched" and making it
+  // vanish from the Unmatched filter before a column could even be chosen,
+  // and sending that incomplete override to Save had nothing valid for the
+  // backend to persist, so nothing was ever actually saved for that row.
+  const completeOverrides = useMemo(() => {
+    const out: Record<string, { source_table: string; source_column: string }> = {};
+    for (const [k, v] of Object.entries(overrides)) {
+      if (v?.source_table && v?.source_column) out[k] = v;
+    }
+    return out;
+  }, [overrides]);
+  const incompleteOverrideCount = overrideCount - Object.keys(completeOverrides).length;
+
   const goToPage = useCallback((index: number) => {
-    console.log("[ManualMapping] goToPage called:", index);
     if (totalTables === 0) return;
     setTableIndex(Math.min(Math.max(index, 0), totalTables - 1));
     setStatusFilter("all");
@@ -176,15 +186,17 @@ export default function ManualMapping({
     }
   }, [overrides, rowKey]);
 
-  // A manual override always counts as "matched" for filtering purposes,
-  // even if the row's original auto-match status was unmatched.
+  // A manual override only counts as "matched" once BOTH the source table
+  // AND source column are set — not the instant *any* override object
+  // exists (which setTable() creates right away, with source_column: "",
+  // the moment a table is picked, before a column is chosen).
   const isRowMatched = useCallback((row: MappingRow) => {
-    if (getOverride(row)) return true;
+    const ov = getOverride(row);
+    if (ov) return !!ov.source_table && !!ov.source_column;
     return row.status === "matched" && row.mapped_source_column !== "NO_MATCH";
   }, [getOverride]);
 
   const setTable = useCallback((row: MappingRow, table: string) => {
-    console.log("[ManualMapping] setTable called:", table);
     try {
       const k = rowKey(row);
       setOverrides((prev) => ({
@@ -197,7 +209,6 @@ export default function ManualMapping({
   }, [rowKey]);
 
   const setColumn = useCallback((row: MappingRow, col: string) => {
-    console.log("[ManualMapping] setColumn called:", col);
     try {
       const k = rowKey(row);
       setOverrides((prev) => {
@@ -214,7 +225,6 @@ export default function ManualMapping({
   }, [rowKey]);
 
   const clearOverride = useCallback((row: MappingRow) => {
-    console.log("[ManualMapping] clearOverride called");
     try {
       const k = rowKey(row);
       setOverrides((prev) => {
@@ -226,6 +236,24 @@ export default function ManualMapping({
       console.error("[ManualMapping] clearOverride crashed:", e);
     }
   }, [rowKey]);
+
+  // Shared by both Save buttons: only ever sends *complete* overrides
+  // (both source_table and source_column set). If some overrides are
+  // still incomplete, ask before silently dropping them from this save so
+  // it's clear why a row didn't end up persisted.
+  const confirmAndSave = useCallback(async () => {
+    if (incompleteOverrideCount > 0) {
+      const completeCount = Object.keys(completeOverrides).length;
+      const proceed = window.confirm(
+        `${incompleteOverrideCount} override${incompleteOverrideCount === 1 ? "" : "s"} ` +
+        `still ${incompleteOverrideCount === 1 ? "is" : "are"} missing a source column and won't be saved. ` +
+        `Save the ${completeCount} complete override${completeCount === 1 ? "" : "s"} now?`
+      );
+      if (!proceed) return false;
+    }
+    await onSave(completeOverrides);
+    return true;
+  }, [incompleteOverrideCount, completeOverrides, onSave]);
 
   if (allTableNames.length === 0) {
     return (
@@ -457,7 +485,6 @@ export default function ManualMapping({
                           options={sourceTables}
                           placeholder="Select source table…"
                           onChange={(val) => {
-                            console.log("[ManualMapping] table select onChange:", val);
                             setTable(row, val);
                           }}
                         />
@@ -471,7 +498,6 @@ export default function ManualMapping({
                             placeholder={selectedTable ? "Select source column…" : "Select table first…"}
                             disabled={!selectedTable}
                             onChange={(val) => {
-                              console.log("[ManualMapping] column select onChange:", val);
                               setColumn(row, val);
                             }}
                           />
@@ -500,7 +526,6 @@ export default function ManualMapping({
           className="btn-secondary mm-nav-btn"
           disabled={safeIndex === 0}
           onClick={() => {
-            console.log("[ManualMapping] Prev clicked");
             goToPage(safeIndex - 1);
           }}
         >
@@ -513,7 +538,6 @@ export default function ManualMapping({
               key={`dot-${idx}`}
               className={`mm-page-dot ${idx === safeIndex ? "active" : ""}`}
               onClick={() => {
-                console.log("[ManualMapping] page dot clicked:", idx);
                 goToPage(idx);
               }}
               title={name}
@@ -529,8 +553,7 @@ export default function ManualMapping({
               disabled={overrideCount === 0 || readOnly}
               title={readOnly ? "Save is disabled — viewing a saved mapping" : undefined}
               onClick={() => {
-                console.log("[ManualMapping] Save clicked");
-                onSave(overrides);
+                void confirmAndSave();
               }}
             >
               Save{overrideCount > 0 ? ` (${overrideCount})` : ""}
@@ -539,7 +562,6 @@ export default function ManualMapping({
             <button
               className="btn-primary mm-nav-btn"
               onClick={() => {
-                console.log("[ManualMapping] Next clicked");
                 goToPage(safeIndex + 1);
               }}
             >
@@ -553,11 +575,14 @@ export default function ManualMapping({
             disabled={isSaving || readOnly}
             title={readOnly ? "Save is disabled — viewing a saved mapping" : undefined}
             onClick={async () => {
-              console.log("[ManualMapping] Save & Download Excel clicked");
               setIsSaving(true);
               setSavedDone(false);
               try {
-                await onSave(overrides);
+                const didSave = await confirmAndSave();
+                if (!didSave) {
+                  setIsSaving(false);
+                  return;
+                }
                 setSavedDone(true);
                 // Small delay so backend has written the file before download
                 setTimeout(() => {

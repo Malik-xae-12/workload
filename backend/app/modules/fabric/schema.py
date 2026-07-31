@@ -171,6 +171,10 @@ class RunStatusUpdate(BaseModel):
     job_id: str | None = None
 
 
+class ExecuteMasterSpRequest(BaseModel):
+    silver_lakehouse: str = "LH_Silver"
+
+
 # ── Project Source Connection (link) ────────────────────────────────
 
 class LinkSourceConnectionRequest(BaseModel):

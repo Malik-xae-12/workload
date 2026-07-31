@@ -212,16 +212,42 @@ export function useMapping(projectId?: string | null, connectionName?: string | 
     return triggerBlobDownload(`${API}/api/download-column-config/${jobId}`, `column_config.xlsx`);
   };
 
-  const applyOverrides = async (jobId: string, overrides: Record<string, Override>) => {
+  const applyOverrides = async (
+    jobId: string,
+    overrides: Record<string, Override>,
+    projectId?: string,
+    connectionName?: string
+  ) => {
+    // NOTE: this endpoint requires an authenticated user server-side (it
+    // may need to refresh the persisted ai_mapping_result_json for the
+    // project's connection). Every other project-scoped call in this file
+    // attaches authHeaders() — this one didn't, so the request was
+    // silently rejected with 401 and the override was never applied,
+    // leaving the AI Mapping summary stuck showing pre-override stats.
     const res = await fetch(`${API}/api/apply-overrides/${jobId}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ overrides }),
+      headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+      body: JSON.stringify({ overrides, project_id: projectId, connection_name: connectionName }),
     });
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
       throw new Error(data?.detail || "Failed to apply overrides");
     }
+    // Reflect the recomputed rows/stats immediately — without this, the
+    // AI Mapping summary (matched/unmatched counts) stayed stale after a
+    // manual override until the whole job was re-fetched.
+    if (data?.rows) {
+      setJob((prev) => prev?.result ? {
+        ...prev,
+        result: {
+          ...prev.result,
+          rows: data.rows,
+          stats: data.stats ?? prev.result.stats,
+          unmapped_source_columns: data.unmapped_source_columns ?? prev.result.unmapped_source_columns,
+        },
+      } : prev);
+    }
+    return data;
   };
 
   /** Persist the current job's mapping into SourceInformationSchemaMapped.
