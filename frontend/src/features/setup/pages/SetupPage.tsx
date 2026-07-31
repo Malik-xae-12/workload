@@ -352,6 +352,7 @@ export const SetupPage = () => {
       case 4:
         return (
           <ConfigStep
+            projectId={activeProjectId || ''}
             connections={state.connections}
             connectionsLoading={state.connectionsLoading}
             selectedConnection={state.selectedConnection}

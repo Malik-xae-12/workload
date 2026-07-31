@@ -1,0 +1,342 @@
+{
+    "name": "PL_BlobLoadAndArchive",
+    "properties": {
+        "description": "Reads blob_config.json to discover files under Data/, loads them into the Bronze Lakehouse, copies them to Archive/, then deletes the originals from Data/.",
+        "activities": [
+            {
+                "name": "Read Blob Config",
+                "description": "Reads the blob_config.json file from the Bronze Lakehouse to get the list of sources to process.",
+                "type": "Lookup",
+                "dependsOn": [],
+                "policy": {
+                    "timeout": "0.00:10:00",
+                    "retry": 1,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "typeProperties": {
+                    "source": {
+                        "type": "JsonSource",
+                        "storeSettings": {
+                            "type": "LakehouseReadSettings",
+                            "recursive": false,
+                            "enablePartitionDiscovery": false
+                        },
+                        "formatSettings": {
+                            "type": "JsonReadSettings"
+                        }
+                    },
+                    "datasetSettings": {
+                        "annotations": [],
+                        "linkedService": {
+                            "name": "LH_Bronze",
+                            "properties": {
+                                "annotations": [],
+                                "type": "Lakehouse",
+                                "typeProperties": {
+                                    "workspaceId": "Replace_Workspace_Id",
+                                    "artifactId": "Replace_Bronze_Lakehouse_Id",
+                                    "rootFolder": "Files"
+                                }
+                            }
+                        },
+                        "type": "Json",
+                        "typeProperties": {
+                            "location": {
+                                "type": "LakehouseLocation",
+                                "fileName": "blob_config.json",
+                                "folderPath": "config"
+                            }
+                        },
+                        "schema": []
+                    },
+                    "firstRowOnly": false
+                }
+            },
+            {
+                "name": "Set Sources Array",
+                "description": "Extracts the sources array from the config JSON for iteration.",
+                "type": "SetVariable",
+                "dependsOn": [
+                    {
+                        "activity": "Read Blob Config",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "typeProperties": {
+                    "variableName": "SourcesList",
+                    "value": {
+                        "value": "@activity('Read Blob Config').output.value[0].sources",
+                        "type": "Expression"
+                    }
+                }
+            },
+            {
+                "name": "ForEach Source Folder",
+                "description": "Iterates over each source folder discovered in blob_config.json. For each folder: copy files to Lakehouse, copy to Archive, delete originals.",
+                "type": "ForEach",
+                "dependsOn": [
+                    {
+                        "activity": "Set Sources Array",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "typeProperties": {
+                    "items": {
+                        "value": "@variables('SourcesList')",
+                        "type": "Expression"
+                    },
+                    "isSequential": false,
+                    "batchCount": 5,
+                    "activities": [
+                        {
+                            "name": "Copy To Bronze Lakehouse",
+                            "description": "Copies files from the blob Data/ folder to the Bronze Lakehouse Files section, preserving the folder structure.",
+                            "type": "Copy",
+                            "dependsOn": [],
+                            "policy": {
+                                "timeout": "0.06:00:00",
+                                "retry": 2,
+                                "retryIntervalInSeconds": 30,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "typeProperties": {
+                                "source": {
+                                    "type": "BinarySource",
+                                    "storeSettings": {
+                                        "type": "AzureBlobStorageReadSettings",
+                                        "recursive": true,
+                                        "wildcardFolderPath": {
+                                            "value": "@item().source_path",
+                                            "type": "Expression"
+                                        },
+                                        "wildcardFileName": "*",
+                                        "deleteFilesAfterCompletion": false
+                                    },
+                                    "formatSettings": {
+                                        "type": "BinaryReadSettings"
+                                    },
+                                    "datasetSettings": {
+                                        "annotations": [],
+                                        "type": "Binary",
+                                        "typeProperties": {
+                                            "location": {
+                                                "type": "AzureBlobStorageLocation",
+                                                "container": {
+                                                    "value": "@pipeline().parameters.BlobContainerName",
+                                                    "type": "Expression"
+                                                }
+                                            }
+                                        },
+                                        "externalReferences": {
+                                            "connection": "Replace_Blob_Connection_Id"
+                                        },
+                                        "schema": []
+                                    }
+                                },
+                                "sink": {
+                                    "type": "BinarySink",
+                                    "storeSettings": {
+                                        "type": "LakehouseWriteSettings"
+                                    },
+                                    "datasetSettings": {
+                                        "annotations": [],
+                                        "linkedService": {
+                                            "name": "LH_Bronze",
+                                            "properties": {
+                                                "annotations": [],
+                                                "type": "Lakehouse",
+                                                "typeProperties": {
+                                                    "workspaceId": "Replace_Workspace_Id",
+                                                    "artifactId": "Replace_Bronze_Lakehouse_Id",
+                                                    "rootFolder": "Files"
+                                                }
+                                            }
+                                        },
+                                        "type": "Binary",
+                                        "typeProperties": {
+                                            "location": {
+                                                "type": "LakehouseLocation",
+                                                "folderPath": {
+                                                    "value": "@item().source_path",
+                                                    "type": "Expression"
+                                                }
+                                            }
+                                        },
+                                        "schema": []
+                                    }
+                                },
+                                "enableStaging": false
+                            }
+                        },
+                        {
+                            "name": "Copy To Archive",
+                            "description": "Copies the processed files from Data/ to Archive/ within the same blob container, preserving folder structure.",
+                            "type": "Copy",
+                            "dependsOn": [
+                                {
+                                    "activity": "Copy To Bronze Lakehouse",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "timeout": "0.06:00:00",
+                                "retry": 2,
+                                "retryIntervalInSeconds": 30,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "typeProperties": {
+                                "source": {
+                                    "type": "BinarySource",
+                                    "storeSettings": {
+                                        "type": "AzureBlobStorageReadSettings",
+                                        "recursive": true,
+                                        "wildcardFolderPath": {
+                                            "value": "@item().source_path",
+                                            "type": "Expression"
+                                        },
+                                        "wildcardFileName": "*",
+                                        "deleteFilesAfterCompletion": false
+                                    },
+                                    "formatSettings": {
+                                        "type": "BinaryReadSettings"
+                                    },
+                                    "datasetSettings": {
+                                        "annotations": [],
+                                        "type": "Binary",
+                                        "typeProperties": {
+                                            "location": {
+                                                "type": "AzureBlobStorageLocation",
+                                                "container": {
+                                                    "value": "@pipeline().parameters.BlobContainerName",
+                                                    "type": "Expression"
+                                                }
+                                            }
+                                        },
+                                        "externalReferences": {
+                                            "connection": "Replace_Blob_Connection_Id"
+                                        },
+                                        "schema": []
+                                    }
+                                },
+                                "sink": {
+                                    "type": "BinarySink",
+                                    "storeSettings": {
+                                        "type": "AzureBlobStorageWriteSettings"
+                                    },
+                                    "datasetSettings": {
+                                        "annotations": [],
+                                        "type": "Binary",
+                                        "typeProperties": {
+                                            "location": {
+                                                "type": "AzureBlobStorageLocation",
+                                                "container": {
+                                                    "value": "@pipeline().parameters.BlobContainerName",
+                                                    "type": "Expression"
+                                                },
+                                                "folderPath": {
+                                                    "value": "@item().archive_path",
+                                                    "type": "Expression"
+                                                }
+                                            }
+                                        },
+                                        "externalReferences": {
+                                            "connection": "Replace_Blob_Connection_Id"
+                                        },
+                                        "schema": []
+                                    }
+                                },
+                                "enableStaging": false
+                            }
+                        },
+                        {
+                            "name": "Delete From Data",
+                            "description": "Deletes the original files from Data/ after they have been successfully loaded to Lakehouse and copied to Archive/.",
+                            "type": "Delete",
+                            "dependsOn": [
+                                {
+                                    "activity": "Copy To Archive",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "timeout": "0.06:00:00",
+                                "retry": 2,
+                                "retryIntervalInSeconds": 30,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "typeProperties": {
+                                "datasetSettings": {
+                                    "type": "Binary",
+                                    "typeProperties": {
+                                        "location": {
+                                            "type": "AzureBlobStorageLocation",
+                                            "container": {
+                                                "value": "@pipeline().parameters.BlobContainerName",
+                                                "type": "Expression"
+                                            },
+                                            "folderPath": {
+                                                "value": "@item().source_path",
+                                                "type": "Expression"
+                                            }
+                                        }
+                                    },
+                                    "externalReferences": {
+                                        "connection": "Replace_Blob_Connection_Id"
+                                    },
+                                    "schema": []
+                                },
+                                "enableLogging": false,
+                                "storeSettings": {
+                                    "type": "AzureBlobStorageReadSettings",
+                                    "recursive": true,
+                                    "wildcardFolderPath": {
+                                        "value": "@item().source_path",
+                                        "type": "Expression"
+                                    },
+                                    "wildcardFileName": "*"
+                                }
+                            }
+                        }
+                    ]
+                }
+            }
+        ],
+        "parameters": {
+            "BlobContainerName": {
+                "type": "string",
+                "defaultValue": "raw"
+            },
+            "ConfigFolderPath": {
+                "type": "string",
+                "defaultValue": "config"
+            }
+        },
+        "variables": {
+            "SourcesList": {
+                "type": "Array"
+            }
+        },
+        "annotations": [
+            "blob-load",
+            "archive",
+            "auto-generated"
+        ]
+    }
+}

@@ -487,6 +487,7 @@ _DB_TYPE_TO_OTL_FOLDER: dict[str, str] = {
     "oracle": "Oracle",
     "postgresql": "Postgres",
     "postgres": "Postgres",
+    "azure blob": "Blob",
 }
  
  
@@ -516,6 +517,7 @@ _PIPELINE_FILE_MAP: dict[str, list[str]] = {
     "postgresql": ["01_PL_Postgres_ConfigCreation.json", "02_PL_SourceToBronze.json"],
     "postgres": ["01_PL_Postgres_ConfigCreation.json", "02_PL_SourceToBronze.json"],
     "mysql": ["01_PL_MySQL_ConfigCreation.json", "02_PL_SourceToBronze.json"],
+    "azure blob": ["PL_BlobLoadAndArchive.json"],
 }
  
  
@@ -578,6 +580,8 @@ def build_replacements(
     replacements["Replace_Source_Dataset_Type"] = _DATASET_TYPE_MAP.get(db_type, "SqlServerTable")
     replacements["Replace_Source_Database_Name"] = source_connection.get("database") or ""
     replacements["Replace_Source_Connection_Id"] = source_connection.get("fabric_connection_id") or ""
+    if db_type == "azure blob":
+        replacements["Replace_Blob_Connection_Id"] = source_connection.get("fabric_connection_id") or ""
     replacements["Replace_Source_Name"] = source_connection.get("conn_name") or ""
  
     conn_name = source_connection.get("conn_name") or ""

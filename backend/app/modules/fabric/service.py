@@ -237,6 +237,12 @@ async def create_source_connection_handler(
  
     token, _ = await _get_project_token(project.id, db)
 
+    db_username = payload.username
+    db_password = payload.password
+    if payload.auth_type == "ServicePrincipal":
+        db_username = f"{payload.tenant_id}::{payload.client_id}"
+        db_password = payload.client_secret or ""
+
     # Insert (and link) the row FIRST, before the slow Fabric API call below —
     # so the connection shows up as "creating" immediately, including across
     # a page reload that happens mid-request, instead of only appearing (or
@@ -247,8 +253,8 @@ async def create_source_connection_handler(
         db_type=payload.db_type,
         server=payload.server,
         database=payload.database,
-        username=payload.username,
-        password=payload.password,
+        username=db_username,
+        password=db_password,
         is_on_prem=payload.is_on_prem,
         gateway_name=payload.gateway_name,
         fabric_connection_id=None,
@@ -596,7 +602,9 @@ async def upload_pipelines_handler(
                 f"Cannot upload pipelines – missing Fabric references: {'; '.join(missing)}. "
                 "Ensure previous setup steps completed successfully and resources are fully provisioned."
             )
- 
+            
+
+
         async with _get_deploy_lock(project_id, payload.connection_name):
             results = await asyncio.to_thread(
                 upload_pipelines,
@@ -651,6 +659,129 @@ async def list_workspace_pipelines_handler(
     return list_workspace_pipelines(token, project.workspace_id)
  
  
+async def upload_blob_config_handler(
+    project_id: str,
+    user: User,
+    db: AsyncSession,
+):
+    from commands.discover_blob_structure import discover_blob_structure
+    from app.modules.fabric.services.auth import get_onelake_token
+    import json
+    import httpx as _httpx
+    import anyio
+
+    project = await _require_workspace(project_id, user, db)
+    mc = await repo.get_medallion_config(db, project_id)
+    if not mc or not mc.bronze_item_id:
+        raise HTTPException(status_code=400, detail="Bronze lakehouse config missing")
+
+    # Find Azure Blob connection
+    blob_conn = None
+    links = await repo.list_project_links(db, project_id)
+    for link in links:
+        if link.source_connection and link.source_connection.db_type.lower() == "azure blob":
+            blob_conn = link.source_connection
+            break
+
+    if not blob_conn:
+        raise HTTPException(status_code=400, detail="No Azure Blob connection found for this project")
+
+    # parse username format "tenant_id::client_id"
+    parts = blob_conn.username.split("::") if blob_conn.username else []
+    if len(parts) != 2:
+        raise HTTPException(status_code=400, detail="Azure Blob connection missing valid Service Principal credentials")
+    
+    tenant_id, client_id = parts
+    client_secret = blob_conn.password
+    account_url = blob_conn.server
+    container_name = blob_conn.database
+
+    # Generate config
+    try:
+        config_data = await anyio.to_thread.run_sync(
+            discover_blob_structure,
+            tenant_id,
+            client_id,
+            client_secret,
+            account_url,
+            container_name
+        )
+    except Exception as e:
+        logger.error("Blob structure discovery failed: %s", e)
+        raise HTTPException(status_code=502, detail=f"Failed to discover blob structure: {e}")
+
+    config_bytes = json.dumps(config_data, ensure_ascii=False).encode("utf-8")
+    
+    # Upload to OneLake
+    cred = await repo.get_fabric_credential(db, project_id)
+    if not cred or not cred.client_id or not cred.client_secret or not cred.tenant_id:
+        raise HTTPException(status_code=400, detail="Missing fabric credentials")
+
+    onelake_token = get_onelake_token(cred.client_id, cred.client_secret, cred.tenant_id)
+    if not onelake_token:
+        raise HTTPException(status_code=502, detail="Could not acquire OneLake token")
+
+    bronze_lakehouse_id = mc.bronze_item_id
+    dfs_base = (
+        f"https://onelake.dfs.fabric.microsoft.com/"
+        f"{project.workspace_id}/{bronze_lakehouse_id}/Files/config"
+    )
+    dfs_headers = {"Authorization": f"Bearer {onelake_token}"}
+    
+    # Ensure directory exists
+    _httpx.put(f"{dfs_base}?resource=directory", headers=dfs_headers, timeout=30)
+    
+    file_name = "blob_config.json"
+    dfs_file_url = f"{dfs_base}/{file_name}"
+    
+    # Create file
+    cr = _httpx.put(f"{dfs_file_url}?resource=file", headers=dfs_headers, timeout=30)
+    if cr.status_code not in (200, 201):
+        raise HTTPException(status_code=502, detail=f"Failed to create config in OneLake: {cr.status_code} {cr.text}")
+
+    # Append data
+    _httpx.patch(
+        f"{dfs_file_url}?action=append&position=0",
+        headers={**dfs_headers, "Content-Type": "application/json", "Content-Length": str(len(config_bytes))},
+        content=config_bytes,
+        timeout=60,
+    )
+    # Flush data
+    _httpx.patch(f"{dfs_file_url}?action=flush&position={len(config_bytes)}", headers=dfs_headers, timeout=30)
+    
+    logger.info("Uploaded blob_config.json to Bronze Lakehouse")
+
+    # Record upload status in the DB
+    from app.modules.fabric.models.config_upload import ConfigUpload
+    from sqlalchemy import select
+    
+    # Check if entry already exists
+    existing_upload = (
+        await db.execute(
+            select(ConfigUpload).where(
+                ConfigUpload.project_id == project_id,
+                ConfigUpload.item_name == "blob_config.json",
+                ConfigUpload.item_type == "blob_config"
+            )
+        )
+    ).scalar_one_or_none()
+
+    if existing_upload:
+        existing_upload.status = "success"
+    else:
+        new_upload = ConfigUpload(
+            project_id=project_id,
+            item_type="blob_config",
+            item_name="blob_config.json",
+            status="success",
+        )
+        db.add(new_upload)
+    
+    await db.commit()
+
+    return {"status": "success", "message": "Blob config generated and uploaded to Bronze Lakehouse"}
+
+
 async def run_pipeline_handler(
     project_id: str,
     pipeline_item_id: str,
@@ -1511,3 +1642,35 @@ async def deploy_gold_stored_procedures_handler(
     )
     result["database"] = database
     return result
+
+
+# ── Blob Structure Discovery ────────────────────────────────────────
+
+
+async def discover_blob_structure_handler(
+    prefix: str = "Data/",
+    archive_root: str = "Archive/",
+) -> dict:
+    """
+    Discover the folder structure in Azure Blob Storage under the given prefix
+    and return the generated config dict.
+
+    Uses BLOB_* environment variables for authentication.
+    """
+    import anyio
+
+    # Import and run the blocking discovery logic in a thread
+    from commands.discover_blob_structure import discover_blob_structure
+
+    try:
+        config = await anyio.to_thread.run_sync(
+            lambda: discover_blob_structure(prefix=prefix, archive_root=archive_root)
+        )
+    except Exception as e:
+        logger.error("Blob structure discovery failed: %s", e)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to discover blob structure: {e}",
+        )
+
+    return config

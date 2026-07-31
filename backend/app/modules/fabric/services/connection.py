@@ -187,25 +187,41 @@ def create_source_connection(
         "oracle": "Oracle",
         "postgres": "PostgreSQL",
         "postgresql": "PostgreSQL",
+        "azure blob": "AzureBlobs",
     }
     conn_type = type_map.get(db_type.lower(), "SQL")
 
     if is_on_prem and not gateway_name:
         raise ValueError("gateway_name is required when is_on_prem=True")
 
-    params = [{"dataType": "Text", "name": "server", "value": server}]
-    # Oracle doesn't use a separate "database" parameter — the server field
-    # should contain host:port/service_name. Only add database for SQL-based types.
-    if database and conn_type != "Oracle":
-        params.append({"dataType": "Text", "name": "database", "value": database})
-
-    # Use gateway if on-prem and gateway provided
-    use_gateway = is_on_prem and bool(gateway_name)
+    # Azure Blob uses the provided URL and Service Principal credentials
+    if conn_type == "AzureBlobs":
+        # Extract account name and domain from URL if provided as URL
+        cleaned_server = server.replace("https://", "").replace("http://", "").strip("/")
+        if "." in cleaned_server:
+            blob_account = cleaned_server.split(".")[0]
+            blob_domain = cleaned_server.split(".", 1)[1]
+        else:
+            blob_account = cleaned_server
+            blob_domain = "blob.core.windows.net"
+            
+        params = [
+            {"dataType": "Text", "name": "account", "value": blob_account},
+            {"dataType": "Text", "name": "domain", "value": blob_domain}
+        ]
+        use_gateway = False
+    else:
+        params = [{"dataType": "Text", "name": "server", "value": server}]
+        # Oracle doesn't use a separate "database" parameter — the server field
+        # should contain host:port/service_name. Only add database for SQL-based types.
+        if database and conn_type != "Oracle":
+            params.append({"dataType": "Text", "name": "database", "value": database})
+        use_gateway = is_on_prem and bool(gateway_name)
 
     payload = {
         "connectivityType": "OnPremisesGateway" if use_gateway else "ShareableCloud",
         "displayName": conn_name,
-        "description": f"Source connection - {db_type} ({server}/{database or ''})",
+        "description": f"Source connection - {db_type} ({server}/{database or ''})" if conn_type != "AzureBlobs" else f"Source connection - Azure Blob ({blob_account})",
         "connectionDetails": {
             "type": conn_type,
             "creationMethod": conn_type,
@@ -214,7 +230,18 @@ def create_source_connection(
         "privacyLevel": "Organizational",
     }
 
-    if use_gateway:
+    if conn_type == "AzureBlobs":
+        payload["credentialDetails"] = {
+            "singleSignOnType": "None",
+            "connectionEncryption": "NotEncrypted",
+            "credentials": {
+                "credentialType": "ServicePrincipal",
+                "servicePrincipalClientId": client_id,
+                "servicePrincipalSecret": client_secret,
+                "tenantId": tenant_id,
+            },
+        }
+    elif use_gateway:
         gateway_id = get_gateway_id(token, gateway_name)
         payload["gatewayId"] = gateway_id
 

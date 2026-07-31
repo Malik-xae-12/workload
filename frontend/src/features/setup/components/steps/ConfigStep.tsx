@@ -7,8 +7,10 @@ import { Play, Loader2, CheckCircle2, Database, FileText, XCircle, Workflow, Loc
 import { toast } from 'sonner';
 import type { SourceConnection, ConfigTask, NotebookItem, PipelineItem } from '../../types';
 import { useEffect, useState, useRef, type JSX } from 'react';
+import { uploadBlobConfig } from '../../../../layouts/services/fabricApi';
 
 interface ConfigStepProps {
+  projectId: string;
   connections: SourceConnection[];
   connectionsLoading?: boolean;
   selectedConnection: string | null;
@@ -78,6 +80,7 @@ export const ConfigStep = ({
   loading,
   configLoading,
   onGoToAIMapping,
+  projectId,
 }: ConfigStepProps) => {
   const selectedConn = connections.find((c) => c.id === selectedConnection);
   const connIndex = selectedConn ? connections.indexOf(selectedConn) + 1 : 1;
@@ -96,8 +99,10 @@ export const ConfigStep = ({
 
   const [notebooksUploadingMap, setNotebooksUploadingMap] = useState<Record<string, boolean>>({});
   const [pipelinesUploadingMap, setPipelinesUploadingMap] = useState<Record<string, boolean>>({});
+  const [blobConfigStatusMap, setBlobConfigStatusMap] = useState<Record<string, 'idle' | 'loading' | 'success'>>({});
   const notebooksUploading = selectedConnection ? !!notebooksUploadingMap[selectedConnection] : false;
   const pipelinesUploading = selectedConnection ? !!pipelinesUploadingMap[selectedConnection] : false;
+  const blobConfigStatus = selectedConnection ? blobConfigStatusMap[selectedConnection] ?? 'idle' : 'idle';
   const pendingPipelineDeployMap = useRef<Record<string, boolean>>({});
   const autoRunTriggeredMap = useRef<Record<string, boolean>>({});
 
@@ -118,7 +123,8 @@ export const ConfigStep = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedConnection, connections.length]);
 
-  const allNotebooksDone = connNotebooks.length > 0 && connNotebooks.every((nb) => nb.uploadStatus === 'success');
+  const isBlob = selectedConn?.databaseType?.toLowerCase() === 'azure blob';
+  const allNotebooksDone = isBlob ? blobConfigStatus === 'success' : (connNotebooks.length === 0 || connNotebooks.every((nb) => nb.uploadStatus === 'success'));
   const allPipelinesDone = connPipelineFiles.length > 0 && connPipelineFiles.every((p) => p.uploadStatus === 'success');
   const anyNotebookUploading = connNotebooks.some((nb) => nb.uploadStatus === 'uploading');
   const anyPipelineUploading = connPipelineFiles.some((p) => p.uploadStatus === 'uploading');
@@ -224,6 +230,25 @@ export const ConfigStep = ({
       await onUploadNotebooks(selectedConn.name, connIndex);
     } finally {
       setNotebooksUploadingMap((prev) => ({ ...prev, [connId]: false }));
+    }
+  };
+
+  const handleUploadBlobConfig = async () => {
+    if (!selectedConn) return;
+    const connId = selectedConn.id;
+    setBlobConfigStatusMap((prev) => ({ ...prev, [connId]: 'loading' }));
+    
+    try {
+      const res = await uploadBlobConfig(projectId!);
+      if (res.status === 'success') {
+        toast.success(res.message);
+        setBlobConfigStatusMap((prev) => ({ ...prev, [connId]: 'success' }));
+      } else {
+        throw new Error(res.message);
+      }
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to upload Blob Config');
+      setBlobConfigStatusMap((prev) => ({ ...prev, [connId]: 'idle' }));
     }
   };
 
@@ -520,6 +545,7 @@ export const ConfigStep = ({
           ) : (
           <>
           {/* Notebooks */}
+          {selectedConn?.databaseType?.toLowerCase() !== 'azure blob' && (
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
             <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
               <div className="flex items-center gap-2">
@@ -598,6 +624,45 @@ export const ConfigStep = ({
               </table>
             )}
           </div>
+          )}
+
+          {/* Blob Configuration */}
+          {selectedConn?.databaseType?.toLowerCase() === 'azure blob' && (
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm mb-6">
+            <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
+              <div className="flex items-center gap-2">
+                <FileText size={15} className="text-emerald-600" />
+                <h3 className="text-[13px] font-bold text-slate-700">Blob Configuration</h3>
+              </div>
+              <button
+                onClick={handleUploadBlobConfig}
+                disabled={loading || blobConfigStatus === 'loading' || blobConfigStatus === 'success'}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all ${
+                  blobConfigStatus === 'success'
+                    ? 'bg-emerald-50 text-emerald-700'
+                    : 'bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50'
+                }`}
+              >
+                {blobConfigStatus === 'success' ? (
+                  <><CheckCircle2 size={12} /> Generated</>
+                ) : blobConfigStatus === 'loading' ? (
+                  <><Loader2 size={12} className="animate-spin" /> Generating...</>
+                ) : (
+                  <><Upload size={12} /> Generate & Upload</>
+                )}
+              </button>
+            </div>
+            <div className="p-5 flex flex-col justify-center items-center text-center">
+              <Database size={24} className="text-slate-300 mb-2" />
+              <p className="text-sm text-slate-600">
+                Discover the folder structure in the Azure Blob Storage container and upload the schema (<code>blob_config.json</code>) to the Bronze Lakehouse.
+              </p>
+              <p className="text-xs text-slate-400 mt-2">
+                The pipeline will read this configuration to know which folders to process.
+              </p>
+            </div>
+          </div>
+          )}
 
           {/* Pipelines */}
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">

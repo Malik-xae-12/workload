@@ -39,6 +39,7 @@ export const SourceStep = ({ connections, onAddConnection, loading, error, proje
   const [gatewaysFetched, setGatewaysFetched] = useState(false);
 
   const isPostgres = formData.databaseType === 'PostgreSQL';
+  const isBlob = formData.databaseType === 'Azure Blob';
 
   // Fetch gateways once when form is shown
   useEffect(() => {
@@ -56,19 +57,20 @@ export const SourceStep = ({ connections, onAddConnection, loading, error, proje
 
   // Reset auth fields when database type changes
   useEffect(() => {
-    if (!isPostgres) {
+    if (!isPostgres && !isBlob) {
       setFormData((prev) => ({ ...prev, authType: 'Basic' as AuthType, tenantId: '', clientId: '', clientSecret: '' }));
     }
   }, [formData.databaseType]);
 
   const handleSubmit = () => {
     const isOracle = formData.databaseType === 'Oracle';
+
     const required = formData.name && formData.server;
     const dbRequired = !isOracle ? formData.databaseName : true;
 
     // Validate based on auth type
     let authValid = false;
-    if (isPostgres && formData.authType === 'ServicePrincipal') {
+    if ((isPostgres || isBlob) && formData.authType === 'ServicePrincipal') {
       authValid = !!formData.tenantId && !!formData.clientId && !!formData.clientSecret;
     } else if (isPostgres && formData.authType === 'OAuth') {
       authValid = !!formData.tenantId && !!formData.clientId;
@@ -87,7 +89,7 @@ export const SourceStep = ({ connections, onAddConnection, loading, error, proje
         password: formData.password,
         is_on_prem: hasGateway,
         gateway_name: hasGateway ? formData.gatewayName : undefined,
-        auth_type: isPostgres ? formData.authType : 'Basic',
+        auth_type: (isPostgres || isBlob) ? formData.authType : 'Basic',
         tenant_id: formData.tenantId || undefined,
         client_id: formData.clientId || undefined,
         client_secret: formData.clientSecret || undefined,
@@ -208,14 +210,20 @@ export const SourceStep = ({ connections, onAddConnection, loading, error, proje
               </label>
               <SelectDropdown
                 value={formData.databaseType}
-                options={['Azure SQL', 'PostgreSQL', 'MySQL', 'Oracle', 'SQL Server']}
+                options={['Azure SQL', 'PostgreSQL', 'MySQL', 'Oracle', 'SQL Server', 'Azure Blob']}
                 placeholder="Select database type…"
-                onChange={(val) => setFormData({ ...formData, databaseType: val })}
+                onChange={(val) => {
+                  const updates: any = { databaseType: val };
+                  if (val === 'Azure Blob') {
+                    updates.authType = 'ServicePrincipal';
+                  }
+                  setFormData({ ...formData, ...updates });
+                }}
               />
             </div>
 
-            {/* Authentication type for PostgreSQL */}
-            {isPostgres && (
+            {/* Authentication type */}
+            {(isPostgres || isBlob) && (
               <div className="space-y-1">
                 <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                   Authentication <span className="text-rose-400">*</span>
@@ -225,44 +233,50 @@ export const SourceStep = ({ connections, onAddConnection, loading, error, proje
                   onChange={(e) => setFormData({ ...formData, authType: e.target.value as AuthType })}
                   className="w-full h-9 px-3.5 text-[13px] rounded-lg border border-slate-300 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-50 text-slate-800 bg-slate-50"
                 >
-                  <option value="Basic">Basic</option>
-                  <option value="ServicePrincipal">Service Principal</option>
-                  <option value="OAuth">OAuth</option>
+                  {isBlob ? (
+                    <option value="ServicePrincipal">Service Principal</option>
+                  ) : (
+                    <>
+                      <option value="Basic">Basic</option>
+                      <option value="ServicePrincipal">Service Principal</option>
+                      <option value="OAuth">OAuth</option>
+                    </>
+                  )}
                 </select>
               </div>
             )}
 
             <div className="space-y-1">
               <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                Server / Host <span className="text-rose-400">*</span>
+                {isBlob ? 'Account URL' : 'Server / Host'} <span className="text-rose-400">*</span>
               </label>
               <input
                 type="text"
                 value={formData.server}
                 onChange={(e) => setFormData({ ...formData, server: e.target.value })}
-                placeholder="server.database.windows.net"
+                placeholder={isBlob ? "https://account.blob.core.windows.net/" : "server.database.windows.net"}
                 className="w-full h-9 px-3.5 text-[13px] rounded-lg border border-slate-300 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-50 text-slate-800 placeholder:text-slate-400 bg-slate-50"
               />
             </div>
 
-            {/* Hide Database Name for Oracle */}
+            {/* Hide Database Name for Oracle only, use it for Container Name in Blob */}
             {formData.databaseType !== 'Oracle' && (
               <div className="space-y-1">
                 <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                  Database Name <span className="text-rose-400">*</span>
+                  {isBlob ? 'Container Name' : 'Database Name'} <span className="text-rose-400">*</span>
                 </label>
                 <input
                   type="text"
                   value={formData.databaseName}
                   onChange={(e) => setFormData({ ...formData, databaseName: e.target.value })}
-                  placeholder="sales_db"
+                  placeholder={isBlob ? "raw" : "sales_db"}
                   className="w-full h-9 px-3.5 text-[13px] rounded-lg border border-slate-300 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-50 text-slate-800 placeholder:text-slate-400 bg-slate-50"
                 />
               </div>
             )}
 
             {/* Basic auth fields */}
-            {(!isPostgres || formData.authType === 'Basic') && (
+            {(!isPostgres && !isBlob || formData.authType === 'Basic') && (
               <>
                 <div className="space-y-1">
                   <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
@@ -293,80 +307,81 @@ export const SourceStep = ({ connections, onAddConnection, loading, error, proje
             )}
 
             {/* Service Principal fields */}
-            {isPostgres && formData.authType === 'ServicePrincipal' && (
-              <>
-                <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                    Tenant ID <span className="text-rose-400">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.tenantId}
-                    onChange={(e) => setFormData({ ...formData, tenantId: e.target.value })}
-                    placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                    className="w-full h-9 px-3.5 text-[13px] rounded-lg border border-slate-300 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-50 text-slate-800 placeholder:text-slate-400 bg-slate-50"
-                  />
-                </div>
+            {((isPostgres || isBlob) && formData.authType === 'ServicePrincipal') && (
+                  <>
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                        Tenant ID <span className="text-rose-400">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.tenantId}
+                        onChange={(e) => setFormData({ ...formData, tenantId: e.target.value })}
+                        placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                        className="w-full h-9 px-3.5 text-[13px] rounded-lg border border-slate-300 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-50 text-slate-800 placeholder:text-slate-400 bg-slate-50"
+                      />
+                    </div>
 
-                <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                    Client ID <span className="text-rose-400">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.clientId}
-                    onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
-                    placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                    className="w-full h-9 px-3.5 text-[13px] rounded-lg border border-slate-300 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-50 text-slate-800 placeholder:text-slate-400 bg-slate-50"
-                  />
-                </div>
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                        Client ID <span className="text-rose-400">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.clientId}
+                        onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
+                        placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                        className="w-full h-9 px-3.5 text-[13px] rounded-lg border border-slate-300 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-50 text-slate-800 placeholder:text-slate-400 bg-slate-50"
+                      />
+                    </div>
 
-                <div className="col-span-2 space-y-1">
-                  <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                    Client Secret <span className="text-rose-400">*</span>
-                  </label>
-                  <input
-                    type="password"
-                    value={formData.clientSecret}
-                    onChange={(e) => setFormData({ ...formData, clientSecret: e.target.value })}
-                    placeholder="••••••••"
-                    className="w-full h-9 px-3.5 text-[13px] rounded-lg border border-slate-300 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-50 text-slate-800 placeholder:text-slate-400 bg-slate-50"
-                  />
-                </div>
-              </>
-            )}
+                    <div className="col-span-2 space-y-1">
+                      <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                        Client Secret <span className="text-rose-400">*</span>
+                      </label>
+                      <input
+                        type="password"
+                        value={formData.clientSecret}
+                        onChange={(e) => setFormData({ ...formData, clientSecret: e.target.value })}
+                        placeholder="••••••••"
+                        className="w-full h-9 px-3.5 text-[13px] rounded-lg border border-slate-300 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-50 text-slate-800 placeholder:text-slate-400 bg-slate-50"
+                      />
+                    </div>
+                  </>
+                )}
 
-            {/* OAuth fields */}
-            {isPostgres && formData.authType === 'OAuth' && (
-              <>
-                <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                    Tenant ID <span className="text-rose-400">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.tenantId}
-                    onChange={(e) => setFormData({ ...formData, tenantId: e.target.value })}
-                    placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                    className="w-full h-9 px-3.5 text-[13px] rounded-lg border border-slate-300 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-50 text-slate-800 placeholder:text-slate-400 bg-slate-50"
-                  />
-                </div>
+                {/* OAuth fields */}
+                {isPostgres && formData.authType === 'OAuth' && (
+                  <>
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                        Tenant ID <span className="text-rose-400">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.tenantId}
+                        onChange={(e) => setFormData({ ...formData, tenantId: e.target.value })}
+                        placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                        className="w-full h-9 px-3.5 text-[13px] rounded-lg border border-slate-300 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-50 text-slate-800 placeholder:text-slate-400 bg-slate-50"
+                      />
+                    </div>
 
-                <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                    Client ID <span className="text-rose-400">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.clientId}
-                    onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
-                    placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                    className="w-full h-9 px-3.5 text-[13px] rounded-lg border border-slate-300 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-50 text-slate-800 placeholder:text-slate-400 bg-slate-50"
-                  />
-                </div>
-              </>
-            )}
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                        Client ID <span className="text-rose-400">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.clientId}
+                        onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
+                        placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                        className="w-full h-9 px-3.5 text-[13px] rounded-lg border border-slate-300 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-50 text-slate-800 placeholder:text-slate-400 bg-slate-50"
+                      />
+                    </div>
+                  </>
+                )}
 
+                {/* Gateway selector — shown for all types */}
             {/* Gateway selector — shown for all types */}
             <div className="space-y-1.5">
               <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">

@@ -314,6 +314,14 @@ async def get_upload_status(
 ):
     return await svc.get_upload_status_handler(project_id, user, db, source_connection_id)
 
+@router.post("/projects/{project_id}/blob-config/upload")
+async def upload_blob_config(
+    project_id: str,
+    user: User = Depends(current_active_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    return await svc.upload_blob_config_handler(project_id, user, db)
+
 
 # ── Pipeline Run / Status ────────────────────────────────────────────
 
@@ -565,6 +573,22 @@ async def list_gateways_endpoint(
         return list_gateways(token)
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
+
+# ── Blob Structure Discovery ─────────────────────────────────────────
+
+
+@router.post("/blob/discover")
+async def discover_blob_structure(
+    prefix: str = Query("Data/", description="Blob prefix to scan"),
+    archive_root: str = Query("Archive/", description="Archive root path"),
+    user: User = Depends(current_active_user),
+):
+    """Scan Azure Blob Storage and return the discovered folder/file structure."""
+    config = await svc.discover_blob_structure_handler(
+        prefix=prefix,
+        archive_root=archive_root,
+    )
+    return config
 
 
 # ── Helpers ──────────────────────────────────────────────────────────

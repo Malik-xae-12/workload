@@ -1,4 +1,4 @@
-﻿import os
+import os
 import base64
 import time
 import logging
@@ -377,6 +377,7 @@ _NOTEBOOK_FILE_MAP: dict[str, list[str]] = {
     "postgresql": ["01_NB_Postgres_ConfigCreation.ipynb", "01_NB_BronzeToSilver.ipynb"],
     "postgres": ["01_NB_Postgres_ConfigCreation.ipynb", "01_NB_BronzeToSilver.ipynb"],
     "mysql": ["01_NB_MySQL_ConfigCreation.ipynb", "01_NB_BronzeToSilver.ipynb"],
+    "azure blob": [],
 }
  
 _ITL_NOTEBOOK_FILE_MAP: dict[str, list[str]] = {
@@ -386,6 +387,7 @@ _ITL_NOTEBOOK_FILE_MAP: dict[str, list[str]] = {
     "postgresql": ["01_NB_IncrementalConfigCreation.ipynb", "01_NB_BronzeToSilver.ipynb"],
     "postgres": ["01_NB_IncrementalConfigCreation.ipynb", "01_NB_BronzeToSilver.ipynb"],
     "mysql": ["01_NB_IncrementalConfigCreation.ipynb", "01_NB_BronzeToSilver.ipynb"],
+    "azure blob": [],
 }
 
 

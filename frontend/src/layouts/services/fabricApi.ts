@@ -469,6 +469,12 @@ export function uploadPipelines(projectId: string, data: PipelineUploadPayload) 
   });
 }
 
+export function uploadBlobConfig(projectId: string) {
+  return request<{ status: string; message: string }>(`/projects/${projectId}/blob-config/upload`, {
+    method: 'POST',
+  });
+}
+
 // ── Upload Status ───────────────────────────────────────────────────
 
 export interface ConfigUploadStatus {
