@@ -238,8 +238,25 @@ def get_job_status(job_id: str):
 
 
 @router.post("/api/apply-overrides/{job_id}")
-def apply_overrides(job_id: str, body: dict):
-    """Apply manual column mapping overrides."""
+async def apply_overrides(
+    job_id: str,
+    body: dict,
+    user: User = Depends(current_active_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Apply manual column mapping overrides.
+
+    This always updates the live in-memory job (so the AI Mapping summary
+    reflects the change immediately) — but that alone doesn't survive a
+    page reload, since reload re-fetches the *persisted* mapping
+    (ai_mapping_result_json) rather than this in-memory job. If the
+    project_id/connection_name for this job's connection are known and
+    that connection already has a saved mapping, also refresh the
+    persisted JSON cache here so overrides stick across reloads without
+    requiring a separate "Save to Metadata" click (which does a much
+    heavier full warehouse write and shouldn't be implied by every
+    single manual-mapping edit).
+    """
     job = get_job(job_id)
     if not job or job.get("status") != "done":
         raise HTTPException(status_code=404, detail="Job not ready")
@@ -298,6 +315,30 @@ def apply_overrides(job_id: str, body: dict):
         job["result"]["stats"].get("table_alignment", {}),
     )
     job["result"]["unmapped_source_columns"] = unmapped_source_columns
+
+    # Persist the updated result back into the (SQLite-backed) job store.
+    # get_job() above returned a plain deserialized copy, not a live
+    # reference — mutating it in memory has no effect on disk until this
+    # is called. Without it, this endpoint's response looked correct, but
+    # the very next GET /api/job/{job_id} (e.g. on a page refresh, before
+    # "Save to Metadata" was clicked) re-read the *old* row from SQLite
+    # and silently reverted every override.
+    update_job(job_id, result=job["result"])
+
+    # Refresh the persisted mapping cache, if this job is tied to a
+    # connection that already has one saved — see docstring above.
+    project_id = body.get("project_id")
+    connection_name = body.get("connection_name")
+    if project_id and connection_name:
+        from app.modules.fabric import repository as fabric_repo
+
+        sc = await fabric_repo.find_project_connection_by_name(db, project_id, connection_name)
+        if sc and sc.ai_mapping_saved:
+            import json
+
+            sc.ai_mapping_result_json = json.dumps(job["result"])
+            db.add(sc)
+            await db.commit()
 
     return sanitize_for_json({
         "ok": True,

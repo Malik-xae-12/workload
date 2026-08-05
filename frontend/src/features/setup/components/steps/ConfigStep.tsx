@@ -36,13 +36,22 @@ interface ConfigStepProps {
   itlConfigDownloaded: Record<string, boolean>;
   itlConfigUploaded: Record<string, boolean>;
   itlPipelineFiles: Record<string, PipelineItem[]>;
+  itlStatusChecked: Record<string, boolean>; 
+
   onDownloadItlConfig: () => Promise<boolean>;
   onUploadItlConfig: (file: File) => Promise<boolean>;
   onUploadItlPipelines: (connectionName: string, connectionIndex: number) => Promise<boolean>;
   onRunItlNotebook: (connectionName: string) => Promise<boolean>;
   onRunItlPipelines: (connectionName: string) => Promise<boolean>;
   itlNotebookRunStatus: Record<string, string | null>;
-  onDeployGoldStoredProcedures: () => Promise<{ batches_executed: number; procedures_deployed: number; database: string }>;
+  onDeployGoldStoredProcedures: (
+    onProgress?: (progress: number, total: number, message: string) => void
+  ) => Promise<{ batches_executed: number; procedures_deployed: number; database: string; sp_details_recorded?: number }>;
+  onDeployMasterExecutor: () => Promise<{ batches_executed: number; database: string }>;
+  onExecuteMasterSp: (
+    silverLakehouse?: string,
+    onProgress?: (progress: number, total: number, message: string) => void
+  ) => Promise<{ batch_id: number; database: string; done: number; succeeded: number; failed: number; failed_names: string[] }>;
   loading: boolean;
   configLoading: Record<string, boolean>;
   /** Finin-only: jump to the AI Mapping page (to build
@@ -77,6 +86,8 @@ export const ConfigStep = ({
   onRunItlPipelines,
   itlNotebookRunStatus,
   onDeployGoldStoredProcedures,
+  onDeployMasterExecutor,
+  onExecuteMasterSp,
   loading,
   configLoading,
   onGoToAIMapping,
@@ -807,7 +818,22 @@ export const ConfigStep = ({
               onRunItlNotebook={onRunItlNotebook}
               onRunItlPipelines={() => onRunItlPipelines(selectedConn!.name)}
               itlNotebookRunStatus={connItlNotebookRunStatus}
+            />
+          )}
+
+          {/* Gold stored procedures — independent of any one source
+              connection's ITL run, so it lives as its own section rather
+              than nested inside (and re-mounted per-connection by) ItlSection. */}
+          {allPipelinesRan && (
+            <GoldStoredProceduresSection
               onDeployGoldStoredProcedures={onDeployGoldStoredProcedures}
+            />
+          )}
+
+          {allPipelinesRan && (
+            <MasterExecuteSection
+              onDeployMasterExecutor={onDeployMasterExecutor}
+              onExecuteMasterSp={onExecuteMasterSp}
             />
           )}
         </div>
@@ -1012,7 +1038,6 @@ interface ItlSectionProps {
   onRunItlNotebook: (connectionName: string) => Promise<boolean>;
   onRunItlPipelines: () => Promise<boolean>;
   itlNotebookRunStatus: string;
-  onDeployGoldStoredProcedures: () => Promise<{ batches_executed: number; procedures_deployed: number; database: string }>;
 }
 
 const ItlSection = ({
@@ -1027,14 +1052,11 @@ const ItlSection = ({
   onRunItlNotebook,
   onRunItlPipelines,
   itlNotebookRunStatus,
-  onDeployGoldStoredProcedures,
 }: ItlSectionProps): JSX.Element => {
   const [downloading, setDownloading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [runningNotebook, setRunningNotebook] = useState(false);
   const [deploying, setDeploying] = useState(false);
-  const [deployingSp, setDeployingSp] = useState(false);
-  const [spDeployed, setSpDeployed] = useState<{ procedures_deployed: number; database: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const autoDeployTriggeredRef = useRef(false);
 
@@ -1102,19 +1124,6 @@ const ItlSection = ({
     else toast.error('Failed to upload ITL config');
     // Reset input
     if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const handleDeployStoredProcedures = async () => {
-    setDeployingSp(true);
-    try {
-      const res = await onDeployGoldStoredProcedures();
-      setSpDeployed({ procedures_deployed: res.procedures_deployed, database: res.database });
-      toast.success(`${res.procedures_deployed} stored procedures deployed to ${res.database}`);
-    } catch (e: any) {
-      toast.error(e?.message || 'Failed to deploy stored procedures');
-    } finally {
-      setDeployingSp(false);
-    }
   };
 
   return (
@@ -1445,40 +1454,209 @@ const ItlSection = ({
             </table>
           </div>
         )}
-
-        {/* Step 5: Deploy the ims-schema stored procedures to WH_Gold —
-            only meaningful once the ITL pipelines have actually run. */}
-        {(
-          <div className="mt-3 border-t border-slate-100 pt-4 flex items-center gap-4">
-            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 ${spDeployed ? 'bg-emerald-100 text-emerald-700' : 'bg-emerald-50 text-emerald-700'}`}>5</div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[12px] font-medium text-slate-700">Create Stored Procedures for WH_Gold</p>
-              <p className="text-[10px] text-slate-500">
-                {spDeployed
-                  ? `${spDeployed.procedures_deployed} procedures deployed under [ims] in ${spDeployed.database}`
-                  : 'Creates the [ims] schema and its 89 stored procedures in WH_Gold'}
-              </p>
-            </div>
-            <button
-              onClick={handleDeployStoredProcedures}
-              disabled={deployingSp}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all disabled:opacity-50 ${
-                spDeployed ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'bg-emerald-600 text-white hover:bg-emerald-700'
-              }`}
-            >
-              {deployingSp ? (
-                <><Loader2 size={12} className="animate-spin" /> Deploying...</>
-              ) : spDeployed ? (
-                <><CheckCircle2 size={12} /> Re-run</>
-              ) : (
-                <><Upload size={12} /> Create Stored Procedure for WH_Gold</>
-              )}
-            </button>
-          </div>
-        )}
       </div>
       )}
     </div>
     
+  );
+};
+
+// ── Gold stored procedures — independent section, own progress bar ──
+
+interface GoldStoredProceduresSectionProps {
+  onDeployGoldStoredProcedures: (
+    onProgress?: (progress: number, total: number, message: string) => void
+  ) => Promise<{ batches_executed: number; procedures_deployed: number; database: string; sp_details_recorded?: number }>;
+}
+
+const GoldStoredProceduresSection = ({
+  onDeployGoldStoredProcedures,
+}: GoldStoredProceduresSectionProps): JSX.Element => {
+  const [deploying, setDeploying] = useState(false);
+  const [progress, setProgress] = useState({ done: 0, total: 0, message: '' });
+  const [deployed, setDeployed] = useState<{ procedures_deployed: number; database: string; sp_details_recorded?: number } | null>(null);
+
+  const handleDeploy = async () => {
+    setDeploying(true);
+    setProgress({ done: 0, total: 0, message: 'Starting deployment…' });
+    try {
+      const res = await onDeployGoldStoredProcedures((done, total, message) =>
+        setProgress({ done, total, message })
+      );
+      setDeployed({
+        procedures_deployed: res.procedures_deployed,
+        database: res.database,
+        sp_details_recorded: res.sp_details_recorded,
+      });
+      toast.success(`${res.procedures_deployed} stored procedures deployed to ${res.database}`);
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to deploy stored procedures');
+    } finally {
+      setDeploying(false);
+    }
+  };
+
+  const pct = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+      <div className="flex items-center gap-4">
+        <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${deployed ? 'bg-emerald-100 text-emerald-700' : 'bg-emerald-50 text-emerald-700'}`}>
+          <Database size={16} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[13px] font-semibold text-slate-800">Create Stored Procedures for WH_Gold</p>
+          <p className="text-[11px] text-slate-500">
+            {deployed
+              ? `${deployed.procedures_deployed} procedures deployed under [ims] in ${deployed.database}`
+                + (deployed.sp_details_recorded ? ` · ${deployed.sp_details_recorded} recorded in Config_Gold` : '')
+              : 'Creates the [ims] schema and its stored procedures in WH_Gold'}
+          </p>
+        </div>
+        <button
+          onClick={handleDeploy}
+          disabled={deploying}
+          className={`flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-bold rounded-lg transition-all disabled:opacity-60 disabled:cursor-not-allowed ${
+            deployed ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'bg-emerald-600 text-white hover:bg-emerald-700'
+          }`}
+        >
+          {deploying ? (
+            <><Loader2 size={13} className="animate-spin" /> Deploying…</>
+          ) : deployed ? (
+            <><CheckCircle2 size={13} /> Created</>
+          ) : (
+            <><Upload size={13} /> Create Stored Procedures</>
+          )}
+        </button>
+      </div>
+
+      {deploying && (
+        <div className="mt-4">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[11px] text-slate-500">{progress.message || 'Working…'}</span>
+            <span className="text-[11px] font-semibold text-emerald-700 tabular-nums">
+              {progress.total > 0 ? `${progress.done}/${progress.total} batches` : ''}
+            </span>
+          </div>
+          <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-emerald-500 transition-[width] duration-300 ease-out"
+              style={{ width: `${Math.max(pct, progress.total > 0 ? 3 : 8)}%` }}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── Master SP execution — deploys MasterExecuter.sp_GoldExecute on demand,
+//    then runs it; own progress bar sourced from ExecutionLog polling ──
+
+interface MasterExecuteSectionProps {
+  onDeployMasterExecutor: () => Promise<{ batches_executed: number; database: string }>;
+  onExecuteMasterSp: (
+    silverLakehouse?: string,
+    onProgress?: (progress: number, total: number, message: string) => void
+  ) => Promise<{ batch_id: number; database: string; done: number; succeeded: number; failed: number; failed_names: string[] }>;
+}
+
+const MasterExecuteSection = ({
+  onDeployMasterExecutor,
+  onExecuteMasterSp,
+}: MasterExecuteSectionProps): JSX.Element => {
+  const [executing, setExecuting] = useState(false);
+  const [progress, setProgress] = useState({ done: 0, total: 0, message: '' });
+  const [result, setResult] = useState<{ done: number; succeeded: number; failed: number; failed_names: string[]; database: string } | null>(null);
+
+  const handleExecute = async () => {
+    setExecuting(true);
+    setResult(null);
+    setProgress({ done: 0, total: 0, message: 'Deploying MasterExecuter.sp_GoldExecute…' });
+    try {
+      // Idempotent (CREATE OR ALTER / IF NOT EXISTS throughout) — deployed
+      // fresh on every click so this works even after a reload, without
+      // needing to remember whether it was deployed in an earlier session.
+      await onDeployMasterExecutor();
+      const res = await onExecuteMasterSp(undefined, (done, total, message) =>
+        setProgress({ done, total, message })
+      );
+      setResult(res);
+      if (res.failed > 0) {
+        toast.error(`${res.succeeded}/${res.done} succeeded — ${res.failed} failed`);
+      } else {
+        toast.success(`${res.succeeded} stored procedures executed successfully`);
+      }
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to execute Master SP');
+      if (e?.result) setResult(e.result);
+    } finally {
+      setExecuting(false);
+    }
+  };
+
+  const pct2 = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+      <div className="flex items-center gap-4">
+        <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${result ? (result.failed > 0 ? 'bg-red-50 text-red-600' : 'bg-emerald-100 text-emerald-700') : 'bg-emerald-50 text-emerald-700'}`}>
+          <Workflow size={16} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[13px] font-semibold text-slate-800">Execute Master SP</p>
+          <p className="text-[11px] text-slate-500">
+            {result
+              ? `${result.succeeded}/${result.done} succeeded in ${result.database}`
+                + (result.failed > 0 ? ` · ${result.failed} failed` : '')
+              : 'Runs MasterExecuter.sp_GoldExecute — executes every active procedure from Config_Gold.finin_gold_sp_details'}
+          </p>
+          {result && result.failed > 0 && (
+            <p className="text-[10px] text-red-600 mt-1 truncate" title={result.failed_names.join(', ')}>
+              Failed: {result.failed_names.join(', ')}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {result && result.failed === 0 && (
+            <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-emerald-50 text-emerald-700 flex-shrink-0">
+              <CheckCircle2 size={12} /> Done
+            </span>
+          )}
+          <button
+            onClick={handleExecute}
+            disabled={executing}
+            className={`flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-bold rounded-lg transition-all disabled:opacity-60 disabled:cursor-not-allowed flex-shrink-0 ${
+              result ? (result.failed > 0 ? 'bg-red-50 text-red-700 hover:bg-red-100' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100') : 'bg-emerald-600 text-white hover:bg-emerald-700'
+            }`}
+          >
+            {executing ? (
+              <><Loader2 size={13} className="animate-spin" /> Executing…</>
+            ) : result ? (
+              <><Play size={13} /> Re-run</>
+            ) : (
+              <><Play size={13} /> Execute Master SP</>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {executing && (
+        <div className="mt-4">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[11px] text-slate-500">{progress.message || 'Working…'}</span>
+            <span className="text-[11px] font-semibold text-emerald-700 tabular-nums">
+              {progress.total > 0 ? `${progress.done}/${progress.total} stored procedures` : ''}
+            </span>
+          </div>
+          <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-emerald-500 transition-[width] duration-300 ease-out"
+              style={{ width: `${Math.max(pct2, progress.total > 0 ? 3 : 8)}%` }}
+            />
+          </div>
+        </div>
+      )}
+    </div>
   );
 };

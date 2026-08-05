@@ -29,9 +29,6 @@ export interface SourceConnection {
   status: 'active' | 'inactive' | 'creating' | 'failed';
   statusError?: string;
   fabricConnectionId?: string;
-  /** Finin-only: true once this connection's AI Mapping results have already
-   * been saved to SourceInformationSchemaMapped. Persisted server-side so it
-   * survives page reloads. */
   aiMappingSaved?: boolean;
 }
 
@@ -82,14 +79,6 @@ export interface PipelineItem {
   fabricItemId?: string;
   runStatus?: 'not-started' | 'running' | 'completed' | 'failed';
   jobId?: string;
-  /**
-   * The actual item_name this pipeline is stored under in the backend's
-   * config_uploads table. This can differ from `name` because deployed
-   * pipelines are persisted under a connection-prefixed name
-   * (`{connection_name}_{base_name}`, see pipeline.py upload_pipelines).
-   * Always prefer this over `name` when calling updateRunStatus, or the
-   * PATCH /upload-status lookup will 404 ("Upload record not found").
-   */
   uploadItemName?: string;
 }
 
@@ -116,16 +105,11 @@ export interface SetupState {
   pipelines: Pipeline[];
   credentialsSaved: boolean;
   loading: boolean;
-  /** True only while the initial per-project bootstrap fetch (connections,
-   * medallion config, metadata, credentials) is in flight — distinct from
-   * `loading`, which individual button actions also toggle. Lets screens
-   * show a loading placeholder instead of a false "nothing here" state on
-   * first mount / page reload, before that fetch has resolved. */
   connectionsLoading: boolean;
   error: string | null;
-  // ITL state — keyed by connection id so each source is fully independent
   itlConfigDownloaded: Record<string, boolean>;
   itlConfigUploaded: Record<string, boolean>;
   itlPipelineFiles: Record<string, PipelineItem[]>;
   itlNotebookRunStatus: Record<string, string | null>;
+  itlStatusChecked: Record<string, boolean>;
 }

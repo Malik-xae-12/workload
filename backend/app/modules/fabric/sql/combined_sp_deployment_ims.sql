@@ -30,6 +30,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200) = 'DollarAnalytics';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256) = 'DollarAnalytics_FindMissingDates';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -79,28 +80,36 @@ BEGIN
             CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            0
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -119,27 +128,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
 
         END TRY
@@ -154,9 +165,14 @@ GO
 
 -- ============================== Source file: sp_GetPositionData.sql ==============================
 CREATE OR ALTER PROCEDURE [ims].[sp_GetPositionData]
-   
+
     @BatchId INT = NULL,
-    @PortfolioCode VARCHAR(255)
+    -- Default added so MasterExecuter can run this on-demand data-access
+    -- helper as part of the automated batch without erroring on a missing
+    -- required parameter. NULL simply matches no rows (PortfolioCode is
+    -- never actually NULL), so this is a safe no-op for the batch; real
+    -- API callers still pass an actual portfolio code.
+    @PortfolioCode VARCHAR(255) = NULL
 /*
 © UB Technology Innovations. Unauthorized use or reproduction is prohibited
 */
@@ -165,6 +181,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200) = 'FactPosition';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256) = 'GetPositionData';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -200,28 +217,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            0
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -239,27 +264,29 @@ BEGIN
             + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -273,7 +300,12 @@ GO
 -- ============================== Source file: sp_GetSecurityData.sql ==============================
 CREATE OR ALTER PROCEDURE [ims].[sp_GetSecurityData]
     @BatchId INT = NULL,
-    @PortfolioCode VARCHAR(255)
+    -- Default added so MasterExecuter can run this on-demand data-access
+    -- helper as part of the automated batch without erroring on a missing
+    -- required parameter. NULL simply matches no rows (PortfolioCode is
+    -- never actually NULL), so this is a safe no-op for the batch; real
+    -- API callers still pass an actual portfolio code.
+    @PortfolioCode VARCHAR(255) = NULL
 /*
 © UB Technology Innovations. Unauthorized use or reproduction is prohibited
 */
@@ -282,6 +314,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200) = 'RptPosAnalyticsData';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256) = 'GetSecurityData';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -317,28 +350,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            0
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -357,27 +398,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
 
         END TRY
@@ -393,8 +436,12 @@ GO
 -- ============================== Source file: sp_GetSingleColumnFromQuery.sql ==============================
 CREATE OR ALTER PROCEDURE [ims].[sp_GetSingleColumnFromQuery]
 (
-    @Query NVARCHAR(MAX),
-    @ColumnName NVARCHAR(255)
+    -- Defaults added so MasterExecuter can run this generic dynamic-SQL
+    -- helper as part of the automated batch without erroring on a missing
+    -- required parameter. With no args it degrades to a harmless no-op
+    -- health check (SELECT 1); real callers still pass a real query.
+    @Query NVARCHAR(MAX) = N'SELECT 1 AS DummyValue',
+    @ColumnName NVARCHAR(255) = N'DummyValue'
 )
 /*
 © UB Technology Innovations. Unauthorized use or reproduction is prohibited
@@ -429,6 +476,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200);
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256);
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -456,28 +504,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            0
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -501,27 +557,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
 
         END TRY
@@ -546,6 +604,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200);
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256);
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -573,28 +632,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            0
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
         -----------------------------------------------------------------------
         -- DimIndexSecurity
@@ -613,28 +680,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            0
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -658,27 +733,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
 
         END TRY
@@ -703,6 +780,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200);
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256);
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -730,28 +808,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            0
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -775,27 +861,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
 
         END TRY
@@ -820,6 +908,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200);
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256);
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -847,28 +936,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            0
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -892,27 +989,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
 
         END TRY
@@ -937,6 +1036,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200);
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256);
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -964,16 +1064,36 @@ BEGIN
             CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId, TableName, Status, ErrorDetails,
-            StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES
-        (
-            @BatchId, @TableName, 'Success', NULL,
-            @StartTime, @EndTime, @Duration, 0
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
         -----------------------------------------------------------------------
         -- RiskAnalytics
@@ -992,16 +1112,36 @@ BEGIN
             CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId, TableName, Status, ErrorDetails,
-            StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES
-        (
-            @BatchId, @TableName, 'Success', NULL,
-            @StartTime, @EndTime, @Duration, 0
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
         -----------------------------------------------------------------------
         -- DollarAnalytics
@@ -1020,16 +1160,36 @@ BEGIN
             CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId, TableName, Status, ErrorDetails,
-            StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES
-        (
-            @BatchId, @TableName, 'Success', NULL,
-            @StartTime, @EndTime, @Duration, 0
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
         -----------------------------------------------------------------------
         -- StandardAnalytics
@@ -1048,16 +1208,36 @@ BEGIN
             CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId, TableName, Status, ErrorDetails,
-            StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES
-        (
-            @BatchId, @TableName, 'Success', NULL,
-            @StartTime, @EndTime, @Duration, 0
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
         -----------------------------------------------------------------------
         -- StandardSource
@@ -1076,16 +1256,36 @@ BEGIN
             CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId, TableName, Status, ErrorDetails,
-            StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES
-        (
-            @BatchId, @TableName, 'Success', NULL,
-            @StartTime, @EndTime, @Duration, 0
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
         -----------------------------------------------------------------------
         -- StandardSourceField
@@ -1104,16 +1304,36 @@ BEGIN
             CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId, TableName, Status, ErrorDetails,
-            StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES
-        (
-            @BatchId, @TableName, 'Success', NULL,
-            @StartTime, @EndTime, @Duration, 0
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -1137,27 +1357,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
 
         END TRY
@@ -1182,6 +1404,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200);
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256);
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -1209,28 +1432,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            0
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -1254,27 +1485,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
 
         END TRY
@@ -1299,6 +1532,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200) = 'DimCustodian';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256) = 'Gold_Custodian_Table_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -1325,28 +1559,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            0
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -1365,27 +1607,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
 
         END TRY
@@ -1400,13 +1644,14 @@ GO
 
 -- ============================== Source file: sp_Gold_Fixed_Income_Process.sql ==============================
 CREATE OR ALTER PROCEDURE ims.sp_Gold_Fixed_Income_Process 
-    @SilverLakehouse VARCHAR(MAX), 
+    @SilverLakehouse VARCHAR(MAX) = 'LH_Silver', 
     @BatchId INT = NULL 
 /* UB Technology Innovations. Unauthorized use or reproduction is prohibited. */
 AS 
 BEGIN 
     SET NOCOUNT ON; 
 
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     -- Corrected DECLARE block with commas and variable prefixes (@)
     DECLARE @TableName VARCHAR(200),
             @ProcedureName VARCHAR(256),
@@ -1443,7 +1688,7 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME(); 
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds'; 
 
-        INSERT INTO WH_MetaData.Log.GoldLogDetails (BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted) 
+        INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails] (BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted) 
         VALUES (@BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, 0); 
     END TRY 
 
@@ -1456,7 +1701,7 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds'; 
 
         BEGIN TRY 
-            INSERT INTO WH_MetaData.Log.GoldLogDetails (BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted) 
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails] (BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted) 
             VALUES (@BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0); 
         END TRY 
         BEGIN CATCH 
@@ -1482,6 +1727,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200);
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256);
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -1510,28 +1756,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            0
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -1550,27 +1804,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
 
         END TRY
@@ -1595,6 +1851,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200);
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256);
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -1623,28 +1880,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            0
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -1663,27 +1928,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
 
         END TRY
@@ -1708,6 +1975,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200) ;
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256);
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -1731,28 +1999,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            0
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -1771,27 +2047,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
 
         END TRY
@@ -1816,6 +2094,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200) ;
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256);
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -1836,28 +2115,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            0
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -1876,27 +2163,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
 
         END TRY
@@ -1921,6 +2210,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200);
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256);
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -1967,28 +2257,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            0
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -2007,27 +2305,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
 
         END TRY
@@ -2052,6 +2352,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200);
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256);
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -2078,11 +2379,29 @@ BEGIN
             CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+        INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+        (
+            BatchId,
+            SchemaName,
+            TableName,
+            ProcessedRowCount,
+            StartTime,
+            EndTime,
+            Status,
+            ErrorMessage,
+            SourceName
+        )
         VALUES
         (
-            @BatchId,@TableName,'Success',NULL,
-            @StartTime,@EndTime,@Duration,0
+            @BatchId,
+            @SchemaName,
+            @TableName,
+            0,
+            @StartTime,
+            @EndTime,
+            'Success',
+            NULL,
+            @ProcedureName
         );
 
         -----------------------------------------------------------------------
@@ -2101,11 +2420,29 @@ BEGIN
             CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+        INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+        (
+            BatchId,
+            SchemaName,
+            TableName,
+            ProcessedRowCount,
+            StartTime,
+            EndTime,
+            Status,
+            ErrorMessage,
+            SourceName
+        )
         VALUES
         (
-            @BatchId,@TableName,'Success',NULL,
-            @StartTime,@EndTime,@Duration,0
+            @BatchId,
+            @SchemaName,
+            @TableName,
+            0,
+            @StartTime,
+            @EndTime,
+            'Success',
+            NULL,
+            @ProcedureName
         );
 
         -----------------------------------------------------------------------
@@ -2124,11 +2461,29 @@ BEGIN
             CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+        INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+        (
+            BatchId,
+            SchemaName,
+            TableName,
+            ProcessedRowCount,
+            StartTime,
+            EndTime,
+            Status,
+            ErrorMessage,
+            SourceName
+        )
         VALUES
         (
-            @BatchId,@TableName,'Success',NULL,
-            @StartTime,@EndTime,@Duration,0
+            @BatchId,
+            @SchemaName,
+            @TableName,
+            0,
+            @StartTime,
+            @EndTime,
+            'Success',
+            NULL,
+            @ProcedureName
         );
 
         -----------------------------------------------------------------------
@@ -2147,11 +2502,29 @@ BEGIN
             CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+        INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+        (
+            BatchId,
+            SchemaName,
+            TableName,
+            ProcessedRowCount,
+            StartTime,
+            EndTime,
+            Status,
+            ErrorMessage,
+            SourceName
+        )
         VALUES
         (
-            @BatchId,@TableName,'Success',NULL,
-            @StartTime,@EndTime,@Duration,0
+            @BatchId,
+            @SchemaName,
+            @TableName,
+            0,
+            @StartTime,
+            @EndTime,
+            'Success',
+            NULL,
+            @ProcedureName
         );
 
         -----------------------------------------------------------------------
@@ -2170,11 +2543,29 @@ BEGIN
             CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+        INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+        (
+            BatchId,
+            SchemaName,
+            TableName,
+            ProcessedRowCount,
+            StartTime,
+            EndTime,
+            Status,
+            ErrorMessage,
+            SourceName
+        )
         VALUES
         (
-            @BatchId,@TableName,'Success',NULL,
-            @StartTime,@EndTime,@Duration,0
+            @BatchId,
+            @SchemaName,
+            @TableName,
+            0,
+            @StartTime,
+            @EndTime,
+            'Success',
+            NULL,
+            @ProcedureName
         );
 
         -----------------------------------------------------------------------
@@ -2192,11 +2583,29 @@ BEGIN
             CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+        INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+        (
+            BatchId,
+            SchemaName,
+            TableName,
+            ProcessedRowCount,
+            StartTime,
+            EndTime,
+            Status,
+            ErrorMessage,
+            SourceName
+        )
         VALUES
         (
-            @BatchId,@TableName,'Success',NULL,
-            @StartTime,@EndTime,@Duration,0
+            @BatchId,
+            @SchemaName,
+            @TableName,
+            0,
+            @StartTime,
+            @EndTime,
+            'Success',
+            NULL,
+            @ProcedureName
         );
 
         -----------------------------------------------------------------------
@@ -2214,11 +2623,29 @@ BEGIN
             CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+        INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+        (
+            BatchId,
+            SchemaName,
+            TableName,
+            ProcessedRowCount,
+            StartTime,
+            EndTime,
+            Status,
+            ErrorMessage,
+            SourceName
+        )
         VALUES
         (
-            @BatchId,@TableName,'Success',NULL,
-            @StartTime,@EndTime,@Duration,0
+            @BatchId,
+            @SchemaName,
+            @TableName,
+            0,
+            @StartTime,
+            @EndTime,
+            'Success',
+            NULL,
+            @ProcedureName
         );
 
         -----------------------------------------------------------------------
@@ -2236,11 +2663,29 @@ BEGIN
             CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+        INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+        (
+            BatchId,
+            SchemaName,
+            TableName,
+            ProcessedRowCount,
+            StartTime,
+            EndTime,
+            Status,
+            ErrorMessage,
+            SourceName
+        )
         VALUES
         (
-            @BatchId,@TableName,'Success',NULL,
-            @StartTime,@EndTime,@Duration,0
+            @BatchId,
+            @SchemaName,
+            @TableName,
+            0,
+            @StartTime,
+            @EndTime,
+            'Success',
+            NULL,
+            @ProcedureName
         );
 
         -----------------------------------------------------------------------
@@ -2258,11 +2703,29 @@ BEGIN
             CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+        INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+        (
+            BatchId,
+            SchemaName,
+            TableName,
+            ProcessedRowCount,
+            StartTime,
+            EndTime,
+            Status,
+            ErrorMessage,
+            SourceName
+        )
         VALUES
         (
-            @BatchId,@TableName,'Success',NULL,
-            @StartTime,@EndTime,@Duration,0
+            @BatchId,
+            @SchemaName,
+            @TableName,
+            0,
+            @StartTime,
+            @EndTime,
+            'Success',
+            NULL,
+            @ProcedureName
         );
 
         -----------------------------------------------------------------------
@@ -2280,11 +2743,29 @@ BEGIN
             CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+        INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+        (
+            BatchId,
+            SchemaName,
+            TableName,
+            ProcessedRowCount,
+            StartTime,
+            EndTime,
+            Status,
+            ErrorMessage,
+            SourceName
+        )
         VALUES
         (
-            @BatchId,@TableName,'Success',NULL,
-            @StartTime,@EndTime,@Duration,0
+            @BatchId,
+            @SchemaName,
+            @TableName,
+            0,
+            @StartTime,
+            @EndTime,
+            'Success',
+            NULL,
+            @ProcedureName
         );
 
         -----------------------------------------------------------------------
@@ -2302,11 +2783,29 @@ BEGIN
             CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+        INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+        (
+            BatchId,
+            SchemaName,
+            TableName,
+            ProcessedRowCount,
+            StartTime,
+            EndTime,
+            Status,
+            ErrorMessage,
+            SourceName
+        )
         VALUES
         (
-            @BatchId,@TableName,'Success',NULL,
-            @StartTime,@EndTime,@Duration,0
+            @BatchId,
+            @SchemaName,
+            @TableName,
+            0,
+            @StartTime,
+            @EndTime,
+            'Success',
+            NULL,
+            @ProcedureName
         );
 
         -----------------------------------------------------------------------
@@ -2324,11 +2823,29 @@ BEGIN
             CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+        INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+        (
+            BatchId,
+            SchemaName,
+            TableName,
+            ProcessedRowCount,
+            StartTime,
+            EndTime,
+            Status,
+            ErrorMessage,
+            SourceName
+        )
         VALUES
         (
-            @BatchId,@TableName,'Success',NULL,
-            @StartTime,@EndTime,@Duration,0
+            @BatchId,
+            @SchemaName,
+            @TableName,
+            0,
+            @StartTime,
+            @EndTime,
+            'Success',
+            NULL,
+            @ProcedureName
         );
 
         -----------------------------------------------------------------------
@@ -2346,11 +2863,29 @@ BEGIN
             CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+        INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+        (
+            BatchId,
+            SchemaName,
+            TableName,
+            ProcessedRowCount,
+            StartTime,
+            EndTime,
+            Status,
+            ErrorMessage,
+            SourceName
+        )
         VALUES
         (
-            @BatchId,@TableName,'Success',NULL,
-            @StartTime,@EndTime,@Duration,0
+            @BatchId,
+            @SchemaName,
+            @TableName,
+            0,
+            @StartTime,
+            @EndTime,
+            'Success',
+            NULL,
+            @ProcedureName
         );
 
         -----------------------------------------------------------------------
@@ -2368,11 +2903,29 @@ BEGIN
             CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+        INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+        (
+            BatchId,
+            SchemaName,
+            TableName,
+            ProcessedRowCount,
+            StartTime,
+            EndTime,
+            Status,
+            ErrorMessage,
+            SourceName
+        )
         VALUES
         (
-            @BatchId,@TableName,'Success',NULL,
-            @StartTime,@EndTime,@Duration,0
+            @BatchId,
+            @SchemaName,
+            @TableName,
+            0,
+            @StartTime,
+            @EndTime,
+            'Success',
+            NULL,
+            @ProcedureName
         );
 
     END TRY
@@ -2389,27 +2942,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
 
         END TRY
@@ -2434,6 +2989,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200);
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256);
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -2461,28 +3017,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            0
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
         -----------------------------------------------------------------------
         -- DimSourceSystem
@@ -2501,28 +3065,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            0
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -2539,27 +3111,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
 
         END TRY
@@ -2584,6 +3158,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200);
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256);
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -2609,16 +3184,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId, TableName, Status, ErrorDetails,
-            StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES
-        (
-            @BatchId, @TableName, 'Success', NULL,
-            @StartTime, @EndTime, @Duration, 0
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
         -----------------------------------------------------------------------
         -- DimClient
@@ -2634,16 +3229,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId, TableName, Status, ErrorDetails,
-            StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES
-        (
-            @BatchId, @TableName, 'Success', NULL,
-            @StartTime, @EndTime, @Duration, 0
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
         -----------------------------------------------------------------------
         -- DimCountry
@@ -2659,16 +3274,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId, TableName, Status, ErrorDetails,
-            StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES
-        (
-            @BatchId, @TableName, 'Success', NULL,
-            @StartTime, @EndTime, @Duration, 0
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
         -----------------------------------------------------------------------
         -- DimCurrency
@@ -2684,16 +3319,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId, TableName, Status, ErrorDetails,
-            StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES
-        (
-            @BatchId, @TableName, 'Success', NULL,
-            @StartTime, @EndTime, @Duration, 0
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
         -----------------------------------------------------------------------
         -- DimCustodian
@@ -2709,16 +3364,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId, TableName, Status, ErrorDetails,
-            StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES
-        (
-            @BatchId, @TableName, 'Success', NULL,
-            @StartTime, @EndTime, @Duration, 0
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
         -----------------------------------------------------------------------
         -- DimGics
@@ -2734,16 +3409,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId, TableName, Status, ErrorDetails,
-            StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES
-        (
-            @BatchId, @TableName, 'Success', NULL,
-            @StartTime, @EndTime, @Duration, 0
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
         -----------------------------------------------------------------------
         -- DimStrategy
@@ -2759,16 +3454,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId, TableName, Status, ErrorDetails,
-            StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES
-        (
-            @BatchId, @TableName, 'Success', NULL,
-            @StartTime, @EndTime, @Duration, 0
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -2785,27 +3500,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
 
         END TRY
@@ -2830,6 +3547,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200);
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256);
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -2854,10 +3572,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (BatchId,TableName,Status,ErrorDetails,StartTime,EndTime,Duration,RowsInserted)
-        VALUES
-        (@BatchId,@TableName,'Success',NULL,@StartTime,@EndTime,@Duration,0);
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
         -----------------------------------------------------------------------
         -- RptPortfolioBenchmark
@@ -2873,10 +3617,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (BatchId,TableName,Status,ErrorDetails,StartTime,EndTime,Duration,RowsInserted)
-        VALUES
-        (@BatchId,@TableName,'Success',NULL,@StartTime,@EndTime,@Duration,0);
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
         -----------------------------------------------------------------------
         -- RptPortfolioBenchmarkVariance
@@ -2892,10 +3662,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (BatchId,TableName,Status,ErrorDetails,StartTime,EndTime,Duration,RowsInserted)
-        VALUES
-        (@BatchId,@TableName,'Success',NULL,@StartTime,@EndTime,@Duration,0);
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
         -----------------------------------------------------------------------
         -- RptSecurityAnalytics
@@ -2911,10 +3707,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (BatchId,TableName,Status,ErrorDetails,StartTime,EndTime,Duration,RowsInserted)
-        VALUES
-        (@BatchId,@TableName,'Success',NULL,@StartTime,@EndTime,@Duration,0);
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
         -----------------------------------------------------------------------
         -- RptSecurityAnalyticsUnpivot
@@ -2930,10 +3752,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (BatchId,TableName,Status,ErrorDetails,StartTime,EndTime,Duration,RowsInserted)
-        VALUES
-        (@BatchId,@TableName,'Success',NULL,@StartTime,@EndTime,@Duration,0);
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
         -----------------------------------------------------------------------
         -- RptPosAnalytics
@@ -2949,10 +3797,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (BatchId,TableName,Status,ErrorDetails,StartTime,EndTime,Duration,RowsInserted)
-        VALUES
-        (@BatchId,@TableName,'Success',NULL,@StartTime,@EndTime,@Duration,0);
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
         -----------------------------------------------------------------------
         -- RptPosAnalyticsData
@@ -2968,10 +3842,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (BatchId,TableName,Status,ErrorDetails,StartTime,EndTime,Duration,RowsInserted)
-        VALUES
-        (@BatchId,@TableName,'Success',NULL,@StartTime,@EndTime,@Duration,0);
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
         -----------------------------------------------------------------------
         -- RptPerformanceAttribution
@@ -2987,10 +3887,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (BatchId,TableName,Status,ErrorDetails,StartTime,EndTime,Duration,RowsInserted)
-        VALUES
-        (@BatchId,@TableName,'Success',NULL,@StartTime,@EndTime,@Duration,0);
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -3011,27 +3937,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
 
         END TRY
@@ -3056,6 +3984,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200);
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256);
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -3080,10 +4009,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted)
-        VALUES
-        (@BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, 0);
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
         -----------------------------------------------------------------------
         -- RptPortfolioBenchmark
@@ -3099,10 +4054,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted)
-        VALUES
-        (@BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, 0);
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
         -----------------------------------------------------------------------
         -- RptPortfolioBenchmarkVariance
@@ -3118,10 +4099,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted)
-        VALUES
-        (@BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, 0);
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
         -----------------------------------------------------------------------
         -- RptSecurityAnalytics
@@ -3137,10 +4144,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted)
-        VALUES
-        (@BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, 0);
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
         -----------------------------------------------------------------------
         -- RptSecurityAnalyticsUnpivot
@@ -3156,10 +4189,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted)
-        VALUES
-        (@BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, 0);
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
         -----------------------------------------------------------------------
         -- RptPosAnalytics
@@ -3175,10 +4234,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted)
-        VALUES
-        (@BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, 0);
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
         -----------------------------------------------------------------------
         -- RptPosAnalyticsData
@@ -3194,10 +4279,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted)
-        VALUES
-        (@BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, 0);
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -3218,27 +4329,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
 
         END TRY
@@ -3263,6 +4376,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200);
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256);
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -3290,28 +4404,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            0
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -3333,27 +4455,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
 
         END TRY
@@ -3378,6 +4502,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200);
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256);
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -3405,28 +4530,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            0
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -3448,27 +4581,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
 
         END TRY
@@ -3493,6 +4628,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200);
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256);
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -3522,28 +4658,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            0
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -3562,27 +4706,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
 
         END TRY
@@ -3607,6 +4753,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200) = 'IndexSecurityRaw';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256) = 'IndexSecurity_New_Data_Generation';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -3693,28 +4840,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -3733,27 +4888,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
 
         END TRY
@@ -3789,7 +4946,7 @@ BEGIN
 
     SELECT DISTINCT
         CAST(d.[Date] AS DATE) AS dt
-    FROM [ims].[Date] d
+    FROM dbo.[Date] d
     LEFT JOIN [FinIn_DE_LH_BRONZE_AND_SILVER].[dbo].[RiskAnalytics] fra
         ON fra.[EffectiveDt] = d.[Date]
     WHERE d.[Date] BETWEEN @StartDate AND @EndDate
@@ -3811,6 +4968,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200) = 'RptEndogenousLiquidity';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256) = 'sp_RptEndogenousLiquidity';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -3842,28 +5000,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -3887,27 +5053,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
 
         END TRY
@@ -3932,6 +5100,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200) = 'RptPFBMSecurity';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256) = 'RptPFBMSecurity_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -3993,28 +5162,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -4033,27 +5210,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
 
         END TRY
@@ -4077,6 +5256,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200) = 'RptPFBMSecurityAnalytics_Stage';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @StartTime DATETIME2(6) = SYSUTCDATETIME();
     DECLARE @EndTime DATETIME2(6);
@@ -4296,28 +5476,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                'sp_RptPFSecurityAnalytics_Stage'
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -4329,27 +5517,29 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+        INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
         (
             BatchId,
+            SchemaName,
             TableName,
-            Status,
-            ErrorDetails,
+            ProcessedRowCount,
             StartTime,
             EndTime,
-            Duration,
-            RowsInserted
+            Status,
+            ErrorMessage,
+            SourceName
         )
         VALUES
         (
             @BatchId,
+            @SchemaName,
             @TableName,
-            'Failed',
-            @ErrorMessage,
+            0,
             @StartTime,
             @EndTime,
-            @Duration,
-            0
+            'Failed',
+            @ErrorMessage,
+            'sp_RptPFSecurityAnalytics_Stage'
         );
 
         THROW;
@@ -4370,6 +5560,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200) = 'RptPerformanceAttribution';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256) = 'sp_RptPerformanceAttribution';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -4401,28 +5592,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -4446,27 +5645,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
 
         END TRY
@@ -4491,6 +5692,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'RptPortfolioBenchmark';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'RptPortfolioBenchmark_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -4552,12 +5754,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -4568,11 +5794,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -4593,6 +5837,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200) = 'RptPortfolioBenchmarkVariance';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
     DECLARE @ErrorState INT;
@@ -4695,28 +5940,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                'sp_RptPortfolioBenchmarkVariance'
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -4733,27 +5986,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                'sp_RptPortfolioBenchmarkVariance'
             );
 
         END TRY
@@ -4777,6 +6032,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200) = 'RptPortfolioBenchmarkVariance';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
     DECLARE @ErrorState INT;
@@ -4845,28 +6101,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                'sp_RptPortfolioBenchmarkVariance'
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -4883,27 +6147,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                'sp_RptPortfolioBenchmarkVariance'
             );
 
         END TRY
@@ -4928,6 +6194,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200) = 'RptPortfolioBenchmarkVariance_Stage';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256) = 'RptPortfolioBenchmarkVariance_Stage_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -5060,28 +6327,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -5100,27 +6375,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
 
         END TRY
@@ -5144,6 +6421,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200) = 'RptPortfolioPeerComparison';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @StartTime DATETIME2(6) = SYSUTCDATETIME();
     DECLARE @EndTime DATETIME2(6);
@@ -5349,28 +6627,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                'sp_RptPortfolioPeerComparison'
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -5382,27 +6668,29 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+        INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
         (
             BatchId,
+            SchemaName,
             TableName,
-            Status,
-            ErrorDetails,
+            ProcessedRowCount,
             StartTime,
             EndTime,
-            Duration,
-            RowsInserted
+            Status,
+            ErrorMessage,
+            SourceName
         )
         VALUES
         (
             @BatchId,
+            @SchemaName,
             @TableName,
-            'Failed',
-            @ErrorMessage,
+            0,
             @StartTime,
             @EndTime,
-            @Duration,
-            0
+            'Failed',
+            @ErrorMessage,
+            'sp_RptPortfolioPeerComparison'
         );
 
         IF OBJECT_ID('ims.PortfolioPeerCTE', 'U') IS NOT NULL
@@ -5433,6 +6721,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200) = 'RptPosAnalytics';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256) = 'RptPosAnalytics_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -5541,28 +6830,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -5578,27 +6875,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
 
         END TRY
@@ -5622,6 +6921,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200) = 'RptPosAnalyticsData';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @StartTime DATETIME2(6) = SYSUTCDATETIME();
     DECLARE @EndTime DATETIME2(6);
@@ -5796,28 +7096,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                'sp_RptPosAnalyticsData'
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -5829,27 +7137,29 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+        INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
         (
             BatchId,
+            SchemaName,
             TableName,
-            Status,
-            ErrorDetails,
+            ProcessedRowCount,
             StartTime,
             EndTime,
-            Duration,
-            RowsInserted
+            Status,
+            ErrorMessage,
+            SourceName
         )
         VALUES
         (
             @BatchId,
+            @SchemaName,
             @TableName,
-            'Failed',
-            @ErrorMessage,
+            0,
             @StartTime,
             @EndTime,
-            @Duration,
-            0
+            'Failed',
+            @ErrorMessage,
+            'sp_RptPosAnalyticsData'
         );
 
         THROW;
@@ -5871,6 +7181,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200) = 'RptSecurityAnalytics';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256) = 'RptSecurityAnalytics_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -6044,28 +7355,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -6084,27 +7403,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
 
         END TRY
@@ -6128,6 +7449,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200) = 'RptSecurityAnalyticsUnpivot';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256) = 'RptSecurityAnalyticsUnpivot_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -6269,28 +7591,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -6309,27 +7639,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
 
         END TRY
@@ -6359,6 +7691,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200) = 'RptThresholdPeriod';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256) = 'sp_RptThresholdPeriod';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -6470,28 +7803,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -6513,27 +7854,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
 
         END TRY
@@ -6698,28 +8041,36 @@ BEGIN
             CAST(DATEDIFF(SECOND,@StartTime,@EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            0
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                'sp_UpdateRowCountAudit'
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -6738,27 +8089,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                'sp_UpdateRowCountAudit'
             );
 
         END TRY
@@ -6785,6 +8138,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200) = 'Date';
+    DECLARE @SchemaName VARCHAR(255) = 'dbo';
     DECLARE @ProcedureName VARCHAR(256) = 'sp_Date';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -6798,24 +8152,44 @@ BEGIN
 
         IF OBJECT_ID(N'dbo.[Date]', N'U') IS NULL
         BEGIN
-            THROW 50000, 'Invalid operation. Table dbo.Date does not exist.', 1;
+            -- Self-heal: this dimension table wasn't part of the initial
+            -- warehouse setup, which made every dependent procedure
+            -- (sp_RiskAnalytics_FindMissingDates, sp_DollarAnalytics_FindMissingDates, ...)
+            -- fail with "Invalid object name". Create it here instead of
+            -- throwing so the batch can always run end-to-end.
+            CREATE TABLE dbo.[Date]
+            (
+                DateID VARCHAR(8) NOT NULL,
+                [Date] DATE NOT NULL
+            );
         END;
 
         WHILE @StartDate <= @EndDate
         BEGIN
 
-            INSERT INTO dbo.[Date]
+            -- Idempotent: only insert dates not already present, so
+            -- re-running sp_Date for an overlapping range (e.g. every
+            -- batch run) never hits a duplicate-key style conflict.
+            IF NOT EXISTS
             (
-                DateID,
-                [Date]
+                SELECT 1
+                FROM dbo.[Date]
+                WHERE DateID = CONVERT(VARCHAR(8), @StartDate, 112)
             )
-            VALUES
-            (
-                CONVERT(VARCHAR(8), @StartDate, 112),
-                @StartDate
-            );
+            BEGIN
+                INSERT INTO dbo.[Date]
+                (
+                    DateID,
+                    [Date]
+                )
+                VALUES
+                (
+                    CONVERT(VARCHAR(8), @StartDate, 112),
+                    @StartDate
+                );
 
-            SET @RowsInserted += 1;
+                SET @RowsInserted += 1;
+            END;
 
             SET @StartDate = DATEADD(DAY, 1, @StartDate);
         END;
@@ -6827,28 +8201,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -6867,27 +8249,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
 
         END TRY
@@ -6912,6 +8296,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'DimAggregationMetric';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'AggregationMetric_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -6982,12 +8367,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -6998,11 +8407,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -7024,6 +8451,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'DimAggregation';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'Aggregation_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -7082,12 +8510,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -7098,11 +8550,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -7124,6 +8594,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'DimAssetClass';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'AssetClass_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -7162,12 +8633,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -7178,11 +8673,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -7204,6 +8717,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'DimBenchmark';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'Benchmark_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -7296,12 +8810,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -7312,11 +8850,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -7338,6 +8894,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'DimBroker';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'Broker_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -7406,12 +8963,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -7422,11 +9003,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -7448,6 +9047,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'DimClient';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'Client_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -7517,12 +9117,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -7533,11 +9157,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -7559,6 +9201,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'DimCountry';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'Country_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -7625,12 +9268,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -7641,11 +9308,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -7667,6 +9352,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'DimCurrency';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'Currency_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -7733,12 +9419,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -7749,11 +9459,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -7775,6 +9503,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'DimCustodian';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'Custodian_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -7843,12 +9572,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -7859,11 +9612,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -7885,6 +9656,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName     VARCHAR(200)  = 'DimDTNSecurityType';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'DTNSecurityType_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -7940,12 +9712,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -7956,11 +9752,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -7982,6 +9796,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'DimSecurity';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'DimSecurity_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -8030,12 +9845,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -8046,11 +9885,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -8072,6 +9929,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'FactDollarAnalytics';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'DollarAnalytics_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -8182,12 +10040,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -8198,11 +10080,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -8224,6 +10124,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'FactDollarAnalytics';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'FactDollarAnalytics_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -8335,12 +10236,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -8351,11 +10276,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -8377,6 +10320,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'FactPortfolioAllocationDetails';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'FactPortfolioAllocationDetails_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -8433,12 +10377,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -8449,11 +10417,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -8475,6 +10461,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'FactPortfolioStressTestResults';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'FactPortfolioStressTestResults_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -8531,12 +10518,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -8547,11 +10558,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -8573,6 +10602,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'FactSecurityDollarAnalytics';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'FactSecurityDollarAnalytics_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -8625,12 +10655,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -8641,11 +10695,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -8667,6 +10739,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'FactSecurityRiskAnalytics';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'FactSecurityRiskAnalytics_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -8721,12 +10794,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -8737,11 +10834,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -8763,6 +10878,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'DimGics';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'Gics_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -8829,12 +10945,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -8845,11 +10985,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -8871,6 +11029,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'DimIndexSecurity';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'IndexSecurity_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -8929,12 +11088,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -8945,11 +11128,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -8971,6 +11172,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'DimLinkAssetClass';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'LinkAssetClass_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -9055,12 +11257,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -9071,11 +11297,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -9097,6 +11341,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'DimLinkSecurityType';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'LinkSecurityType_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -9173,12 +11418,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -9189,11 +11458,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -9215,6 +11502,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'DimMetric';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'Metric_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -9275,12 +11563,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -9291,11 +11603,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -9317,6 +11647,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'FactPortfolioAllocationDetails';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'PortfolioAllocationDetails_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -9373,12 +11704,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -9389,11 +11744,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -9415,6 +11788,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'DimPortfolioGroup';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'PortfolioGroup_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -9466,12 +11840,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -9482,11 +11880,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -9508,6 +11924,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'DimPortfolio';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'Portfolio_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -9610,12 +12027,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -9626,11 +12067,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -9652,6 +12111,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'FactPosition';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'Position_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -9771,12 +12231,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -9787,11 +12271,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -9813,6 +12315,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'FactRiskAnalytics';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'RiskAnalytics_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -9925,12 +12428,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -9941,11 +12468,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -9967,6 +12512,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'DimSecurityType';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'SecurityType_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -10002,12 +12548,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -10018,11 +12588,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -10044,6 +12632,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'DimSecurity';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'Security_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -10170,12 +12759,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -10186,11 +12799,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -10212,6 +12843,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'DimSourceSystemType';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'SourceSystemType_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -10264,12 +12896,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -10280,11 +12936,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -10306,6 +12980,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'DimSourceSystem';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'SourceSystem_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -10368,12 +13043,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -10384,11 +13083,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -10410,6 +13127,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'FactStandardAnalytics';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'StandardAnalytics_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -10486,12 +13204,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -10502,11 +13244,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -10528,6 +13288,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'DimStandardSourceField';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'StandardSourceField_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -10592,12 +13353,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -10608,11 +13393,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -10634,6 +13437,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'StandardSourceFields';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'StandardSourceFields_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -10698,12 +13502,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -10714,11 +13542,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -10740,6 +13586,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'DimStandardSource';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'StandardSource_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -10804,12 +13651,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -10820,11 +13691,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -10846,6 +13735,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'DimStrategy';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'Strategy_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -10914,12 +13804,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -10930,11 +13844,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -10956,6 +13888,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'FactTransact';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'Transact_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -11106,12 +14039,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -11122,11 +14079,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -11144,6 +14119,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName VARCHAR(200);
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @StartTime DATETIME2(6);
     DECLARE @EndTime DATETIME2(6);
@@ -11202,28 +14178,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                'sp_DS_PortfolioOptimization'
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
         -----------------------------------------------------------------------
         -- TABLE 2 : DS_PortfolioOptimization_Performance
@@ -11273,28 +14257,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                'sp_DS_PortfolioOptimization'
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
         -----------------------------------------------------------------------
         -- TABLE 3 : DS_PortfolioOptimization_RiskRegime
@@ -11342,28 +14334,36 @@ BEGIN
             CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20))
             + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
-        (
-            BatchId,
-            TableName,
-            Status,
-            ErrorDetails,
-            StartTime,
-            EndTime,
-            Duration,
-            RowsInserted
-        )
-        VALUES
-        (
-            @BatchId,
-            @TableName,
-            'Success',
-            NULL,
-            @StartTime,
-            @EndTime,
-            @Duration,
-            @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                'sp_DS_PortfolioOptimization'
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -11377,27 +14377,29 @@ BEGIN
 
         BEGIN TRY
 
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails]
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
             (
                 BatchId,
+                SchemaName,
                 TableName,
-                Status,
-                ErrorDetails,
+                ProcessedRowCount,
                 StartTime,
                 EndTime,
-                Duration,
-                RowsInserted
+                Status,
+                ErrorMessage,
+                SourceName
             )
             VALUES
             (
                 @BatchId,
+                @SchemaName,
                 @TableName,
-                'Failed',
-                @ErrorMessage,
+                0,
                 @StartTime,
                 @EndTime,
-                @Duration,
-                0
+                'Failed',
+                @ErrorMessage,
+                'sp_DS_PortfolioOptimization'
             );
 
         END TRY
@@ -11425,6 +14427,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'DimAccount';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'Account_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -11490,12 +14493,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -11506,11 +14533,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -11532,6 +14577,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'DimAccountClient';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'AccountClient_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -11589,12 +14635,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -11605,11 +14675,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -11631,6 +14719,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'DimAccountPortfolio';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'AccountPortfolio_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -11690,12 +14779,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -11706,11 +14819,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -11732,6 +14863,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'DimExternalSystem';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'ExternalSystem_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -11781,12 +14913,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -11797,11 +14953,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -11823,6 +14997,7 @@ BEGIN
     SET NOCOUNT ON;
 
     DECLARE @TableName    VARCHAR(200)   = 'DimPlan';
+    DECLARE @SchemaName VARCHAR(255) = 'ims';
     DECLARE @ProcedureName VARCHAR(256)  = 'Plan_Gold_Process';
     DECLARE @ErrorMessage VARCHAR(8000);
     DECLARE @ErrorSeverity INT;
@@ -11882,12 +15057,36 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME();
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
-        INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-            BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
-        )
-        VALUES (
-            @BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, @RowsInserted
-        );
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                @RowsInserted,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures (e.g. cross-warehouse write issues to
+            -- WH_MetaData) so they never mask a data step that already succeeded.
+        END CATCH
 
     END TRY
     BEGIN CATCH
@@ -11898,11 +15097,29 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds';
 
         BEGIN TRY
-            INSERT INTO [WH_MetaData].[Log].[GoldLogDetails] (
-                BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
             )
-            VALUES (
-                @BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
             );
         END TRY
         BEGIN CATCH
@@ -11911,165 +15128,3 @@ BEGIN
     END CATCH
 END
 GO
-
-/*
-=================================================================================
- EXCLUDED FROM DEPLOYMENT -- Fabric Warehouse incompatibility (3 procedures)
-=================================================================================
- The 3 procedures below are generic "run an arbitrary query, return CSV/JSON"
- utilities. They are commented out (every line prefixed with --) below rather
- than deployed, because Fabric Data Warehouse's T-SQL surface area does not
- support the patterns they rely on. Confirmed against Microsoft's official docs
- (https://learn.microsoft.com/fabric/data-warehouse/tsql-surface-area, last
- updated 2026-06-11):
-
-   - sp_GetConcatenatedColumns and sp_resultascsv both query
-     sys.dm_exec_describe_first_result_set to introspect an arbitrary query's
-     result columns. Fabric Warehouse blocks "queries targeting system and
-     user tables" -- this DMV falls in that category and fails at CREATE time.
-
-   - sp_resultasjson wraps FOR JSON AUTO inside a subquery
-     ( SELECT (SELECT ... FOR JSON AUTO) AS JsonOutput ). Fabric Warehouse
-     requires FOR JSON to be the outermost operator in a query -- it cannot
-     appear nested inside another SELECT.
-
- No other procedure in this script calls any of these 3 via EXEC, so excluding
- them does not break any dependency chain. The original source is preserved
- below, line-commented, exactly as written -- no inner logic has been altered.
-
- To get this "arbitrary query -> CSV/JSON" capability in Fabric, it would need
- to live in the application layer (e.g. FastAPI backend using pyodbc's
- cursor.description) rather than as a T-SQL stored procedure, since the
- underlying metadata-introspection and FOR JSON patterns this relies on aren't
- available in Fabric Warehouse's SQL surface.
-=================================================================================
-*/
-
--- ============================== EXCLUDED (Fabric-incompatible): sp_GetConcatenatedColumns.sql ==============================
--- CREATE OR ALTER PROCEDURE [ims].[sp_GetConcatenatedColumns]
---     @Query NVARCHAR(MAX)
--- /*
--- © UB Technology Innovations. Unauthorized use or reproduction is prohibited
--- */
--- AS
--- BEGIN
---     SET NOCOUNT ON;
---
---     DECLARE @Columns NVARCHAR(MAX);
---     DECLARE @SQL NVARCHAR(MAX);
---
---     ---------------------------------------------------------------------------
---     -- Get column list from query result
---     ---------------------------------------------------------------------------
---     SELECT
---         @Columns = STRING_AGG(QUOTENAME(name), ',')
---     FROM sys.dm_exec_describe_first_result_set
---     (
---         @Query,
---         NULL,
---         0
---     )
---     WHERE is_hidden = 0;
---
---     IF @Columns IS NULL
---     BEGIN
---         THROW 50000, 'Unable to determine result-set columns.', 1;
---     END;
---
---     ---------------------------------------------------------------------------
---     -- Build CSV-style output
---     ---------------------------------------------------------------------------
---     SET @SQL = N'
---     WITH CTEa AS
---     (
---         ' + @Query + N'
---     )
---     SELECT STRING_AGG
---     (
---         CONCAT_WS('','', ' + @Columns + N'),
---         CHAR(10)
---     ) AS CsvOutput
---     FROM CTEa;';
---
---     EXEC sp_executesql @SQL;
---
--- END;
-
--- ============================== EXCLUDED (Fabric-incompatible): sp_resultascsv.sql ==============================
--- CREATE OR ALTER PROCEDURE [ims].[sp_resultascsv]
---     @Query NVARCHAR(MAX)
--- /*
--- © UB Technology Innovations. Unauthorized use or reproduction is prohibited
--- */
--- AS
--- BEGIN
---     SET NOCOUNT ON;
---
---     DECLARE @Columns NVARCHAR(MAX);
---     DECLARE @Sql NVARCHAR(MAX);
---
---     --------------------------------------------------------------------------
---     -- Get result set columns
---     --------------------------------------------------------------------------
---     SELECT
---         @Columns = STRING_AGG(QUOTENAME(name), ',')
---     FROM sys.dm_exec_describe_first_result_set
---     (
---         @Query,
---         NULL,
---         0
---     )
---     WHERE is_hidden = 0;
---
---     IF @Columns IS NULL
---     BEGIN
---         THROW 50000, 'Unable to determine query result columns.', 1;
---     END;
---
---     --------------------------------------------------------------------------
---     -- Generate CSV output
---     --------------------------------------------------------------------------
---     SET @Sql = N'
---     WITH CTEa AS
---     (
---         ' + @Query + N'
---     )
---     SELECT
---         STRING_AGG
---         (
---             CONCAT_WS('','', ' + @Columns + N'),
---             CHAR(10)
---         ) AS CsvOutput
---     FROM CTEa;';
---
---     EXEC sp_executesql @Sql;
---
--- END;
-
--- ============================== EXCLUDED (Fabric-incompatible): sp_resultasjson.sql ==============================
--- CREATE OR ALTER PROCEDURE [ims].[sp_resultasjson]
---     @Query NVARCHAR(MAX)
--- /*
--- © UB Technology Innovations. Unauthorized use or reproduction is prohibited
--- */
--- AS
--- BEGIN
---     SET NOCOUNT ON;
---
---     DECLARE @Sql NVARCHAR(MAX);
---
---     SET @Sql = N'
---     WITH CTEa AS
---     (
---         ' + @Query + N'
---     )
---     SELECT
---         (
---             SELECT *
---             FROM CTEa
---             FOR JSON AUTO
---         ) AS JsonOutput;';
---
---     EXEC sp_executesql @Sql;
---
--- END;

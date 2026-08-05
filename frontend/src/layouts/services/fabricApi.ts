@@ -638,15 +638,86 @@ export function getItlNotebookStatus(
   );
 }
 
-export interface DeployGoldStoredProceduresResponse {
+export interface DeployGoldStoredProceduresResult {
   batches_executed: number;
   procedures_deployed: number;
   database: string;
+  sp_details_recorded?: number;
+  sp_details_error?: string;
 }
 
-export function deployGoldStoredProcedures(projectId: string) {
-  return request<DeployGoldStoredProceduresResponse>(
+export interface StartDeployGoldStoredProceduresResponse {
+  status: string;
+  job_id: string;
+  total: number;
+}
+
+export interface DeployGoldStoredProceduresStatus {
+  status: 'queued' | 'running' | 'done' | 'failed' | string;
+  progress: number;
+  total: number;
+  message: string;
+  result: DeployGoldStoredProceduresResult | null;
+}
+
+export function startDeployGoldStoredProcedures(projectId: string) {
+  return request<StartDeployGoldStoredProceduresResponse>(
     `/projects/${projectId}/gold/deploy-stored-procedures`,
     { method: 'POST' }
+  );
+}
+
+export function getDeployGoldStoredProceduresStatus(projectId: string, jobId: string) {
+  return request<DeployGoldStoredProceduresStatus>(
+    `/projects/${projectId}/gold/deploy-stored-procedures-status/${jobId}`
+  );
+}
+
+export interface DeployMasterExecutorResult {
+  batches_executed: number;
+  database: string;
+}
+
+export function deployMasterExecutor(projectId: string) {
+  return request<DeployMasterExecutorResult>(
+    `/projects/${projectId}/gold/deploy-master-executor`,
+    { method: 'POST' }
+  );
+}
+
+export interface StartExecuteMasterSpResponse {
+  status: string;
+  job_id: string;
+  total: number;
+  batch_id: number;
+}
+
+export interface ExecuteMasterSpResult {
+  batch_id: number;
+  database: string;
+  done: number;
+  succeeded: number;
+  failed: number;
+  failed_names: string[];
+}
+
+export interface ExecuteMasterSpStatus {
+  status: 'queued' | 'running' | 'done' | 'failed' | string;
+  progress: number;
+  total: number;
+  message: string;
+  result: ExecuteMasterSpResult | null;
+}
+
+export function startExecuteMasterSp(projectId: string, silverLakehouse?: string) {
+  return request<StartExecuteMasterSpResponse>(
+    `/projects/${projectId}/gold/execute-master-sp`,
+    { method: 'POST', body: JSON.stringify({ silver_lakehouse: silverLakehouse || 'LH_Silver' }) }
+  );
+}
+
+export function getExecuteMasterSpStatus(projectId: string, jobId: string) {
+  return request<ExecuteMasterSpStatus>(
+    `/projects/${projectId}/gold/execute-master-sp-status/${jobId}`
   );
 }

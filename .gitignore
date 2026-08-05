@@ -14,3 +14,7 @@ wheels/
 # Dependencies
 node_modules/
 **/node_modules/
+
+# db
+app.db
+.finin_jobs.sqlite3
