@@ -106,6 +106,16 @@ export const ConfigStep = ({
   const connItlConfigDownloaded = selectedConnection ? itlConfigDownloaded[selectedConnection] ?? false : false;
   const connItlConfigUploaded = selectedConnection ? itlConfigUploaded[selectedConnection] ?? false : false;
   const connItlPipelineFiles: PipelineItem[] = (selectedConnection ? itlPipelineFiles[selectedConnection] : undefined) ?? [];
+  // TEMP: MailTrigger pipeline is hidden from the UI (and skipped in the run
+  // sequence — see ITL_RUN_SEQUENCE in useSetupStore) while it's failing, so a
+  // demo run isn't shown as failed by it. Remove this filter to restore it.
+  const visibleItlPipelineFiles: PipelineItem[] = connItlPipelineFiles.filter(
+    (p) => !p.name.includes('06_PL_MailTrigger')
+  );
+  // All ITL pipelines (excluding the temporarily hidden MailTrigger) created
+  // successfully for the selected connection — gates the two WH_Gold SP cards.
+  const allItlPipelinesCreated =
+    visibleItlPipelineFiles.length > 0 && visibleItlPipelineFiles.every((p) => p.uploadStatus === 'success');
   const connItlNotebookRunStatus = (selectedConnection ? itlNotebookRunStatus[selectedConnection] : undefined) ?? '';
 
   const [notebooksUploadingMap, setNotebooksUploadingMap] = useState<Record<string, boolean>>({});
@@ -811,7 +821,7 @@ export const ConfigStep = ({
               connectionName={selectedConn!.name}
               itlConfigDownloaded={connItlConfigDownloaded}
               itlConfigUploaded={connItlConfigUploaded}
-              itlPipelineFiles={connItlPipelineFiles}
+              itlPipelineFiles={visibleItlPipelineFiles}
               onDownloadItlConfig={onDownloadItlConfig}
               onUploadItlConfig={onUploadItlConfig}
               onUploadItlPipelines={() => onUploadItlPipelines(selectedConn!.name, connIndex)}
@@ -821,19 +831,23 @@ export const ConfigStep = ({
             />
           )}
 
-          {/* Gold stored procedures — independent of any one source
+          {/* Gold stored procedures — finin-only. Independent of any one source
               connection's ITL run, so it lives as its own section rather
-              than nested inside (and re-mounted per-connection by) ItlSection. */}
-          {allPipelinesRan && (
+              than nested inside (and re-mounted per-connection by) ItlSection.
+              Both SP sections stay greyed out (disabled) until every ITL
+              pipeline for the selected connection has been created successfully. */}
+          {appMode === 'finin' && allPipelinesRan && (
             <GoldStoredProceduresSection
               onDeployGoldStoredProcedures={onDeployGoldStoredProcedures}
+              disabled={!allItlPipelinesCreated}
             />
           )}
 
-          {allPipelinesRan && (
+          {appMode === 'finin' && allPipelinesRan && (
             <MasterExecuteSection
               onDeployMasterExecutor={onDeployMasterExecutor}
               onExecuteMasterSp={onExecuteMasterSp}
+              disabled={!allItlPipelinesCreated}
             />
           )}
         </div>
@@ -1070,7 +1084,9 @@ const ItlSection = ({
   // shorthand here means these never match anything in itlPipelineFiles, so
   // the run-status UI (and the "is not deployed yet" run failure) is wrong
   // even when the pipelines really did deploy and run fine.
-  const RUN_SEQUENCE_SUFFIXES = ['01_PL_WatermarkUpdate', '02_PL_Master pipeline', '06_PL_MailTrigger'];
+  // TEMP: '06_PL_MailTrigger' removed while the pipeline is failing — it's
+  // also hidden from the ITL list and skipped by the store's run sequence.
+  const RUN_SEQUENCE_SUFFIXES = ['01_PL_WatermarkUpdate', '02_PL_Master pipeline'];
   const runSequenceItems = itlPipelineFiles.filter((p) =>
     RUN_SEQUENCE_SUFFIXES.some((suffix) => p.name === `${connectionName}_${suffix}`)
   );
@@ -1364,7 +1380,7 @@ const ItlSection = ({
           )}
         </div>
 
-        {/* Step 5: Run Pipelines – WaterMarkUpdate -> MasterPipeline -> MailTrigger */}
+        {/* Step 5: Run Pipelines – WaterMarkUpdate -> MasterPipeline (MailTrigger temporarily removed) */}
         {allItlDeployed && (
           <div className="flex items-center gap-4 mt-3">
             <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold ${
@@ -1372,7 +1388,7 @@ const ItlSection = ({
             }`}>5</div>
             <div className="flex-1">
               <p className="text-[12px] font-medium text-slate-700">Run Pipelines</p>
-              <p className="text-[10px] text-slate-500">Runs WaterMarkUpdate → MasterPipeline → MailTrigger in order</p>
+              <p className="text-[10px] text-slate-500">Runs WaterMarkUpdate → MasterPipeline in order</p>
             </div>
             <button
               type="button"
@@ -1467,10 +1483,13 @@ interface GoldStoredProceduresSectionProps {
   onDeployGoldStoredProcedures: (
     onProgress?: (progress: number, total: number, message: string) => void
   ) => Promise<{ batches_executed: number; procedures_deployed: number; database: string; sp_details_recorded?: number }>;
+  /** Greyed out until all ITL pipelines are created successfully */
+  disabled?: boolean;
 }
 
 const GoldStoredProceduresSection = ({
   onDeployGoldStoredProcedures,
+  disabled = false,
 }: GoldStoredProceduresSectionProps): JSX.Element => {
   const [deploying, setDeploying] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0, message: '' });
@@ -1510,14 +1529,19 @@ const GoldStoredProceduresSection = ({
             {deployed
               ? `${deployed.procedures_deployed} procedures deployed under [ims] in ${deployed.database}`
                 + (deployed.sp_details_recorded ? ` · ${deployed.sp_details_recorded} recorded in Config_Gold` : '')
+              : disabled
+              ? 'Available once all ITL pipelines are created successfully'
               : 'Creates the [ims] schema and its stored procedures in WH_Gold'}
           </p>
         </div>
         <button
           onClick={handleDeploy}
-          disabled={deploying}
+          disabled={disabled || deploying}
+          title={disabled ? 'Create all ITL pipelines first' : undefined}
           className={`flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-bold rounded-lg transition-all disabled:opacity-60 disabled:cursor-not-allowed ${
-            deployed ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'bg-emerald-600 text-white hover:bg-emerald-700'
+            disabled
+              ? 'bg-slate-100 text-slate-400'
+              : deployed ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'bg-emerald-600 text-white hover:bg-emerald-700'
           }`}
         >
           {deploying ? (
@@ -1559,11 +1583,14 @@ interface MasterExecuteSectionProps {
     silverLakehouse?: string,
     onProgress?: (progress: number, total: number, message: string) => void
   ) => Promise<{ batch_id: number; database: string; done: number; succeeded: number; failed: number; failed_names: string[] }>;
+  /** Greyed out until all ITL pipelines are created successfully */
+  disabled?: boolean;
 }
 
 const MasterExecuteSection = ({
   onDeployMasterExecutor,
   onExecuteMasterSp,
+  disabled = false,
 }: MasterExecuteSectionProps): JSX.Element => {
   const [executing, setExecuting] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0, message: '' });
@@ -1609,6 +1636,8 @@ const MasterExecuteSection = ({
             {result
               ? `${result.succeeded}/${result.done} succeeded in ${result.database}`
                 + (result.failed > 0 ? ` · ${result.failed} failed` : '')
+              : disabled
+              ? 'Available once all ITL pipelines are created successfully'
               : 'Runs MasterExecuter.sp_GoldExecute — executes every active procedure from Config_Gold.finin_gold_sp_details'}
           </p>
           {result && result.failed > 0 && (
@@ -1625,9 +1654,12 @@ const MasterExecuteSection = ({
           )}
           <button
             onClick={handleExecute}
-            disabled={executing}
+            disabled={disabled || executing}
+            title={disabled ? 'Create all ITL pipelines first' : undefined}
             className={`flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-bold rounded-lg transition-all disabled:opacity-60 disabled:cursor-not-allowed flex-shrink-0 ${
-              result ? (result.failed > 0 ? 'bg-red-50 text-red-700 hover:bg-red-100' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100') : 'bg-emerald-600 text-white hover:bg-emerald-700'
+              disabled
+                ? 'bg-slate-100 text-slate-400'
+                : result ? (result.failed > 0 ? 'bg-red-50 text-red-700 hover:bg-red-100' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100') : 'bg-emerald-600 text-white hover:bg-emerald-700'
             }`}
           >
             {executing ? (

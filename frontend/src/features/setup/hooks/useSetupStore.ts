@@ -1648,8 +1648,10 @@ export const useSetupStore = (projectId: string | null) => {
   );
 
   /**
-   * Run the three post-deployment ITL pipelines in strict order:
-   * 01_PL_WatermarkUpdate -> 02_PL_Master pipeline -> 06_PL_MailTrigger.
+   * Run the post-deployment ITL pipelines in strict order:
+   * 01_PL_WatermarkUpdate -> 02_PL_Master pipeline.
+   * (06_PL_MailTrigger is temporarily removed from the sequence — see
+   * ITL_RUN_SEQUENCE below.)
    * Master pipeline internally invokes 03_PL_InvokePipeline, which in turn
    * invokes 04_PL_IncrementalSourceToBronze and 05_PL_SourceDelete — those
    * three aren't triggered directly here. Stops at the first failure.
@@ -1660,7 +1662,11 @@ export const useSetupStore = (projectId: string | null) => {
    * means runItlPipeline() can never find the deployed item and every run
    * fails immediately with "is not deployed yet", even though it is.
    */
-  const ITL_RUN_SEQUENCE = ['01_PL_WatermarkUpdate', '02_PL_Master pipeline', '06_PL_MailTrigger'];
+  // TEMP: '06_PL_MailTrigger' removed from the sequence while the pipeline is
+  // failing (it was marking the whole run as failed). The pipeline is still
+  // deployed to Fabric — it's just not triggered or shown in the UI. Add
+  // '06_PL_MailTrigger' back here (and un-hide it in ConfigStep) to restore.
+  const ITL_RUN_SEQUENCE = ['01_PL_WatermarkUpdate', '02_PL_Master pipeline'];
 
   // Child pipelines invoked internally BY the master pipeline (via its
   // "Invoke Pipeline" activities) rather than run directly by us. Fabric

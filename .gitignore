@@ -18,3 +18,5 @@ node_modules/
 # db
 app.db
 .finin_jobs.sqlite3
+app.db-shm
+app.db-wal
