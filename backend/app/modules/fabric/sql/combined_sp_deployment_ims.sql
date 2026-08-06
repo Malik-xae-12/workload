@@ -1688,7 +1688,7 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME(); 
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds'; 
 
-        INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails] (BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted) 
+        INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails] (BatchId, TableName, Status, ErrorMessage, StartTime, EndTime, Duration, RowsInserted) 
         VALUES (@BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, 0); 
     END TRY 
 
@@ -1701,7 +1701,7 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds'; 
 
         BEGIN TRY 
-            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails] (BatchId, TableName, Status, ErrorDetails, StartTime, EndTime, Duration, RowsInserted) 
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails] (BatchId, TableName, Status, ErrorMessage, StartTime, EndTime, Duration, RowsInserted) 
             VALUES (@BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0); 
         END TRY 
         BEGIN CATCH 

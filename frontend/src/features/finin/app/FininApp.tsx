@@ -127,7 +127,7 @@ export default function FininApp({ connections, projectId, initialConnectionName
     if (!job?.job_id) return;
     if (!projectId) { alert("Open a Fabric project first (Projects tab) so mappings have a destination."); return; }
     if (!connectionName) { alert("Select a source connection to save into."); return; }
-    if (unmatchedCount > 0) { alert(`${unmatchedCount} column(s) are still unmatched. Resolve them in Manual Mapping before saving.`); return; }
+    if (unmatchedCount > 0) { alert(`${unmatchedCount} column(s) are still unmatched. Resolve them in Manual Mapping before saving.`);return; }
     try {
       const res = await saveToMetadata(job.job_id, projectId, connectionName);
       setSavedToMetadata(true);
