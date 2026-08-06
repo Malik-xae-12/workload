@@ -319,7 +319,7 @@ export default function FininApp({ connections, projectId, initialConnectionName
                     className={`se-btn ${savedToMetadata ? 'se-btn--done' : ''}`}
                     onClick={handleSaveToMetadata}
                     disabled={saving || !connectionName || savedToMetadata }
-                    {/* disabled={saving || !connectionName || savedToMetadata || unmatchedCount > 0} */}
+                    //disabled={saving || !connectionName || savedToMetadata || unmatchedCount > 0}
                     title={unmatchedCount > 0 ? `${unmatchedCount} unmatched column(s) must be resolved first` : undefined}
                   >
                     {savedToMetadata ? 'Saved' : saving ? `Saving... ${saveProgress}%` : 'Save'}
@@ -329,7 +329,7 @@ export default function FininApp({ connections, projectId, initialConnectionName
                       className="se-btn se-btn--ghost"
                       onClick={handleSaveToMetadata}
                       disabled={saving || !connectionName}
-                      {/* disabled={saving || !connectionName || unmatchedCount > 0} */}
+                      //disabled={saving || !connectionName || unmatchedCount > 0}
                     >
                       Re-save
                     </button>
