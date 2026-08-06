@@ -127,7 +127,7 @@ export default function FininApp({ connections, projectId, initialConnectionName
     if (!job?.job_id) return;
     if (!projectId) { alert("Open a Fabric project first (Projects tab) so mappings have a destination."); return; }
     if (!connectionName) { alert("Select a source connection to save into."); return; }
-    if (unmatchedCount > 0) { alert(`${unmatchedCount} column(s) are still unmatched. Resolve them in Manual Mapping before saving.`);return; }
+    // if (unmatchedCount > 0) { alert(`${unmatchedCount} column(s) are still unmatched. Resolve them in Manual Mapping before saving.`); return; }
     try {
       const res = await saveToMetadata(job.job_id, projectId, connectionName);
       setSavedToMetadata(true);
@@ -318,7 +318,8 @@ export default function FininApp({ connections, projectId, initialConnectionName
                   <button
                     className={`se-btn ${savedToMetadata ? 'se-btn--done' : ''}`}
                     onClick={handleSaveToMetadata}
-                    disabled={saving || !connectionName || savedToMetadata || unmatchedCount > 0}
+                    disabled={saving || !connectionName || savedToMetadata }
+                    //disabled={saving || !connectionName || savedToMetadata || unmatchedCount > 0}
                     title={unmatchedCount > 0 ? `${unmatchedCount} unmatched column(s) must be resolved first` : undefined}
                   >
                     {savedToMetadata ? 'Saved' : saving ? `Saving... ${saveProgress}%` : 'Save'}
@@ -327,7 +328,8 @@ export default function FininApp({ connections, projectId, initialConnectionName
                     <button
                       className="se-btn se-btn--ghost"
                       onClick={handleSaveToMetadata}
-                      disabled={saving || !connectionName || unmatchedCount > 0}
+                      disabled={saving || !connectionName}
+                      //disabled={saving || !connectionName || unmatchedCount > 0}
                     >
                       Re-save
                     </button>
