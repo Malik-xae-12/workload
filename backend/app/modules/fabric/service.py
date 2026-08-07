@@ -2128,6 +2128,7 @@ async def start_build_semantic_model_handler(
                 relationships=resolved_relationships,
                 measures=resolved_measures,
             )
+            model_bim, auto_deactivated_relationships = model_bim
             parts = sm.build_definition_parts(model_bim, display_name)
 
             update_job(job_id, message="Creating semantic model in Fabric…", progress=len(resolved_tables))
@@ -2161,9 +2162,16 @@ async def start_build_semantic_model_handler(
                 "tables": len(resolved_tables),
                 "relationships": len(resolved_relationships),
                 "measures": len(resolved_measures),
+                "auto_deactivated_relationships": auto_deactivated_relationships,
             }
+            message = "Semantic model created"
+            if auto_deactivated_relationships:
+                message += (
+                    f" ({len(auto_deactivated_relationships)} relationship(s) auto-deactivated "
+                    "to avoid ambiguous paths — see result for which ones)"
+                )
             update_job(job_id, status="done", progress=len(resolved_tables), total=len(resolved_tables),
-                       message="Semantic model created", result=result)
+                       message=message, result=result)
         except Exception as e:
             logger.exception("Semantic model build failed")
             try:

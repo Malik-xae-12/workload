@@ -633,16 +633,92 @@ _CARDINALITY_MAP = {
 }
 
 
+class _UnionFind:
+    """Tracks which tables are already connected through active
+    relationships, so we can tell whether adding one more active
+    relationship would close a cycle (path-compressed union-find)."""
+
+    def __init__(self):
+        self._parent: dict[str, str] = {}
+
+    def find(self, x: str) -> str:
+        self._parent.setdefault(x, x)
+        root = x
+        while self._parent[root] != root:
+            root = self._parent[root]
+        while self._parent[x] != root:
+            self._parent[x], x = root, self._parent[x]
+        return root
+
+    def union(self, a: str, b: str) -> bool:
+        """Returns True if a and b were in different components (and are
+        now merged) — False if they were already connected, i.e. this edge
+        would close a cycle."""
+        ra, rb = self.find(a), self.find(b)
+        if ra == rb:
+            return False
+        self._parent[ra] = rb
+        return True
+
+
+def _resolve_active_relationships(relationships: list[dict]) -> tuple[list[dict], list[str]]:
+    """Guarantee the *active* relationship graph is a forest — i.e. there is
+    at most one active filter path between any two tables — regardless of
+    what the Excel's IsActive column says. This is what Fabric/Tabular
+    actually requires; relying on a human to hand-mark every redundant leg
+    of every cycle in the source Excel is exactly what left the earlier
+    "ambiguous paths" bug reachable.
+
+    Relationships explicitly marked inactive (IsActive=false in the Excel)
+    stay inactive. Among the rest, a relationship is kept active only if it
+    doesn't reconnect two tables that active relationships already connect
+    (first relationship between any two components wins, in the order the
+    Excel/auto-detection produced them); anything that would close a cycle
+    is auto-deactivated — it's still created in the model, just inactive,
+    so it remains usable in DAX via USERELATIONSHIP.
+    """
+    uf = _UnionFind()
+    resolved: list[dict] = []
+    auto_deactivated: list[str] = []
+    for r in relationships:
+        r = dict(r)
+        if not r.get("is_active", True):
+            resolved.append(r)
+            continue
+        if uf.union(r["from_table"], r["to_table"]):
+            resolved.append(r)
+        else:
+            r["is_active"] = False
+            auto_deactivated.append(
+                f'{r["from_table"]}.{r["from_column"]} \u2192 {r["to_table"]}.{r["to_column"]}'
+            )
+            resolved.append(r)
+    return resolved, auto_deactivated
+
+
 def build_model_bim(
     server: str, database: str,
     tables_columns: dict[str, list[dict]],
     tables: list[dict],
     relationships: list[dict],
     measures: list[dict],
-) -> dict:
+) -> tuple[dict, list[str]]:
     """Assemble a TMSL definition (model.bim) — DirectQuery against WH_Gold,
     one table per selected Excel row (using its live WH_Gold columns), plus
-    the relationships and measures from the Excel."""
+    the relationships and measures from the Excel.
+
+    Returns (model_bim, auto_deactivated) — the second element lists any
+    relationships that were forced inactive to keep the active-relationship
+    graph a forest (see _resolve_active_relationships), so the caller can
+    surface that in the job status/logs instead of it being silent."""
+
+    relationships, auto_deactivated = _resolve_active_relationships(relationships)
+    if auto_deactivated:
+        logger.warning(
+            "Auto-deactivated %d relationship(s) to avoid Fabric's 'ambiguous paths' "
+            "error (multiple active filter paths between the same two tables): %s",
+            len(auto_deactivated), "; ".join(auto_deactivated),
+        )
 
     expr_lines = [
         "let",
@@ -740,7 +816,7 @@ def build_model_bim(
             "relationships": model_relationships,
             "annotations": [{"name": "PBI_QueryOrder", "value": json.dumps([t["name"] for t in model_tables])}],
         },
-    }
+    }, auto_deactivated
 
 
 _DEFINITION_PBISM = {
