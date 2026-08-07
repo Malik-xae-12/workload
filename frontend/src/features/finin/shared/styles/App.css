@@ -1799,6 +1799,30 @@
   cursor: default;
 }
 
+.finin-app .mm-table-picker-menu-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.finin-app .mm-table-picker-deselectall {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: normal;
+  cursor: pointer;
+  padding: 0;
+}
+
+.finin-app .mm-table-picker-deselectall:hover { color: var(--accent-hover); }
+.finin-app .mm-table-picker-deselectall:disabled {
+  color: var(--text-dim);
+  cursor: default;
+}
+
 .finin-app .mm-table-picker-list {
   max-height: 260px;
   overflow-y: auto;
