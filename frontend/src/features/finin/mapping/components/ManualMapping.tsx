@@ -29,7 +29,9 @@ export default function ManualMapping({
   const [tableIndex, setTableIndex] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const [savedDone, setSavedDone] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<"all" | "matched" | "unmatched">("all");
+  // Default to "unmatched" so the page opens showing what still needs
+  // attention, instead of the full (often already-matched) list.
+  const [statusFilter, setStatusFilter] = useState<"all" | "matched" | "unmatched">("unmatched");
   // null = no filter applied (all tables in sequence). Once the user picks
   // specific tables, only those are shown, in original order, one by one.
   const [selectedTables, setSelectedTables] = useState<Set<string> | null>(null);
@@ -62,7 +64,11 @@ export default function ManualMapping({
   // The sequence actually navigated: every table, or just the ones the
   // user picked in the table filter (still walked one by one, in order).
   const filteredTableGroups = useMemo(() => {
-    if (!selectedTables || selectedTables.size === 0) return tableGroups;
+    // null = no filter applied (show every table). An empty Set is a
+    // deliberate "Deselect all" — that must show zero tables (the
+    // "No tables selected" empty state below), not silently fall back
+    // to showing everything.
+    if (!selectedTables) return tableGroups;
     return tableGroups.filter(([name]) => selectedTables.has(name));
   }, [tableGroups, selectedTables]);
 
@@ -103,17 +109,15 @@ export default function ManualMapping({
     setTableIndex(0);
   }, []);
 
+  const deselectAllTables = useCallback(() => {
+    setSelectedTables(new Set());
+    setTableIndex(0);
+  }, []);
+
   const isTableSelected = useCallback(
     (name: string) => !selectedTables || selectedTables.has(name),
     [selectedTables]
   );
-
-  const selectedCountLabel =
-    !selectedTables || selectedTables.size === allTableNames.length
-      ? "All tables"
-      : selectedTables.size === 0
-      ? "No tables"
-      : `${selectedTables.size} of ${allTableNames.length} tables`;
 
   const sourceOptions = useMemo<Record<string, string[]>>(() => {
     const map: Record<string, Set<string>> = {};
@@ -166,7 +170,7 @@ export default function ManualMapping({
   const goToPage = useCallback((index: number) => {
     if (totalTables === 0) return;
     setTableIndex(Math.min(Math.max(index, 0), totalTables - 1));
-    setStatusFilter("all");
+    setStatusFilter("unmatched");
   }, [totalTables]);
 
   const rowKey = useCallback((row: MappingRow) => {
@@ -294,6 +298,17 @@ export default function ManualMapping({
 
   const [tableName, tableRows] = currentGroup;
 
+  // The picker trigger shows the current table's name instead of a generic
+  // "All tables" label — displaying "All Tables" while only one table's
+  // rows are ever shown at a time was confusing. It falls back to a
+  // count only when the user has narrowed the selection to a subset.
+  const selectedCountLabel =
+    !selectedTables || selectedTables.size === allTableNames.length
+      ? tableName
+      : selectedTables.size === 0
+      ? "No tables"
+      : `${selectedTables.size} of ${allTableNames.length} tables`;
+
   const matchedCount = tableRows.filter((r) => isRowMatched(r)).length;
   const unmatchedCount = tableRows.length - matchedCount;
   const visibleRows = tableRows.filter((r) => {
@@ -373,14 +388,24 @@ export default function ManualMapping({
               <div className="mm-table-picker-menu" role="listbox" aria-multiselectable="true">
                 <div className="mm-table-picker-menu-header">
                   <span>Select tables</span>
-                  <button
-                    type="button"
-                    className="mm-table-picker-selectall"
-                    onClick={selectAllTables}
-                    disabled={!selectedTables}
-                  >
-                    Select all
-                  </button>
+                  <div className="mm-table-picker-menu-header-actions">
+                    <button
+                      type="button"
+                      className="mm-table-picker-selectall"
+                      onClick={selectAllTables}
+                      disabled={!selectedTables}
+                    >
+                      Select all
+                    </button>
+                    <button
+                      type="button"
+                      className="mm-table-picker-deselectall"
+                      onClick={deselectAllTables}
+                      disabled={!!selectedTables && selectedTables.size === 0}
+                    >
+                      Deselect all
+                    </button>
+                  </div>
                 </div>
                 <div className="mm-table-picker-list">
                   {tableGroups.map(([name, groupRows]) => {

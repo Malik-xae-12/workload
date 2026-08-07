@@ -1641,7 +1641,6 @@ BEGIN
 
 END;
 GO
-
 -- ============================== Source file: sp_Gold_Fixed_Income_Process.sql ==============================
 CREATE OR ALTER PROCEDURE ims.sp_Gold_Fixed_Income_Process 
     @SilverLakehouse VARCHAR(MAX) = 'LH_Silver', 
@@ -1652,7 +1651,6 @@ BEGIN
     SET NOCOUNT ON; 
 
     DECLARE @SchemaName VARCHAR(255) = 'ims';
-    -- Corrected DECLARE block with commas and variable prefixes (@)
     DECLARE @TableName VARCHAR(200),
             @ProcedureName VARCHAR(256),
             @ErrorMessage VARCHAR(8000),
@@ -1688,8 +1686,35 @@ BEGIN
         SET @EndTime = SYSUTCDATETIME(); 
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds'; 
 
-        INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails] (BatchId, TableName, Status, ErrorMessage, StartTime, EndTime, Duration, RowsInserted) 
-        VALUES (@BatchId, @TableName, 'Success', NULL, @StartTime, @EndTime, @Duration, 0); 
+        BEGIN TRY
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Success',
+                NULL,
+                @ProcedureName
+            );
+        END TRY
+        BEGIN CATCH
+            -- Swallow audit-log failures so they never mask a data step that already succeeded.
+        END CATCH
     END TRY 
 
     BEGIN CATCH 
@@ -1701,8 +1726,30 @@ BEGIN
         SET @Duration = CAST(DATEDIFF(SECOND, @StartTime, @EndTime) AS VARCHAR(20)) + ' Seconds'; 
 
         BEGIN TRY 
-            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails] (BatchId, TableName, Status, ErrorMessage, StartTime, EndTime, Duration, RowsInserted) 
-            VALUES (@BatchId, @TableName, 'Failed', @ErrorMessage, @StartTime, @EndTime, @Duration, 0); 
+            INSERT INTO [WH_MetaData].[Log].[ETLBatchGoldLogDetails]
+            (
+                BatchId,
+                SchemaName,
+                TableName,
+                ProcessedRowCount,
+                StartTime,
+                EndTime,
+                Status,
+                ErrorMessage,
+                SourceName
+            )
+            VALUES
+            (
+                @BatchId,
+                @SchemaName,
+                @TableName,
+                0,
+                @StartTime,
+                @EndTime,
+                'Failed',
+                @ErrorMessage,
+                @ProcedureName
+            );
         END TRY 
         BEGIN CATCH 
             -- Swallow logging errors so they never mask the real failure 
@@ -1712,7 +1759,6 @@ BEGIN
         RAISERROR(@ErrorMessage, @ErrorSeverity, @ErrorState);
     END CATCH 
 END;
-
 GO
 
 -- ============================== Source file: sp_Gold_IndexSecurity_Table_Process.sql ==============================
