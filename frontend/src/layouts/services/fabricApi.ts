@@ -721,3 +721,72 @@ export function getExecuteMasterSpStatus(projectId: string, jobId: string) {
     `/projects/${projectId}/gold/execute-master-sp-status/${jobId}`
   );
 }
+
+// ── Semantic Model (Finin-only: Upload Excel → Build Semantic Model) ──
+
+export interface SemanticModelUploadResult {
+  filename: string;
+  tables_count: number;
+  relationships_count: number;
+  measures_count: number;
+  uploaded_at: string;
+}
+
+export interface SemanticModelStatusResponse {
+  excel: SemanticModelUploadResult | null;
+  build: {
+    status: string;
+    fabric_item_id: string | null;
+    job_id: string | null;
+    display_name: string;
+  } | null;
+}
+
+export function uploadSemanticModelExcel(projectId: string, file: File) {
+  const formData = new FormData();
+  formData.append('file', file);
+  return requestFormData<SemanticModelUploadResult>(
+    `/projects/${projectId}/semantic-model/upload-excel`,
+    formData
+  );
+}
+
+export function getSemanticModelStatus(projectId: string) {
+  return request<SemanticModelStatusResponse>(`/projects/${projectId}/semantic-model/status`);
+}
+
+export interface StartBuildSemanticModelResponse {
+  status: string;
+  job_id: string;
+  total: number;
+}
+
+export interface BuildSemanticModelResult {
+  display_name: string;
+  fabric_item_id: string | null;
+  workspace_id: string;
+  tables: number;
+  relationships: number;
+  measures: number;
+}
+
+export interface BuildSemanticModelStatus {
+  status: 'queued' | 'running' | 'done' | 'failed' | string;
+  progress: number;
+  total: number;
+  message: string;
+  result: BuildSemanticModelResult | null;
+}
+
+export function startBuildSemanticModel(projectId: string) {
+  return request<StartBuildSemanticModelResponse>(
+    `/projects/${projectId}/semantic-model/build`,
+    { method: 'POST' }
+  );
+}
+
+export function getBuildSemanticModelStatus(projectId: string, jobId: string) {
+  return request<BuildSemanticModelStatus>(
+    `/projects/${projectId}/semantic-model/build-status/${jobId}`
+  );
+}

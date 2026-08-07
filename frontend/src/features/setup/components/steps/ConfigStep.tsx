@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Play, Loader2, CheckCircle2, Database, FileText, XCircle, Workflow, Lock, Download, Upload } from 'lucide-react';
+import { Play, Loader2, CheckCircle2, Database, FileText, XCircle, Workflow, Lock, Download, Upload, FileSpreadsheet, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import type { SourceConnection, ConfigTask, NotebookItem, PipelineItem } from '../../types';
 import { useEffect, useState, useRef, type JSX } from 'react';
@@ -52,6 +52,20 @@ interface ConfigStepProps {
     silverLakehouse?: string,
     onProgress?: (progress: number, total: number, message: string) => void
   ) => Promise<{ batch_id: number; database: string; done: number; succeeded: number; failed: number; failed_names: string[] }>;
+  /** Finin-only: upload the Tables/Relationships/Measures workbook that
+   * drives semantic-model creation. */
+  onUploadSemanticModelExcel: (file: File) => Promise<{
+    filename: string; tables_count: number; relationships_count: number; measures_count: number; uploaded_at: string;
+  }>;
+  /** Finin-only: restore uploaded-Excel / last-build state after a reload. */
+  onFetchSemanticModelStatus: () => Promise<{
+    excel: { filename: string; tables_count: number; relationships_count: number; measures_count: number; uploaded_at: string } | null;
+    build: { status: string; fabric_item_id: string | null; job_id: string | null; display_name: string } | null;
+  } | null>;
+  /** Finin-only: build (or rebuild) the semantic model from the uploaded Excel. */
+  onBuildSemanticModel: (
+    onProgress?: (progress: number, total: number, message: string) => void
+  ) => Promise<{ display_name: string; fabric_item_id: string | null; workspace_id: string; tables: number; relationships: number; measures: number }>;
   loading: boolean;
   configLoading: Record<string, boolean>;
   /** Finin-only: jump to the AI Mapping page (to build
@@ -88,6 +102,9 @@ export const ConfigStep = ({
   onDeployGoldStoredProcedures,
   onDeployMasterExecutor,
   onExecuteMasterSp,
+  onUploadSemanticModelExcel,
+  onFetchSemanticModelStatus,
+  onBuildSemanticModel,
   loading,
   configLoading,
   onGoToAIMapping,
@@ -847,6 +864,19 @@ export const ConfigStep = ({
             <MasterExecuteSection
               onDeployMasterExecutor={onDeployMasterExecutor}
               onExecuteMasterSp={onExecuteMasterSp}
+              disabled={!allItlPipelinesCreated}
+            />
+          )}
+
+          {/* Semantic Model — Finin-only: upload the Tables/Relationships/
+              Measures workbook, then build the semantic model against
+              WH_Gold. Independent section, same placement rationale as the
+              Gold SP / Master Execute sections above. */}
+          {appMode === 'finin' && allPipelinesRan && (
+            <SemanticModelSection
+              onUploadExcel={onUploadSemanticModelExcel}
+              onFetchStatus={onFetchSemanticModelStatus}
+              onBuild={onBuildSemanticModel}
               disabled={!allItlPipelinesCreated}
             />
           )}
@@ -1685,6 +1715,199 @@ const MasterExecuteSection = ({
             <div
               className="h-full rounded-full bg-emerald-500 transition-[width] duration-300 ease-out"
               style={{ width: `${Math.max(pct2, progress.total > 0 ? 3 : 8)}%` }}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── Semantic Model — Finin-only: upload Tables/Relationships/Measures
+//    Excel, then build the semantic model against WH_Gold. Two steps in one
+//    card: upload gates build, same as Deploy → Execute above ──
+
+interface SemanticModelExcelSummary {
+  filename: string;
+  tables_count: number;
+  relationships_count: number;
+  measures_count: number;
+  uploaded_at: string;
+}
+
+interface SemanticModelBuildResult {
+  display_name: string;
+  fabric_item_id: string | null;
+  workspace_id: string;
+  tables: number;
+  relationships: number;
+  measures: number;
+}
+
+interface SemanticModelSectionProps {
+  onUploadExcel: (file: File) => Promise<SemanticModelExcelSummary>;
+  onFetchStatus: () => Promise<{
+    excel: SemanticModelExcelSummary | null;
+    build: { status: string; fabric_item_id: string | null; job_id: string | null; display_name: string } | null;
+  } | null>;
+  onBuild: (
+    onProgress?: (progress: number, total: number, message: string) => void
+  ) => Promise<SemanticModelBuildResult>;
+  /** Greyed out until all ITL pipelines are created successfully */
+  disabled?: boolean;
+}
+
+const SemanticModelSection = ({
+  onUploadExcel,
+  onFetchStatus,
+  onBuild,
+  disabled = false,
+}: SemanticModelSectionProps): JSX.Element => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [excel, setExcel] = useState<SemanticModelExcelSummary | null>(null);
+  const [building, setBuilding] = useState(false);
+  const [progress, setProgress] = useState({ done: 0, total: 0, message: '' });
+  const [result, setResult] = useState<SemanticModelBuildResult | null>(null);
+  const [buildFailed, setBuildFailed] = useState(false);
+
+  // Restore state after a reload — was an Excel already uploaded / a model
+  // already built in an earlier visit to this page?
+  useEffect(() => {
+    let cancelled = false;
+    onFetchStatus()
+      .then((status) => {
+        if (cancelled || !status) return;
+        if (status.excel) setExcel(status.excel);
+        if (status.build?.status === 'success') {
+          setResult({
+            display_name: status.build.display_name,
+            fabric_item_id: status.build.fabric_item_id,
+            workspace_id: '',
+            tables: 0,
+            relationships: 0,
+            measures: 0,
+          });
+        } else if (status.build?.status === 'failed') {
+          setBuildFailed(true);
+        }
+      })
+      .catch(() => {/* best-effort restore — silent */});
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploading(true);
+    try {
+      const summary = await onUploadExcel(file);
+      setExcel(summary);
+      setResult(null);
+      setBuildFailed(false);
+      toast.success(
+        `Parsed ${summary.tables_count} table(s), ${summary.relationships_count} relationship(s), ${summary.measures_count} measure(s)`
+      );
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to parse workbook');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleBuild = async () => {
+    setBuilding(true);
+    setBuildFailed(false);
+    setProgress({ done: 0, total: 0, message: 'Starting…' });
+    try {
+      const res = await onBuild((done, total, message) => setProgress({ done, total, message }));
+      setResult(res);
+      toast.success(`Semantic model '${res.display_name}' created`);
+    } catch (e: any) {
+      setBuildFailed(true);
+      toast.error(e?.message || 'Failed to build semantic model');
+    } finally {
+      setBuilding(false);
+    }
+  };
+
+  const pct3 = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+      <div className="flex items-center gap-4">
+        <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${result ? 'bg-emerald-100 text-emerald-700' : 'bg-emerald-50 text-emerald-700'}`}>
+          <Sparkles size={16} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[13px] font-semibold text-slate-800">Build Semantic Model</p>
+          <p className="text-[11px] text-slate-500">
+            {result
+              ? `'${result.display_name}' created in Fabric`
+              : excel
+              ? `${excel.filename} — ${excel.tables_count} table(s), ${excel.relationships_count} relationship(s), ${excel.measures_count} measure(s)`
+              : disabled
+              ? 'Available once all ITL pipelines are created successfully'
+              : 'Upload the Tables / Relationships / Measures workbook, then build the semantic model against WH_Gold'}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xls"
+            className="hidden"
+            onChange={handleFileChange}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={ uploading || building}
+            title={disabled ? 'Create all ITL pipelines first' : undefined}
+            className="flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-bold rounded-lg transition-all disabled:opacity-60 disabled:cursor-not-allowed bg-slate-100 text-slate-700 hover:bg-slate-200"
+          >
+            {uploading ? (
+              <><Loader2 size={13} className="animate-spin" /> Uploading…</>
+            ) : excel ? (
+              <><FileSpreadsheet size={13} /> Re-upload Excel</>
+            ) : (
+              <><FileSpreadsheet size={13} /> Upload Excel</>
+            )}
+          </button>
+          <button
+            onClick={handleBuild}
+            disabled={!excel || building}
+            title={!excel ? 'Upload the Excel first' : undefined}
+            className={`flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-bold rounded-lg transition-all disabled:opacity-60 disabled:cursor-not-allowed ${
+              !excel
+                ? 'bg-slate-100 text-slate-400'
+                : buildFailed ? 'bg-red-50 text-red-700 hover:bg-red-100' : result ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'bg-emerald-600 text-white hover:bg-emerald-700'
+            }`}
+          >
+            {building ? (
+              <><Loader2 size={13} className="animate-spin" /> Building…</>
+            ) : result ? (
+              <><CheckCircle2 size={13} /> Rebuild</>
+            ) : (
+              <><Play size={13} /> Build Semantic Model</>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {building && (
+        <div className="mt-4">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[11px] text-slate-500">{progress.message || 'Working…'}</span>
+            <span className="text-[11px] font-semibold text-emerald-700 tabular-nums">
+              {progress.total > 0 ? `${progress.done}/${progress.total} tables` : ''}
+            </span>
+          </div>
+          <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-emerald-500 transition-[width] duration-300 ease-out"
+              style={{ width: `${Math.max(pct3, progress.total > 0 ? 3 : 8)}%` }}
             />
           </div>
         </div>

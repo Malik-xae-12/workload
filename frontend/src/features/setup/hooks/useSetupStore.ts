@@ -38,6 +38,10 @@ import {
   deployMasterExecutor as deployMasterExecutorApi,
   startExecuteMasterSp as startExecuteMasterSpApi,
   getExecuteMasterSpStatus as getExecuteMasterSpStatusApi,
+  uploadSemanticModelExcel as uploadSemanticModelExcelApi,
+  getSemanticModelStatus as getSemanticModelStatusApi,
+  startBuildSemanticModel as startBuildSemanticModelApi,
+  getBuildSemanticModelStatus as getBuildSemanticModelStatusApi,
   saveFabricCredentials,
   getFabricCredentials,
 } from '../../../layouts/services/fabricApi';
@@ -1568,6 +1572,46 @@ export const useSetupStore = (projectId: string | null) => {
   }, [projectId]);
 
   /**
+   * Upload the Tables/Relationships/Measures workbook — parsed and stored
+   * server-side, ready for buildSemanticModel to pick up.
+   */
+  const uploadSemanticModelExcel = useCallback(async (file: File) => {
+    if (!projectId) throw new Error('No active project');
+    return uploadSemanticModelExcelApi(projectId, file);
+  }, [projectId]);
+
+  /**
+   * Restore semantic-model Config-page state (uploaded Excel + last build
+   * status) after a reload, the same idea as getItlConfigStatus.
+   */
+  const fetchSemanticModelStatus = useCallback(async () => {
+    if (!projectId) return null;
+    return getSemanticModelStatusApi(projectId);
+  }, [projectId]);
+
+  /**
+   * Build (or rebuild) the semantic model from the previously-uploaded
+   * Excel: reads live table schemas from WH_Gold, assembles the TMSL
+   * definition, and creates/updates the Semantic Model item in Fabric —
+   * as a background job, polled the same way executeMasterSp is.
+   */
+  const buildSemanticModel = useCallback(async (
+    onProgress?: (progress: number, total: number, message: string) => void
+  ) => {
+    if (!projectId) throw new Error('No active project');
+    const { job_id, total } = await startBuildSemanticModelApi(projectId);
+    onProgress?.(0, total, 'Starting…');
+
+    while (true) {
+      await new Promise((r) => setTimeout(r, 1500));
+      const status = await getBuildSemanticModelStatusApi(projectId, job_id);
+      onProgress?.(status.progress, status.total, status.message);
+      if (status.status === 'done' && status.result) return status.result;
+      if (status.status === 'failed') throw new Error(status.message || 'Semantic model build failed');
+    }
+  }, [projectId]);
+
+  /**
    * Run a single deployed ITL pipeline by name (from itlPipelineFiles), polling until done.
    */
   const runItlPipeline = useCallback(
@@ -1825,6 +1869,9 @@ export const useSetupStore = (projectId: string | null) => {
     deployGoldStoredProcedures,
     deployMasterExecutor,
     executeMasterSp,
+    uploadSemanticModelExcel,
+    fetchSemanticModelStatus,
+    buildSemanticModel,
     clearError,
   };
 };

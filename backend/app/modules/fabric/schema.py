@@ -175,6 +175,18 @@ class ExecuteMasterSpRequest(BaseModel):
     silver_lakehouse: str = "LH_Silver"
 
 
+# ── Semantic Model (Finin) ──────────────────────────────────────────
+
+class SemanticModelUploadRead(BaseModel):
+    filename: str
+    tables_count: int
+    relationships_count: int
+    measures_count: int
+    uploaded_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 # ── Project Source Connection (link) ────────────────────────────────
 
 class LinkSourceConnectionRequest(BaseModel):

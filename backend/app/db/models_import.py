@@ -1,4 +1,3 @@
-
 from app.db.base import Base  # noqa: F401
 
 # Users module models
@@ -17,6 +16,7 @@ from app.modules.fabric.models.metadata_config import MetadataConfig  # noqa: F4
 from app.modules.fabric.models.config_upload import ConfigUpload  # noqa: F401
 from app.modules.fabric.models.itl_watermark_config import ItlWatermarkConfig  # noqa: F401
 from app.modules.fabric.models.fabric_credential import FabricCredential  # noqa: F401
+from app.modules.fabric.models.semantic_model_upload import SemanticModelUpload  # noqa: F401
 
 # Finin mapping module models
 from app.modules.finin.mapping.models import PollTemplateColumn  # noqa: F401

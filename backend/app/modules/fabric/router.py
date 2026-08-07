@@ -32,6 +32,7 @@ from app.modules.fabric.schema import (
     ProjectSourceConnectionRead,
     RunStatusUpdate,
     ExecuteMasterSpRequest,
+    SemanticModelUploadRead,
     SourceConnectionCreate,
     SourceConnectionRead,
     WorkspacePipelineRead,
@@ -590,6 +591,59 @@ async def execute_master_sp_status(
 ):
     """Poll for live progress of a background Master SP execution."""
     return svc.get_execute_master_sp_status(job_id)
+
+
+# ── Semantic Model (Finin) ──────────────────────────────────────────
+
+
+@router.post(
+    "/projects/{project_id}/semantic-model/upload-excel",
+    response_model=SemanticModelUploadRead,
+)
+async def upload_semantic_model_excel(
+    project_id: str,
+    file: UploadFile = File(...),
+    user: User = Depends(current_active_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Upload the Tables/Relationships/Measures workbook — parses and
+    persists it, ready for /semantic-model/build to pick up."""
+    file_bytes = await file.read()
+    return await svc.upload_semantic_model_excel_handler(
+        project_id, file_bytes, file.filename or "semantic_model.xlsx", user, db
+    )
+
+
+@router.get("/projects/{project_id}/semantic-model/status")
+async def get_semantic_model_status(
+    project_id: str,
+    user: User = Depends(current_active_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Restore Config-page state after a reload: last uploaded Excel (if
+    any) and the last known build status/result."""
+    return await svc.get_semantic_model_status_handler(project_id, user, db)
+
+
+@router.post("/projects/{project_id}/semantic-model/build")
+async def build_semantic_model(
+    project_id: str,
+    user: User = Depends(current_active_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Start building the semantic model as a background job — returns
+    immediately with a job_id; poll /semantic-model/build-status/{job_id}."""
+    return await svc.start_build_semantic_model_handler(project_id, user, db)
+
+
+@router.get("/projects/{project_id}/semantic-model/build-status/{job_id}")
+async def build_semantic_model_status(
+    project_id: str,
+    job_id: str,
+    user: User = Depends(current_active_user),
+):
+    """Poll for live progress of a background semantic-model build."""
+    return svc.get_build_semantic_model_status(job_id)
 
 
 @router.get(

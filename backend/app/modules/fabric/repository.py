@@ -11,6 +11,7 @@ from app.modules.fabric.models.metadata_config import MetadataConfig
 from app.modules.fabric.models.config_upload import ConfigUpload
 from app.modules.fabric.models.itl_watermark_config import ItlWatermarkConfig
 from app.modules.fabric.models.fabric_credential import FabricCredential
+from app.modules.fabric.models.semantic_model_upload import SemanticModelUpload
 from app.modules.fabric.models.project import Project
 from app.modules.fabric.models.project_source_connection import ProjectSourceConnection
 from app.modules.fabric.models.source_connection import SourceConnection
@@ -552,6 +553,62 @@ async def get_itl_watermark_config(
         )
     )
     return result.scalar_one_or_none()
+
+
+# ── Semantic Model Upload (Excel: tables / relationships / measures) ──
+
+
+async def save_semantic_model_upload(
+    db: AsyncSession,
+    *,
+    project_id: str,
+    filename: str,
+    tables: list[dict],
+    relationships: list[dict],
+    measures: list[dict],
+) -> SemanticModelUpload:
+    """Upsert the parsed semantic-model Excel for a project — one row per
+    project, replaced wholesale on every re-upload."""
+    import json
+
+    result = await db.execute(
+        select(SemanticModelUpload).where(SemanticModelUpload.project_id == project_id)
+    )
+    existing = result.scalars().first()
+    tables_json = json.dumps(tables)
+    relationships_json = json.dumps(relationships)
+    measures_json = json.dumps(measures)
+
+    if existing:
+        existing.filename = filename
+        existing.tables_json = tables_json
+        existing.relationships_json = relationships_json
+        existing.measures_json = measures_json
+        await db.commit()
+        await db.refresh(existing)
+        return existing
+
+    record = SemanticModelUpload(
+        id=str(uuid4()),
+        project_id=project_id,
+        filename=filename,
+        tables_json=tables_json,
+        relationships_json=relationships_json,
+        measures_json=measures_json,
+    )
+    db.add(record)
+    await db.commit()
+    await db.refresh(record)
+    return record
+
+
+async def get_semantic_model_upload(
+    db: AsyncSession, project_id: str
+) -> SemanticModelUpload | None:
+    result = await db.execute(
+        select(SemanticModelUpload).where(SemanticModelUpload.project_id == project_id)
+    )
+    return result.scalars().first()
 
 
 # ── Fabric Credentials ───────────────────────────────────────────────

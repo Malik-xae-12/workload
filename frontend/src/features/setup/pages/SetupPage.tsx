@@ -141,6 +141,9 @@ export const SetupPage = () => {
     deployGoldStoredProcedures,
     deployMasterExecutor,
     executeMasterSp,
+    uploadSemanticModelExcel,
+    fetchSemanticModelStatus,
+    buildSemanticModel,
     clearError,
   } = useSetupStore(activeProjectId);
 
@@ -407,6 +410,9 @@ export const SetupPage = () => {
             onDeployGoldStoredProcedures={deployGoldStoredProcedures}
             onDeployMasterExecutor={deployMasterExecutor}
             onExecuteMasterSp={executeMasterSp}
+            onUploadSemanticModelExcel={uploadSemanticModelExcel}
+            onFetchSemanticModelStatus={fetchSemanticModelStatus}
+            onBuildSemanticModel={buildSemanticModel}
             loading={state.loading}
             configLoading={state.configLoading}
           />

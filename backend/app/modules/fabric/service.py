@@ -1907,6 +1907,301 @@ def get_execute_master_sp_status(job_id: str) -> dict:
     }
 
 
+# ── Semantic Model (Finin) ───────────────────────────────────────────
+
+_BACKGROUND_SEMANTIC_MODEL_TASKS: set[asyncio.Task] = set()
+
+# Item name used in Fabric and as the ConfigUpload item_name key — one
+# semantic model per project for now (matches the "one WH_Gold, hard-coded"
+# scope described in semantic_model.py).
+_SEMANTIC_MODEL_ITEM_TYPE = "semantic_model"
+
+# TESTING ONLY: the create-workspace -> load-data-to-WH_Gold flow hasn't
+# been run for every project yet, but one workspace (sm.HARDCODED_*) already
+# has real data loaded into its WH_Gold. Point the semantic model builder
+# there directly for now instead of resolving each project's own (likely
+# still-empty) Gold warehouse via _resolve_gold_and_meta().
+# TODO: flip this back to False once each project loads its own WH_Gold —
+# the dynamic per-project resolution path is already implemented below,
+# just bypassed while this is True.
+_USE_HARDCODED_TEST_GOLD = True
+
+
+async def upload_semantic_model_excel_handler(
+    project_id: str, file_bytes: bytes, filename: str, user: User, db: AsyncSession
+) -> dict:
+    """Parse the uploaded Tables/Relationships/Measures Excel and persist it
+    against the project — does NOT touch Fabric or WH_Gold; that happens in
+    start_build_semantic_model_handler."""
+    await _require_project(project_id, user, db)
+
+    from app.modules.fabric.services import semantic_model as sm
+
+    try:
+        parsed = sm.parse_semantic_excel(file_bytes)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    record = await repo.save_semantic_model_upload(
+        db,
+        project_id=project_id,
+        filename=filename,
+        tables=parsed["tables"],
+        relationships=parsed["relationships"],
+        measures=parsed["measures"],
+    )
+    return {
+        "filename": record.filename,
+        "tables_count": len(parsed["tables"]),
+        "relationships_count": len(parsed["relationships"]),
+        "measures_count": len(parsed["measures"]),
+        "uploaded_at": record.updated_at,
+    }
+
+
+async def get_semantic_model_status_handler(project_id: str, user: User, db: AsyncSession) -> dict:
+    """Restore Config-page state after a reload: what's been uploaded, and
+    the last known build status/result."""
+    await _require_project(project_id, user, db)
+    import json
+
+    upload = await repo.get_semantic_model_upload(db, project_id)
+    excel = None
+    if upload:
+        excel = {
+            "filename": upload.filename,
+            "tables_count": len(json.loads(upload.tables_json)),
+            "relationships_count": len(json.loads(upload.relationships_json)),
+            "measures_count": len(json.loads(upload.measures_json)),
+            "uploaded_at": upload.updated_at,
+        }
+
+    uploads = await repo.get_config_uploads(db, project_id)
+    build_row = next((u for u in uploads if u.item_type == _SEMANTIC_MODEL_ITEM_TYPE), None)
+    build = None
+    if build_row:
+        build = {
+            "status": build_row.status,
+            "fabric_item_id": build_row.fabric_item_id,
+            "job_id": build_row.job_id,
+            "display_name": build_row.item_name,
+        }
+
+    return {"excel": excel, "build": build}
+
+
+async def start_build_semantic_model_handler(
+    project_id: str, user: User, db: AsyncSession
+) -> dict:
+    """Kick off semantic-model creation as a background job: read the
+    saved Excel, auto-detect relationships/measures from WH_Gold when the
+    Excel didn't supply them, pull live column info for each selected
+    table, build a TMSL definition, and create/update the Semantic Model
+    item inside the project's own Gold folder (01_Medallion Architecture /
+    Gold) in Fabric — polling the long-running operation under the hood.
+    Returns immediately with a job_id to poll.
+    """
+    upload = await repo.get_semantic_model_upload(db, project_id)
+    if not upload:
+        raise HTTPException(
+            status_code=400,
+            detail="Upload the Tables/Relationships/Measures Excel first.",
+        )
+
+    project = await _require_workspace(project_id, user, db)
+
+    from app.modules.fabric.services import semantic_model as sm
+    from app.modules.fabric.services.medallion import get_folder_id
+    from app.modules.finin.shared.job_store import create_job, update_job
+    import anyio
+    import json
+    import uuid as _uuid
+
+    if _USE_HARDCODED_TEST_GOLD:
+        # TESTING: use this project's own Fabric credential (still needed
+        # to authenticate), but point the connection + item placement at
+        # the one workspace that already has data loaded, instead of this
+        # project's own WH_Gold.
+        cred = await repo.get_fabric_credential(db, project_id)
+        if not cred:
+            raise HTTPException(status_code=400, detail="Fabric credentials not configured for this project")
+        gold_workspace_id = sm.HARDCODED_WORKSPACE_ID
+        gold_server = sm.HARDCODED_GOLD_SERVER
+        gold_database = sm.HARDCODED_GOLD_DATABASE
+        token, _ = await _get_project_token(project_id, db)
+    else:
+        # Resolve the calling project's own workspace + WH_Gold connection
+        # (same helper Master SP uses).
+        cred, gold_server, gold_database, _, _ = await _resolve_gold_and_meta(project_id, user, db)
+        gold_workspace_id = project.workspace_id
+        token, _ = await _get_project_token(project_id, db)
+
+    tables = json.loads(upload.tables_json)
+    relationships = json.loads(upload.relationships_json)
+    measures = json.loads(upload.measures_json)
+    display_name = f"{project.name}_SemanticModel".replace(" ", "_")
+
+    # Land the model in the same place the Gold warehouse itself lives:
+    # 01_Medallion Architecture / Gold, instead of the workspace root.
+    med_folder_id = await anyio.to_thread.run_sync(
+        lambda: get_folder_id(token, gold_workspace_id, "01_Medallion Architecture")
+    )
+    gold_folder_id = None
+    if med_folder_id:
+        gold_folder_id = await anyio.to_thread.run_sync(
+            lambda: get_folder_id(token, gold_workspace_id, "Gold", med_folder_id)
+        )
+    if not gold_folder_id:
+        logger.warning(
+            f"Could not find the Gold folder under 01_Medallion Architecture in workspace "
+            f"{gold_workspace_id}; run the Medallion step there first. Semantic model will be "
+            "created at the workspace root instead."
+        )
+
+    job_id = f"semantic_model_{project_id}_{_uuid.uuid4().hex[:8]}"
+    create_job(job_id)
+    update_job(job_id, status="running", total=len(tables), progress=0, message="Starting…")
+
+    async def _run():
+        # This runs after the request that created it has already returned
+        # its response, so it can't reuse the request-scoped `db` session
+        # (which FastAPI tears down once the request completes) — open a
+        # fresh one here instead, same as any other detached background job
+        # would need to.
+        from app.db.session import async_session_maker
+
+        try:
+            update_job(job_id, message="Detecting relationships and measures from WH_Gold…", progress=0)
+            try:
+                resolved_tables, resolved_relationships, resolved_measures = await anyio.to_thread.run_sync(
+                    lambda: sm.auto_detect_relationships_and_measures(
+                        client_id=cred.client_id,
+                        client_secret=cred.client_secret,
+                        server=gold_server,
+                        database=gold_database,
+                        tables=tables,
+                        existing_relationships=relationships,
+                        existing_measures=measures,
+                    )
+                )
+            except Exception as e:
+                # Auto-detection is a best-effort enhancement, not a hard
+                # requirement — if it blows up for any reason (a table
+                # that INFORMATION_SCHEMA sees but SELECT can't reach,
+                # missing permissions, etc.) fall back to exactly what the
+                # Excel provided rather than failing the whole build.
+                logger.warning(f"Relationship/measure auto-detection failed, falling back to Excel-only: {e}")
+                resolved_tables, resolved_relationships, resolved_measures = tables, relationships, measures
+
+            # DIAGNOSTIC: confirms whether this run is actually using the
+            # freshly-uploaded relationships (with IsActive respected) or
+            # stale data — check this log line if an "ambiguous paths"
+            # error recurs after re-uploading the Excel.
+            _inactive_ct = sum(1 for r in resolved_relationships if not r.get("is_active", True))
+            logger.info(
+                f"[semantic_model] {len(resolved_relationships)} relationship(s) resolved, "
+                f"{_inactive_ct} marked inactive"
+            )
+
+            update_job(
+                job_id,
+                message=f"Reading {len(resolved_tables)} table schema(s) from WH_Gold…",
+                progress=0,
+            )
+            tables_columns = await anyio.to_thread.run_sync(
+                lambda: sm.fetch_table_columns(
+                    client_id=cred.client_id,
+                    client_secret=cred.client_secret,
+                    server=gold_server,
+                    database=gold_database,
+                    tables=resolved_tables,
+                )
+            )
+            update_job(job_id, message="Building semantic model definition…",
+                       progress=len(resolved_tables) // 2)
+
+            model_bim = sm.build_model_bim(
+                server=gold_server,
+                database=gold_database,
+                tables_columns=tables_columns,
+                tables=resolved_tables,
+                relationships=resolved_relationships,
+                measures=resolved_measures,
+            )
+            parts = sm.build_definition_parts(model_bim, display_name)
+
+            update_job(job_id, message="Creating semantic model in Fabric…", progress=len(resolved_tables))
+            item = await anyio.to_thread.run_sync(
+                lambda: sm.create_semantic_model(
+                    token=token,
+                    workspace_id=gold_workspace_id,
+                    display_name=display_name,
+                    definition_parts=parts,
+                    folder_id=gold_folder_id,
+                )
+            )
+
+            async with async_session_maker() as bg_db:
+                await repo.save_config_upload(
+                    bg_db,
+                    project_id=project_id,
+                    source_connection_id=None,
+                    item_type=_SEMANTIC_MODEL_ITEM_TYPE,
+                    item_name=display_name,
+                    status="success",
+                    fabric_item_id=item.get("id"),
+                    job_id=job_id,
+                )
+
+            result = {
+                "display_name": display_name,
+                "fabric_item_id": item.get("id"),
+                "workspace_id": gold_workspace_id,
+                "folder": "01_Medallion Architecture/Gold" if gold_folder_id else "workspace root",
+                "tables": len(resolved_tables),
+                "relationships": len(resolved_relationships),
+                "measures": len(resolved_measures),
+            }
+            update_job(job_id, status="done", progress=len(resolved_tables), total=len(resolved_tables),
+                       message="Semantic model created", result=result)
+        except Exception as e:
+            logger.exception("Semantic model build failed")
+            try:
+                async with async_session_maker() as bg_db:
+                    await repo.save_config_upload(
+                        bg_db,
+                        project_id=project_id,
+                        source_connection_id=None,
+                        item_type=_SEMANTIC_MODEL_ITEM_TYPE,
+                        item_name=display_name,
+                        status="failed",
+                        job_id=job_id,
+                    )
+            except Exception:
+                logger.exception("Also failed to record semantic-model failure status")
+            update_job(job_id, status="failed", message=str(e))
+
+    task = asyncio.create_task(_run())
+    _BACKGROUND_SEMANTIC_MODEL_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_SEMANTIC_MODEL_TASKS.discard)
+
+    return {"status": "started", "job_id": job_id, "total": len(tables)}
+
+
+def get_build_semantic_model_status(job_id: str) -> dict:
+    from app.modules.finin.shared.job_store import get_job
+    job = get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {
+        "status": job.get("status", "unknown"),
+        "progress": job.get("progress", 0),
+        "total": job.get("total", 0),
+        "message": job.get("message", ""),
+        "result": job.get("result"),
+    }
+
+
 # ── Blob Structure Discovery ────────────────────────────────────────
 
 
