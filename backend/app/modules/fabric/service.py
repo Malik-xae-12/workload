@@ -1924,7 +1924,7 @@ _SEMANTIC_MODEL_ITEM_TYPE = "semantic_model"
 # TODO: flip this back to False once each project loads its own WH_Gold —
 # the dynamic per-project resolution path is already implemented below,
 # just bypassed while this is True.
-_USE_HARDCODED_TEST_GOLD = True
+_USE_HARDCODED_TEST_GOLD = False
 
 
 async def upload_semantic_model_excel_handler(
