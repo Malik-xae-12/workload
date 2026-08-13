@@ -36,7 +36,7 @@ interface ConfigStepProps {
   itlConfigDownloaded: Record<string, boolean>;
   itlConfigUploaded: Record<string, boolean>;
   itlPipelineFiles: Record<string, PipelineItem[]>;
-  itlStatusChecked: Record<string, boolean>; 
+  itlStatusChecked: Record<string, boolean>;
 
   onDownloadItlConfig: () => Promise<boolean>;
   onUploadItlConfig: (file: File) => Promise<boolean>;
@@ -291,7 +291,7 @@ export const ConfigStep = ({
     if (!selectedConn) return;
     const connId = selectedConn.id;
     setBlobConfigStatusMap((prev) => ({ ...prev, [connId]: 'loading' }));
-    
+
     try {
       const res = await uploadBlobConfig(projectId!);
       if (res.status === 'success') {
@@ -442,10 +442,10 @@ export const ConfigStep = ({
   const pipelineOverallLabel = allPipelinesRan
     ? 'Done'
     : anyPipelineRunning
-    ? 'Running'
-    : allPipelinesDone
-    ? 'Deployed'
-    : 'Pending';
+      ? 'Running'
+      : allPipelinesDone
+        ? 'Deployed'
+        : 'Pending';
 
   return (
     <div className="max-w-3xl">
@@ -486,16 +486,14 @@ export const ConfigStep = ({
               <button
                 key={conn.id}
                 onClick={() => onSelectConnection(conn.id)}
-                className={`p-4 rounded-xl border-2 transition-all text-left ${
-                  selectedConnection === conn.id
+                className={`p-4 rounded-xl border-2 transition-all text-left ${selectedConnection === conn.id
                     ? 'border-emerald-500 bg-emerald-50/50'
                     : 'border-slate-200 bg-white hover:border-emerald-200'
-                }`}
+                  }`}
               >
                 <div className="flex items-start gap-3">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                    selectedConnection === conn.id ? 'bg-emerald-600' : 'bg-slate-100'
-                  }`}>
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${selectedConnection === conn.id ? 'bg-emerald-600' : 'bg-slate-100'
+                    }`}>
                     <Database size={18} className={selectedConnection === conn.id ? 'text-white' : 'text-slate-500'} />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -597,273 +595,270 @@ export const ConfigStep = ({
               />
             </>
           ) : (
-          <>
-          {/* Notebooks */}
-          {selectedConn?.databaseType?.toLowerCase() !== 'azure blob' && (
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-            <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
-              <div className="flex items-center gap-2">
-                <FileText size={15} className="text-emerald-600" />
-                <h3 className="text-[13px] font-bold text-slate-700">Notebooks</h3>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleRunNotebooks}
-                  disabled={loading || notebooksUploading || allNotebooksDone || connNotebooks.length === 0}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all ${
-                    allNotebooksDone
-                      ? 'bg-emerald-50 text-emerald-700'
-                      : 'bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50'
-                  }`}
-                >
-                  {allNotebooksDone ? (
-                    <><CheckCircle2 size={12} /> Created</>
-                  ) : notebooksUploading || anyNotebookUploading ? (
-                    <><Loader2 size={12} className="animate-spin" /> Creating...</>
-                  ) : (
-                    <><Upload size={12} /> Create</>
-                  )}
-                </button>
-                {connNotebooks.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={toggleNotebooksDetails}
-                    className="text-[11px] font-bold text-emerald-600 hover:text-emerald-800"
-                  >
-                    {showNotebooksDetails ? 'Hide details' : 'View details'}
-                  </button>
-                )}
-              </div>
-            </div>
-            {!showNotebooksDetails ? null : connConfigLoading ? (
-              <div className="p-4">
-                <div className="space-y-2">
-                  {[1, 2, 3, 4].map((i) => (
-                    <div key={i} className="flex items-center gap-4 px-5 py-3 animate-pulse">
-                      <div className="w-6 h-6 bg-slate-200 rounded" />
-                      <div className="flex-1">
-                        <div className="h-3 bg-slate-200 rounded w-1/3 mb-2" />
-                        <div className="h-2 bg-slate-200 rounded w-1/6" />
-                      </div>
-                      <div className="w-20 h-3 bg-slate-200 rounded" />
+            <>
+              {/* Notebooks */}
+              {selectedConn?.databaseType?.toLowerCase() !== 'azure blob' && (
+                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                  <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
+                    <div className="flex items-center gap-2">
+                      <FileText size={15} className="text-emerald-600" />
+                      <h3 className="text-[13px] font-bold text-slate-700">Notebooks</h3>
                     </div>
-                  ))}
-                </div>
-              </div>
-            ) : connNotebooks.length === 0 ? (
-              <div className="p-8 text-center">
-                <FileText size={24} className="text-slate-300 mx-auto mb-2" />
-                <p className="text-xs text-slate-500">No notebooks found</p>
-              </div>
-            ) : (
-              <table className="w-full">
-                <thead className="border-b border-slate-100">
-                  <tr>
-                    <th className="px-5 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Name</th>
-                    <th className="px-5 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {connNotebooks.map((nb) => (
-                    <tr key={nb.filename} className="hover:bg-slate-50/50">
-                      <td className="px-5 py-3">
-                        <div className="flex items-center gap-2">
-                          <FileText size={13} className="text-slate-400" />
-                          <span className="text-[12px] font-medium text-slate-800">{nb.name}</span>
-                        </div>
-                      </td>
-                      <td className="px-5 py-3">
-                        {nb.uploadStatus === 'success' ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700"><CheckCircle2 size={11} /> Created</span>
-                        ) : nb.uploadStatus === 'uploading' ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600"><Loader2 size={11} className="animate-spin" /> Creating</span>
-                        ) : nb.uploadStatus === 'failed' ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600"><XCircle size={11} /> Failed</span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleRunNotebooks}
+                        disabled={loading || notebooksUploading || allNotebooksDone || connNotebooks.length === 0}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all ${allNotebooksDone
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : 'bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50'
+                          }`}
+                      >
+                        {allNotebooksDone ? (
+                          <><CheckCircle2 size={12} /> Created</>
+                        ) : notebooksUploading || anyNotebookUploading ? (
+                          <><Loader2 size={12} className="animate-spin" /> Creating...</>
                         ) : (
-                          <span className="text-[10px] font-bold text-amber-600">Not Created</span>
+                          <><Upload size={12} /> Create</>
                         )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-          )}
-
-          {/* Blob Configuration */}
-          {selectedConn?.databaseType?.toLowerCase() === 'azure blob' && (
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm mb-6">
-            <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
-              <div className="flex items-center gap-2">
-                <FileText size={15} className="text-emerald-600" />
-                <h3 className="text-[13px] font-bold text-slate-700">Blob Configuration</h3>
-              </div>
-              <button
-                onClick={handleUploadBlobConfig}
-                disabled={loading || blobConfigStatus === 'loading' || blobConfigStatus === 'success'}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all ${
-                  blobConfigStatus === 'success'
-                    ? 'bg-emerald-50 text-emerald-700'
-                    : 'bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50'
-                }`}
-              >
-                {blobConfigStatus === 'success' ? (
-                  <><CheckCircle2 size={12} /> Generated</>
-                ) : blobConfigStatus === 'loading' ? (
-                  <><Loader2 size={12} className="animate-spin" /> Generating...</>
-                ) : (
-                  <><Upload size={12} /> Generate & Upload</>
-                )}
-              </button>
-            </div>
-            <div className="p-5 flex flex-col justify-center items-center text-center">
-              <Database size={24} className="text-slate-300 mb-2" />
-              <p className="text-sm text-slate-600">
-                Discover the folder structure in the Azure Blob Storage container and upload the schema (<code>blob_config.json</code>) to the Bronze Lakehouse.
-              </p>
-              <p className="text-xs text-slate-400 mt-2">
-                The pipeline will read this configuration to know which folders to process.
-              </p>
-            </div>
-          </div>
-          )}
-
-          {/* Pipelines */}
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-            <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
-              <div className="flex items-center gap-2">
-                <Workflow size={15} className="text-emerald-600" />
-                <h3 className="text-[13px] font-bold text-slate-700">Pipelines</h3>
-              </div>
-              <div className="flex items-center gap-2">
-                {allPipelinesRan ? (
-                  <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-emerald-50 text-emerald-700">
-                    <CheckCircle2 size={12} /> Done
-                  </span>
-                ) : (
-                  <button
-                    onClick={handleDeployPipelines}
-                    disabled={loading || pipelinesUploading || allPipelinesDone || connPipelineFiles.length === 0 || notebooksUploading || (!allNotebooksDone && !allPipelinesDone)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all ${
-                      allPipelinesDone
-                        ? 'bg-emerald-50 text-emerald-700'
-                        : (notebooksUploading || (!allNotebooksDone && !allPipelinesDone))
-                        ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                        : 'bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50'
-                    }`}
-                  >
-                    {allPipelinesDone ? (
-                      <><CheckCircle2 size={12} /> Created</>
-                    ) : pipelinesUploading || anyPipelineUploading ? (
-                      <><Loader2 size={12} className="animate-spin" /> Creating...</>
-                    ) : notebooksUploading ? (
-                      <><Lock size={12} /> Waiting for Notebooks</>
-                    ) : !allNotebooksDone ? (
-                      <><Lock size={12} /> Create Notebooks First</>
-                    ) : (
-                      <><Upload size={12} /> Create</>
-                    )}
-                  </button>
-                )}
-                {connPipelineFiles.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={togglePipelinesDetails}
-                    className="text-[11px] font-bold text-emerald-600 hover:text-emerald-800"
-                  >
-                    {showPipelinesDetails ? 'Hide details' : 'View details'}
-                  </button>
-                )}
-              </div>
-            </div>
-            {!showPipelinesDetails ? null : connConfigLoading ? (
-              <div className="p-4">
-                <div className="space-y-2">
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <div key={i} className="flex items-center gap-4 px-5 py-3 animate-pulse">
-                      <div className="w-6 h-6 bg-slate-200 rounded" />
-                      <div className="flex-1">
-                        <div className="h-3 bg-slate-200 rounded w-1/2 mb-2" />
-                        <div className="h-2 bg-slate-200 rounded w-1/4" />
-                      </div>
-                      <div className="w-28 h-3 bg-slate-200 rounded" />
+                      </button>
+                      {connNotebooks.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={toggleNotebooksDetails}
+                          className="text-[11px] font-bold text-emerald-600 hover:text-emerald-800"
+                        >
+                          {showNotebooksDetails ? 'Hide details' : 'View details'}
+                        </button>
+                      )}
                     </div>
-                  ))}
-                </div>
-              </div>
-            ) : connPipelineFiles.length === 0 ? (
-              <div className="p-8 text-center">
-                <Workflow size={24} className="text-slate-300 mx-auto mb-2" />
-                <p className="text-xs text-slate-500">No pipelines found</p>
-              </div>
-            ) : (
-              <table className="w-full">
-                <thead className="border-b border-slate-100">
-                  <tr>
-                    <th className="px-5 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Name</th>
-                    <th className="px-5 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
-                    {allPipelinesDone && (
-                      <th className="px-5 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Run</th>
-                    )}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {sortedPipelineFiles.map((pl, i) => {
-                    const prevDone = i === 0 || sortedPipelineFiles[i - 1].runStatus === 'completed';
-                    const isLocked = !prevDone && (!pl.runStatus || pl.runStatus === 'not-started');
-                    return (
-                      <tr key={pl.filename} className="hover:bg-slate-50/50" style={pl.runStatus === 'running' ? { background: '#f0f7ff' } : {}}>
-                        <td className="px-5 py-3">
-                          <div className="flex items-center gap-2">
-                            <Workflow size={13} className="text-slate-400" />
-                            <span className="text-[12px] font-medium text-slate-800">{pl.name}</span>
+                  </div>
+                  {!showNotebooksDetails ? null : connConfigLoading ? (
+                    <div className="p-4">
+                      <div className="space-y-2">
+                        {[1, 2, 3, 4].map((i) => (
+                          <div key={i} className="flex items-center gap-4 px-5 py-3 animate-pulse">
+                            <div className="w-6 h-6 bg-slate-200 rounded" />
+                            <div className="flex-1">
+                              <div className="h-3 bg-slate-200 rounded w-1/3 mb-2" />
+                              <div className="h-2 bg-slate-200 rounded w-1/6" />
+                            </div>
+                            <div className="w-20 h-3 bg-slate-200 rounded" />
                           </div>
-                        </td>
-                        <td className="px-5 py-3">
-                          {pl.uploadStatus === 'success' ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700"><CheckCircle2 size={11} /> Created</span>
-                          ) : pl.uploadStatus === 'uploading' ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600"><Loader2 size={11} className="animate-spin" /> Creating</span>
-                          ) : pl.uploadStatus === 'failed' ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600"><XCircle size={11} /> Failed</span>
-                          ) : (
-                            <span className="text-[10px] font-bold text-amber-600">Not Created</span>
-                          )}
-                        </td>
-                        {(pl.uploadStatus === 'success' || pl.runStatus) && (
-                          <td className="px-5 py-3">
-                            {pl.runStatus === 'completed' ? (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700"><CheckCircle2 size={11} /> Done</span>
-                            ) : pl.runStatus === 'running' ? (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600"><Loader2 size={11} className="animate-spin" /> Running</span>
-                            ) : pl.runStatus === 'failed' ? (
-                              <button
-                                onClick={() => onRunPipeline(pl.name)}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-md bg-red-600 text-white hover:bg-red-700 transition-all"
-                              >
-                                <Play size={10} /> Retry
-                              </button>
-                            ) : isLocked ? (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400"><Lock size={10} /> Waiting</span>
-                            ) : pl.uploadStatus === 'success' ? (
-                              <button
-                                onClick={() => onRunPipeline(pl.name)}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-md bg-emerald-600 text-white hover:bg-emerald-700 transition-all"
-                              >
-                                <Play size={10} /> Run
-                              </button>
-                            ) : null}
-                          </td>
+                        ))}
+                      </div>
+                    </div>
+                  ) : connNotebooks.length === 0 ? (
+                    <div className="p-8 text-center">
+                      <FileText size={24} className="text-slate-300 mx-auto mb-2" />
+                      <p className="text-xs text-slate-500">No notebooks found</p>
+                    </div>
+                  ) : (
+                    <table className="w-full">
+                      <thead className="border-b border-slate-100">
+                        <tr>
+                          <th className="px-5 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Name</th>
+                          <th className="px-5 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {connNotebooks.map((nb) => (
+                          <tr key={nb.filename} className="hover:bg-slate-50/50">
+                            <td className="px-5 py-3">
+                              <div className="flex items-center gap-2">
+                                <FileText size={13} className="text-slate-400" />
+                                <span className="text-[12px] font-medium text-slate-800">{nb.name}</span>
+                              </div>
+                            </td>
+                            <td className="px-5 py-3">
+                              {nb.uploadStatus === 'success' ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700"><CheckCircle2 size={11} /> Created</span>
+                              ) : nb.uploadStatus === 'uploading' ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600"><Loader2 size={11} className="animate-spin" /> Creating</span>
+                              ) : nb.uploadStatus === 'failed' ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600"><XCircle size={11} /> Failed</span>
+                              ) : (
+                                <span className="text-[10px] font-bold text-amber-600">Not Created</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+
+              {/* Blob Configuration */}
+              {selectedConn?.databaseType?.toLowerCase() === 'azure blob' && (
+                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm mb-6">
+                  <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
+                    <div className="flex items-center gap-2">
+                      <FileText size={15} className="text-emerald-600" />
+                      <h3 className="text-[13px] font-bold text-slate-700">Blob Configuration</h3>
+                    </div>
+                    <button
+                      onClick={handleUploadBlobConfig}
+                      disabled={loading || blobConfigStatus === 'loading' || blobConfigStatus === 'success'}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all ${blobConfigStatus === 'success'
+                          ? 'bg-emerald-50 text-emerald-700'
+                          : 'bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50'
+                        }`}
+                    >
+                      {blobConfigStatus === 'success' ? (
+                        <><CheckCircle2 size={12} /> Generated</>
+                      ) : blobConfigStatus === 'loading' ? (
+                        <><Loader2 size={12} className="animate-spin" /> Generating...</>
+                      ) : (
+                        <><Upload size={12} /> Generate & Upload</>
+                      )}
+                    </button>
+                  </div>
+                  <div className="p-5 flex flex-col justify-center items-center text-center">
+                    <Database size={24} className="text-slate-300 mb-2" />
+                    <p className="text-sm text-slate-600">
+                      Discover the folder structure in the Azure Blob Storage container and upload the schema (<code>blob_config.json</code>) to the Bronze Lakehouse.
+                    </p>
+                    <p className="text-xs text-slate-400 mt-2">
+                      The pipeline will read this configuration to know which folders to process.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Pipelines */}
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
+                  <div className="flex items-center gap-2">
+                    <Workflow size={15} className="text-emerald-600" />
+                    <h3 className="text-[13px] font-bold text-slate-700">Pipelines</h3>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {allPipelinesRan ? (
+                      <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-emerald-50 text-emerald-700">
+                        <CheckCircle2 size={12} /> Done
+                      </span>
+                    ) : (
+                      <button
+                        onClick={handleDeployPipelines}
+                        disabled={loading || pipelinesUploading || allPipelinesDone || connPipelineFiles.length === 0 || notebooksUploading || (!allNotebooksDone && !allPipelinesDone)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all ${allPipelinesDone
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : (notebooksUploading || (!allNotebooksDone && !allPipelinesDone))
+                              ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                              : 'bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50'
+                          }`}
+                      >
+                        {allPipelinesDone ? (
+                          <><CheckCircle2 size={12} /> Created</>
+                        ) : pipelinesUploading || anyPipelineUploading ? (
+                          <><Loader2 size={12} className="animate-spin" /> Creating...</>
+                        ) : notebooksUploading ? (
+                          <><Lock size={12} /> Waiting for Notebooks</>
+                        ) : !allNotebooksDone ? (
+                          <><Lock size={12} /> Create Notebooks First</>
+                        ) : (
+                          <><Upload size={12} /> Create</>
+                        )}
+                      </button>
+                    )}
+                    {connPipelineFiles.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={togglePipelinesDetails}
+                        className="text-[11px] font-bold text-emerald-600 hover:text-emerald-800"
+                      >
+                        {showPipelinesDetails ? 'Hide details' : 'View details'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {!showPipelinesDetails ? null : connConfigLoading ? (
+                  <div className="p-4">
+                    <div className="space-y-2">
+                      {[1, 2, 3, 4, 5].map((i) => (
+                        <div key={i} className="flex items-center gap-4 px-5 py-3 animate-pulse">
+                          <div className="w-6 h-6 bg-slate-200 rounded" />
+                          <div className="flex-1">
+                            <div className="h-3 bg-slate-200 rounded w-1/2 mb-2" />
+                            <div className="h-2 bg-slate-200 rounded w-1/4" />
+                          </div>
+                          <div className="w-28 h-3 bg-slate-200 rounded" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : connPipelineFiles.length === 0 ? (
+                  <div className="p-8 text-center">
+                    <Workflow size={24} className="text-slate-300 mx-auto mb-2" />
+                    <p className="text-xs text-slate-500">No pipelines found</p>
+                  </div>
+                ) : (
+                  <table className="w-full">
+                    <thead className="border-b border-slate-100">
+                      <tr>
+                        <th className="px-5 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Name</th>
+                        <th className="px-5 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
+                        {allPipelinesDone && (
+                          <th className="px-5 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Run</th>
                         )}
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-          </div>
-          </>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {sortedPipelineFiles.map((pl, i) => {
+                        const prevDone = i === 0 || sortedPipelineFiles[i - 1].runStatus === 'completed';
+                        const isLocked = !prevDone && (!pl.runStatus || pl.runStatus === 'not-started');
+                        return (
+                          <tr key={pl.filename} className="hover:bg-slate-50/50" style={pl.runStatus === 'running' ? { background: '#f0f7ff' } : {}}>
+                            <td className="px-5 py-3">
+                              <div className="flex items-center gap-2">
+                                <Workflow size={13} className="text-slate-400" />
+                                <span className="text-[12px] font-medium text-slate-800">{pl.name}</span>
+                              </div>
+                            </td>
+                            <td className="px-5 py-3">
+                              {pl.uploadStatus === 'success' ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700"><CheckCircle2 size={11} /> Created</span>
+                              ) : pl.uploadStatus === 'uploading' ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600"><Loader2 size={11} className="animate-spin" /> Creating</span>
+                              ) : pl.uploadStatus === 'failed' ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600"><XCircle size={11} /> Failed</span>
+                              ) : (
+                                <span className="text-[10px] font-bold text-amber-600">Not Created</span>
+                              )}
+                            </td>
+                            {(pl.uploadStatus === 'success' || pl.runStatus) && (
+                              <td className="px-5 py-3">
+                                {pl.runStatus === 'completed' ? (
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700"><CheckCircle2 size={11} /> Done</span>
+                                ) : pl.runStatus === 'running' ? (
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600"><Loader2 size={11} className="animate-spin" /> Running</span>
+                                ) : pl.runStatus === 'failed' ? (
+                                  <button
+                                    onClick={() => onRunPipeline(pl.name)}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-md bg-red-600 text-white hover:bg-red-700 transition-all"
+                                  >
+                                    <Play size={10} /> Retry
+                                  </button>
+                                ) : isLocked ? (
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400"><Lock size={10} /> Waiting</span>
+                                ) : pl.uploadStatus === 'success' ? (
+                                  <button
+                                    onClick={() => onRunPipeline(pl.name)}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-md bg-emerald-600 text-white hover:bg-emerald-700 transition-all"
+                                  >
+                                    <Play size={10} /> Run
+                                  </button>
+                                ) : null}
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </>
           )}
 
           {/* ITL Configuration Section – shown after all OTL pipelines run */}
@@ -1239,185 +1234,111 @@ const ItlSection = ({
       </div>
 
       {showDetails && (
-      <div className="p-5 space-y-4">
-        {/* Step 1: Download Excel */}
-        <div className="flex items-center gap-4">
-          <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold ${
-            itlConfigDownloaded ? 'bg-emerald-100 text-emerald-700' : 'bg-emerald-100 text-emerald-700'
-          }`}>1</div>
-          <div className="flex-1">
-            <p className="text-[12px] font-medium text-slate-700">Download ITL Config Excel</p>
-            <p className="text-[10px] text-slate-500">OTL config with watermark columns to fill</p>
-          </div>
-          <div className="flex items-center gap-2">
+        <div className="p-5 space-y-4">
+          {/* Step 1: Download Excel */}
+          <div className="flex items-center gap-4">
+            <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold bg-emerald-100 text-emerald-700">1</div>
+            <div className="flex-1">
+              <p className="text-[12px] font-medium text-slate-700">Download ITL Config Excel</p>
+              <p className="text-[10px] text-slate-500">OTL config with watermark columns to fill</p>
+            </div>
             <button
               onClick={handleDownload}
-              disabled={loading || downloading || itlConfigDownloaded}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all ${
-                itlConfigDownloaded
-                  ? 'bg-emerald-50 text-emerald-700'
-                  : 'bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50'
-              }`}
+              disabled={loading || downloading}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all disabled:opacity-50 ${itlConfigDownloaded
+                  ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                  : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                }`}
             >
-              {itlConfigDownloaded ? (
-                <><CheckCircle2 size={12} /> Downloaded</>
-              ) : downloading ? (
+              {downloading ? (
                 <><Loader2 size={12} className="animate-spin" /> Downloading...</>
+              ) : itlConfigDownloaded ? (
+                <><CheckCircle2 size={12} /> Re-download</>
               ) : (
                 <><Download size={12} /> Download</>
               )}
             </button>
-
-            {itlConfigDownloaded && (
-              <button
-                type="button"
-                onClick={handleDownload}
-                disabled={loading || downloading}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
-              >
-                <Download size={12} /> Re-download
-              </button>
-            )}
           </div>
-        </div>
 
-        {/* Step 2: Upload Filled Excel */}
-        <div className="flex items-center gap-4">
-          <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold ${
-            itlConfigUploaded ? 'bg-emerald-100 text-emerald-700' : 'bg-emerald-100 text-emerald-700'
-          }`}>2</div>
-          <div className="flex-1">
-            <p className="text-[12px] font-medium text-slate-700">Upload Filled Excel</p>
-            <p className="text-[10px] text-slate-500">Fill watermark fields and upload back</p>
-          </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".xlsx,.xls"
-            onChange={handleFileChange}
-            className="hidden"
-          />
-          <div className="flex items-center gap-2">
+          {/* Step 2: Upload Filled Excel */}
+          <div className="flex items-center gap-4">
+            <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold bg-emerald-100 text-emerald-700">2</div>
+            <div className="flex-1">
+              <p className="text-[12px] font-medium text-slate-700">Upload Filled Excel</p>
+              <p className="text-[10px] text-slate-500">Fill watermark fields and upload back</p>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={handleFileChange}
+              className="hidden"
+            />
             <button
               onClick={() => fileInputRef.current?.click()}
-              disabled={loading || uploading || itlConfigUploaded}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all ${
-                itlConfigUploaded
-                  ? 'bg-emerald-50 text-emerald-700'
-                  : 'bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50'
-              }`}
+              disabled={loading || uploading}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all disabled:opacity-50 ${itlConfigUploaded
+                  ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                  : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                }`}
             >
-              {itlConfigUploaded ? (
-                <><CheckCircle2 size={12} /> Uploaded</>
-              ) : uploading ? (
+              {uploading ? (
                 <><Loader2 size={12} className="animate-spin" /> Uploading...</>
+              ) : itlConfigUploaded ? (
+                <><CheckCircle2 size={12} /> Re-upload</>
               ) : (
                 <><Upload size={12} /> Upload</>
               )}
             </button>
-
-            {itlConfigUploaded && (
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={loading || uploading}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50`}
-              >
-                <Upload size={12} /> Re-upload
-              </button>
-            )}
           </div>
-        </div>
 
-        {/* Step 3: Run ITL Notebook */}
-        <div className="flex items-center gap-4">
-          <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold ${
-            notebookRan ? 'bg-emerald-100 text-emerald-700' : notebookFailed ? 'bg-red-100 text-red-700' : itlConfigUploaded ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'
-          }`}>3</div>
-          <div className="flex-1">
-            <p className="text-[12px] font-medium text-slate-700">Run ITL Notebook</p>
-            <p className="text-[10px] text-slate-500">Execute incremental config creation notebook</p>
-          </div>
-          <div className="flex items-center gap-2">
+          {/* Step 3: Run ITL Notebook */}
+          <div className="flex items-center gap-4">
+            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold ${notebookRan ? 'bg-emerald-100 text-emerald-700' : notebookFailed ? 'bg-red-100 text-red-700' : itlConfigUploaded ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'
+              }`}>3</div>
+            <div className="flex-1">
+              <p className="text-[12px] font-medium text-slate-700">Run ITL Notebook</p>
+              <p className="text-[10px] text-slate-500">Execute incremental config creation notebook</p>
+            </div>
             <button
               onClick={async () => {
                 setRunningNotebook(true);
                 const ok = await onRunItlNotebook(connectionName);
                 setRunningNotebook(false);
-                if (ok) toast.success('ITL Notebook executed');
+                if (ok) toast.success(notebookRan ? 'ITL Notebook re-executed' : 'ITL Notebook executed');
                 else toast.error('Failed to run ITL notebook');
               }}
-              disabled={runningNotebook || !itlConfigUploaded || notebookRan}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all ${
-                notebookRan
-                  ? 'bg-emerald-50 text-emerald-700'
-                  : notebookFailed
+              disabled={runningNotebook || !itlConfigUploaded}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all ${notebookFailed
                   ? 'bg-red-50 text-red-700 hover:bg-red-100'
-                  : !itlConfigUploaded
-                  ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                  : 'bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50'
-              }`}
+                  : notebookRan
+                    ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                    : !itlConfigUploaded
+                      ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                      : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                } disabled:opacity-50`}
             >
-              {notebookRan ? (
-                <><CheckCircle2 size={12} /> Done</>
+              {runningNotebook ? (
+                <><Loader2 size={12} className="animate-spin" /> Running...</>
               ) : notebookFailed ? (
                 <><XCircle size={12} /> Failed – Retry</>
-              ) : runningNotebook ? (
-                <><Loader2 size={12} className="animate-spin" /> Running...</>
+              ) : notebookRan ? (
+                <><CheckCircle2 size={12} /> Re-run</>
               ) : (
                 <><Play size={12} /> Run</>
               )}
             </button>
-
-            {notebookRan && (
-              <button
-                type="button"
-                onClick={async () => {
-                  setRunningNotebook(true);
-                  const ok = await onRunItlNotebook(connectionName);
-                  setRunningNotebook(false);
-                  if (ok) toast.success('ITL Notebook re-executed');
-                  else toast.error('Failed to re-run ITL notebook');
-                }}
-                disabled={runningNotebook}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
-              >
-                {runningNotebook ? <><Loader2 size={12} className="animate-spin" /> Running...</> : <><Play size={12} /> Re-run</>}
-              </button>
-            )}
           </div>
-        </div>
 
-        {/* Step 4: Deploy ITL Pipelines – auto-triggered after notebook */}
-        <div className="flex items-center gap-4">
-          <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold ${
-            allItlDeployed ? 'bg-emerald-100 text-emerald-700' : anyItlFailed ? 'bg-red-100 text-red-700' : notebookRan ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'
-          }`}>4</div>
-          <div className="flex-1">
-            <p className="text-[12px] font-medium text-slate-700">Deploy ITL Pipelines</p>
-            <p className="text-[10px] text-slate-500">Auto-deployed after notebook completes</p>
-          </div>
-          {anyItlFailed && !allItlDeployed ? (
-            <button
-              onClick={() => {
-                if (deploying) return;
-                setDeploying(true);
-                onUploadItlPipelines().then((ok) => {
-                  setDeploying(false);
-                  if (ok) toast.success('ITL pipelines deployed');
-                  else toast.error('Some ITL pipelines failed to deploy');
-                });
-              }}
-              disabled={deploying}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50"
-            >
-              {deploying ? <><Loader2 size={12} className="animate-spin" /> Retrying...</> : <><XCircle size={12} /> Failed – Retry</>}
-            </button>
-          ) : allItlDeployed ? (
-            <div className="flex items-center gap-2">
-              <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-emerald-50 text-emerald-700">
-                <CheckCircle2 size={12} /> Deployed
-              </span>
+          {/* Step 4: Deploy ITL Pipelines – auto-triggered after notebook */}
+          <div className="flex items-center gap-4">
+            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold ${allItlDeployed ? 'bg-emerald-100 text-emerald-700' : anyItlFailed ? 'bg-red-100 text-red-700' : notebookRan ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'
+              }`}>4</div>
+            <div className="flex-1">
+              <p className="text-[12px] font-medium text-slate-700">Deploy ITL Pipelines</p>
+              <p className="text-[10px] text-slate-500">Auto-deployed after notebook completes</p>
+            </div>
+            {notebookRan || allItlDeployed || anyItlFailed || deploying ? (
               <button
                 type="button"
                 onClick={() => {
@@ -1425,123 +1346,125 @@ const ItlSection = ({
                   setDeploying(true);
                   onUploadItlPipelines().then((ok) => {
                     setDeploying(false);
-                    if (ok) toast.success('ITL pipelines redeployed');
-                    else toast.error('Some ITL pipelines failed to redeploy');
+                    if (ok) toast.success(allItlDeployed ? 'ITL pipelines redeployed' : 'ITL pipelines deployed');
+                    else toast.error('Some ITL pipelines failed to deploy');
                   });
                 }}
                 disabled={deploying || loading}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all disabled:opacity-50 ${anyItlFailed && !allItlDeployed
+                    ? 'bg-red-50 text-red-700 hover:bg-red-100'
+                    : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                  }`}
               >
-                {deploying ? <><Loader2 size={12} className="animate-spin" /> Redeploying...</> : <><Upload size={12} /> Redeploy</>}
+                {deploying ? (
+                  <><Loader2 size={12} className="animate-spin" /> {allItlDeployed ? 'Redeploying...' : 'Deploying...'}</>
+                ) : anyItlFailed && !allItlDeployed ? (
+                  <><XCircle size={12} /> Failed – Retry</>
+                ) : allItlDeployed ? (
+                  <><CheckCircle2 size={12} /> Redeploy</>
+                ) : (
+                  <><Upload size={12} /> Deploy</>
+                )}
+              </button>
+            ) : (
+              <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-slate-100 text-slate-400">
+                Pending
+              </span>
+            )}
+          </div>
+
+          {/* Step 5: Run Pipelines – WaterMarkUpdate -> MasterPipeline (MailTrigger temporarily removed) */}
+          {allItlDeployed && (
+            <div className="flex items-center gap-4 mt-3">
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold ${allItlPipelinesRan ? 'bg-emerald-100 text-emerald-700' : anyItlPipelineFailed ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'
+                }`}>5</div>
+              <div className="flex-1">
+                <p className="text-[12px] font-medium text-slate-700">Run Pipelines</p>
+                <p className="text-[10px] text-slate-500">Runs WaterMarkUpdate → MasterPipeline in order</p>
+              </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (runningPipelines || anyItlPipelineRunning) return;
+                  setRunningPipelines(true);
+                  const ok = await onRunItlPipelines();
+                  setRunningPipelines(false);
+                  if (ok) toast.success('ITL pipeline run completed');
+                  else toast.error('ITL pipeline run failed');
+                }}
+                disabled={runningPipelines || anyItlPipelineRunning}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all disabled:opacity-50 ${anyItlPipelineFailed
+                    ? 'bg-red-50 text-red-700 hover:bg-red-100'
+                    : allItlPipelinesRan
+                      ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                      : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                  }`}
+              >
+                {(runningPipelines || anyItlPipelineRunning) ? (
+                  <><Loader2 size={12} className="animate-spin" /> Running...</>
+                ) : anyItlPipelineFailed ? (
+                  <><XCircle size={12} /> Failed – Retry</>
+                ) : allItlPipelinesRan ? (
+                  <><CheckCircle2 size={12} /> Re-run</>
+                ) : (
+                  <><Play size={12} /> Run Pipelines</>
+                )}
               </button>
             </div>
-          ) : (
-            <span className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg ${
-              deploying ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-400'
-            }`}>
-              {deploying ? (
-                <><Loader2 size={12} className="animate-spin" /> Deploying...</>
-              ) : (
-                'Pending'
-              )}
-            </span>
+          )}
+
+          {/* ITL Pipeline Results */}
+          {itlPipelineFiles.length > 0 && (
+            <div className="mt-3 border-t border-slate-100 pt-3">
+              <table className="w-full">
+                <thead className="border-b border-slate-100">
+                  <tr>
+                    <th className="px-3 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Pipeline</th>
+                    <th className="px-3 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
+                    <th className="px-3 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Run</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {itlPipelineFiles.map((pl) => (
+                    <tr key={pl.name} className="hover:bg-slate-50/50">
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <Workflow size={12} className="text-slate-400" />
+                          <span className="text-[11px] font-medium text-slate-800">{pl.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2">
+                        {pl.uploadStatus === 'success' ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700"><CheckCircle2 size={11} /> Created</span>
+                        ) : pl.uploadStatus === 'uploading' ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600"><Loader2 size={11} className="animate-spin" /> Creating</span>
+                        ) : pl.uploadStatus === 'failed' ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600"><XCircle size={11} /> Failed</span>
+                        ) : (
+                          <span className="text-[10px] font-bold text-slate-400">Pending</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        {pl.runStatus === 'completed' ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700"><CheckCircle2 size={11} /> Success</span>
+                        ) : pl.runStatus === 'running' ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600"><Loader2 size={11} className="animate-spin" /> Running</span>
+                        ) : pl.runStatus === 'failed' ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600"><XCircle size={11} /> Failed</span>
+                        ) : (
+                          <span className="text-[10px] text-slate-300">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
-
-        {/* Step 5: Run Pipelines – WaterMarkUpdate -> MasterPipeline (MailTrigger temporarily removed) */}
-        {allItlDeployed && (
-          <div className="flex items-center gap-4 mt-3">
-            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold ${
-              allItlPipelinesRan ? 'bg-emerald-100 text-emerald-700' : anyItlPipelineFailed ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'
-            }`}>5</div>
-            <div className="flex-1">
-              <p className="text-[12px] font-medium text-slate-700">Run Pipelines</p>
-              <p className="text-[10px] text-slate-500">Runs WaterMarkUpdate → MasterPipeline in order</p>
-            </div>
-            <button
-              type="button"
-              onClick={async () => {
-                if (runningPipelines || anyItlPipelineRunning) return;
-                setRunningPipelines(true);
-                const ok = await onRunItlPipelines();
-                setRunningPipelines(false);
-                if (ok) toast.success('ITL pipeline run completed');
-                else toast.error('ITL pipeline run failed');
-              }}
-              disabled={runningPipelines || anyItlPipelineRunning}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all disabled:opacity-50 ${
-                anyItlPipelineFailed
-                  ? 'bg-red-50 text-red-700 hover:bg-red-100'
-                  : allItlPipelinesRan
-                  ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                  : 'bg-emerald-600 text-white hover:bg-emerald-700'
-              }`}
-            >
-              {(runningPipelines || anyItlPipelineRunning) ? (
-                <><Loader2 size={12} className="animate-spin" /> Running...</>
-              ) : anyItlPipelineFailed ? (
-                <><XCircle size={12} /> Failed – Retry</>
-              ) : allItlPipelinesRan ? (
-                <><CheckCircle2 size={12} /> Re-run</>
-              ) : (
-                <><Play size={12} /> Run Pipelines</>
-              )}
-            </button>
-          </div>
-        )}
-
-        {/* ITL Pipeline Results */}
-        {itlPipelineFiles.length > 0 && (
-          <div className="mt-3 border-t border-slate-100 pt-3">
-            <table className="w-full">
-              <thead className="border-b border-slate-100">
-                <tr>
-                  <th className="px-3 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Pipeline</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Run</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {itlPipelineFiles.map((pl) => (
-                  <tr key={pl.name} className="hover:bg-slate-50/50">
-                    <td className="px-3 py-2">
-                      <div className="flex items-center gap-2">
-                        <Workflow size={12} className="text-slate-400" />
-                        <span className="text-[11px] font-medium text-slate-800">{pl.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-3 py-2">
-                      {pl.uploadStatus === 'success' ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700"><CheckCircle2 size={11} /> Created</span>
-                      ) : pl.uploadStatus === 'uploading' ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600"><Loader2 size={11} className="animate-spin" /> Creating</span>
-                      ) : pl.uploadStatus === 'failed' ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600"><XCircle size={11} /> Failed</span>
-                      ) : (
-                        <span className="text-[10px] font-bold text-slate-400">Pending</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2">
-                      {pl.runStatus === 'completed' ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700"><CheckCircle2 size={11} /> Success</span>
-                      ) : pl.runStatus === 'running' ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600"><Loader2 size={11} className="animate-spin" /> Running</span>
-                      ) : pl.runStatus === 'failed' ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600"><XCircle size={11} /> Failed</span>
-                      ) : (
-                        <span className="text-[10px] text-slate-300">—</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
       )}
     </div>
-    
+
   );
 };
 
@@ -1596,21 +1519,20 @@ const GoldStoredProceduresSection = ({
           <p className="text-[11px] text-slate-500">
             {deployed
               ? `${deployed.procedures_deployed} procedures deployed under [ims] in ${deployed.database}`
-                + (deployed.sp_details_recorded ? ` · ${deployed.sp_details_recorded} recorded in Config_Gold` : '')
+              + (deployed.sp_details_recorded ? ` · ${deployed.sp_details_recorded} recorded in Config_Gold` : '')
               : disabled
-              ? 'Available once all ITL pipelines are created successfully'
-              : 'Creates the [ims] schema and its stored procedures in WH_Gold'}
+                ? 'Available once all ITL pipelines are created successfully'
+                : 'Creates the [ims] schema and its stored procedures in WH_Gold'}
           </p>
         </div>
         <button
           onClick={handleDeploy}
           disabled={disabled || deploying}
           title={disabled ? 'Create all ITL pipelines first' : undefined}
-          className={`flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-bold rounded-lg transition-all disabled:opacity-60 disabled:cursor-not-allowed ${
-            disabled
+          className={`flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-bold rounded-lg transition-all disabled:opacity-60 disabled:cursor-not-allowed ${disabled
               ? 'bg-slate-100 text-slate-400'
               : deployed ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'bg-emerald-600 text-white hover:bg-emerald-700'
-          }`}
+            }`}
         >
           {deploying ? (
             <><Loader2 size={13} className="animate-spin" /> Deploying…</>
@@ -1703,10 +1625,10 @@ const MasterExecuteSection = ({
           <p className="text-[11px] text-slate-500">
             {result
               ? `${result.succeeded}/${result.done} succeeded in ${result.database}`
-                + (result.failed > 0 ? ` · ${result.failed} failed` : '')
+              + (result.failed > 0 ? ` · ${result.failed} failed` : '')
               : disabled
-              ? 'Available once all ITL pipelines are created successfully'
-              : 'Runs MasterExecuter.sp_GoldExecute — executes every active procedure from Config_Gold.finin_gold_sp_details'}
+                ? 'Available once all ITL pipelines are created successfully'
+                : 'Runs MasterExecuter.sp_GoldExecute — executes every active procedure from Config_Gold.finin_gold_sp_details'}
           </p>
           {result && result.failed > 0 && (
             <p className="text-[10px] text-red-600 mt-1 truncate" title={result.failed_names.join(', ')}>
@@ -1724,11 +1646,10 @@ const MasterExecuteSection = ({
             onClick={handleExecute}
             disabled={disabled || executing}
             title={disabled ? 'Create all ITL pipelines first' : undefined}
-            className={`flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-bold rounded-lg transition-all disabled:opacity-60 disabled:cursor-not-allowed flex-shrink-0 ${
-              disabled
+            className={`flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-bold rounded-lg transition-all disabled:opacity-60 disabled:cursor-not-allowed flex-shrink-0 ${disabled
                 ? 'bg-slate-100 text-slate-400'
                 : result ? (result.failed > 0 ? 'bg-red-50 text-red-700 hover:bg-red-100' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100') : 'bg-emerald-600 text-white hover:bg-emerald-700'
-            }`}
+              }`}
           >
             {executing ? (
               <><Loader2 size={13} className="animate-spin" /> Executing…</>
@@ -1830,7 +1751,7 @@ const SemanticModelSection = ({
           setBuildFailed(true);
         }
       })
-      .catch(() => {/* best-effort restore — silent */});
+      .catch(() => {/* best-effort restore — silent */ });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1885,10 +1806,10 @@ const SemanticModelSection = ({
             {result
               ? `'${result.display_name}' created in Fabric`
               : excel
-              ? `${excel.filename} — ${excel.tables_count} table(s), ${excel.relationships_count} relationship(s), ${excel.measures_count} measure(s)`
-              : disabled
-              ? 'Available once all ITL pipelines are created successfully'
-              : 'Upload the Tables / Relationships / Measures workbook, then build the semantic model against WH_Gold'}
+                ? `${excel.filename} — ${excel.tables_count} table(s), ${excel.relationships_count} relationship(s), ${excel.measures_count} measure(s)`
+                : disabled
+                  ? 'Available once all ITL pipelines are created successfully'
+                  : 'Upload the Tables / Relationships / Measures workbook, then build the semantic model against WH_Gold'}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
@@ -1901,7 +1822,7 @@ const SemanticModelSection = ({
           />
           <button
             onClick={() => fileInputRef.current?.click()}
-            disabled={ uploading || building}
+            disabled={uploading || building}
             title={disabled ? 'Create all ITL pipelines first' : undefined}
             className="flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-bold rounded-lg transition-all disabled:opacity-60 disabled:cursor-not-allowed bg-slate-100 text-slate-700 hover:bg-slate-200"
           >
@@ -1917,11 +1838,10 @@ const SemanticModelSection = ({
             onClick={handleBuild}
             disabled={!excel || building}
             title={!excel ? 'Upload the Excel first' : undefined}
-            className={`flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-bold rounded-lg transition-all disabled:opacity-60 disabled:cursor-not-allowed ${
-              !excel
+            className={`flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-bold rounded-lg transition-all disabled:opacity-60 disabled:cursor-not-allowed ${!excel
                 ? 'bg-slate-100 text-slate-400'
                 : buildFailed ? 'bg-red-50 text-red-700 hover:bg-red-100' : result ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'bg-emerald-600 text-white hover:bg-emerald-700'
-            }`}
+              }`}
           >
             {building ? (
               <><Loader2 size={13} className="animate-spin" /> Building…</>

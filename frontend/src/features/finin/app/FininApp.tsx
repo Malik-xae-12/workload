@@ -359,13 +359,11 @@ export default function FininApp({ connections, projectId, initialConnectionName
                       onClick={handleDownloadExcel}
                       disabled={downloadingExcel}
                     >
-                      {downloadingExcel ? (
-                        'Downloading…'
-                      ) : excelDownloaded ? (
-                        <> Re-download</>
-                      ) : (
-                        'Download'
-                      )}
+                      {downloadingExcel
+                        ? 'Downloading…'
+                        : excelDownloaded
+                          ? 'Re-download'
+                          : 'Download'}
                     </button>
                   </div>
                 </div>
