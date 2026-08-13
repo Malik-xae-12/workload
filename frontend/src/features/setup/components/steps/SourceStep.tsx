@@ -5,6 +5,7 @@
 
 import { Database, Plus, Save, Loader2, CheckCircle2, XCircle, Server } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import type { SourceConnection } from '../../types';
 import { listGateways, type GatewayInfo } from '../../../../layouts/services/fabricApi';
 import { SelectDropdown } from '../../../../shared/components/selectdropdown';
@@ -65,38 +66,53 @@ export const SourceStep = ({ connections, onAddConnection, loading, error, proje
   const handleSubmit = () => {
     const isOracle = formData.databaseType === 'Oracle';
 
-    const required = formData.name && formData.server;
-    const dbRequired = !isOracle ? formData.databaseName : true;
+    // Collect every missing required field's label, so the toast tells the
+    // person exactly what to fill in rather than doing nothing silently.
+    const missing: string[] = [];
 
-    // Validate based on auth type
-    let authValid = false;
+    if (!formData.name) missing.push('Connection Name');
+    if (!formData.databaseType) missing.push('Database Type');
+    if (!formData.server) missing.push(isBlob ? 'Account URL' : 'Server / Host');
+    if (!isOracle && !formData.databaseName) missing.push(isBlob ? 'Container Name' : 'Database Name');
+
     if ((isPostgres || isBlob) && formData.authType === 'ServicePrincipal') {
-      authValid = !!formData.tenantId && !!formData.clientId && !!formData.clientSecret;
+      if (!formData.tenantId) missing.push('Tenant ID');
+      if (!formData.clientId) missing.push('Client ID');
+      if (!formData.clientSecret) missing.push('Client Secret');
     } else if (isPostgres && formData.authType === 'OAuth') {
-      authValid = !!formData.tenantId && !!formData.clientId;
+      if (!formData.tenantId) missing.push('Tenant ID');
+      if (!formData.clientId) missing.push('Client ID');
     } else {
-      authValid = !!formData.username && !!formData.password;
+      if (!formData.username) missing.push('Username');
+      if (!formData.password) missing.push('Password');
     }
 
-    if (required && dbRequired && authValid) {
-      const hasGateway = !!formData.gatewayName;
-      onAddConnection({
-        name: formData.name,
-        databaseType: formData.databaseType,
-        server: formData.server,
-        databaseName: isOracle ? '' : formData.databaseName,
-        username: formData.username,
-        password: formData.password,
-        is_on_prem: hasGateway,
-        gateway_name: hasGateway ? formData.gatewayName : undefined,
-        auth_type: (isPostgres || isBlob) ? formData.authType : 'Basic',
-        tenant_id: formData.tenantId || undefined,
-        client_id: formData.clientId || undefined,
-        client_secret: formData.clientSecret || undefined,
-      });
-      setFormData({ name: '', databaseType: 'Azure SQL', server: '', databaseName: '', username: '', password: '', gatewayName: '', authType: 'Basic', tenantId: '', clientId: '', clientSecret: '' });
-      setShowForm(false);
+    if (missing.length > 0) {
+      toast.error(
+        missing.length === 1
+          ? `Please fill in ${missing[0]}.`
+          : `Please fill in the following fields: ${missing.join(', ')}.`
+      );
+      return;
     }
+
+    const hasGateway = !!formData.gatewayName;
+    onAddConnection({
+      name: formData.name,
+      databaseType: formData.databaseType,
+      server: formData.server,
+      databaseName: isOracle ? '' : formData.databaseName,
+      username: formData.username,
+      password: formData.password,
+      is_on_prem: hasGateway,
+      gateway_name: hasGateway ? formData.gatewayName : undefined,
+      auth_type: (isPostgres || isBlob) ? formData.authType : 'Basic',
+      tenant_id: formData.tenantId || undefined,
+      client_id: formData.clientId || undefined,
+      client_secret: formData.clientSecret || undefined,
+    });
+    setFormData({ name: '', databaseType: 'Azure SQL', server: '', databaseName: '', username: '', password: '', gatewayName: '', authType: 'Basic', tenantId: '', clientId: '', clientSecret: '' });
+    setShowForm(false);
   };
 
   return (
@@ -382,7 +398,6 @@ export const SourceStep = ({ connections, onAddConnection, loading, error, proje
                 )}
 
                 {/* Gateway selector — shown for all types */}
-            {/* Gateway selector — shown for all types */}
             <div className="space-y-1.5">
               <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                 Data Gateway

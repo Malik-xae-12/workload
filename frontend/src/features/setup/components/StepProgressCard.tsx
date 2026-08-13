@@ -20,7 +20,7 @@ import type { LucideIcon } from 'lucide-react';
 
 // ─── Brand tokens ──────────────────────────────────────────────────────────────
 const G = {
-  50:  '#E8F8F1',
+  50: '#E8F8F1',
   100: '#C3EDD9',
   200: '#8EDCBA',
   400: '#1D9E75',
@@ -35,12 +35,12 @@ const G = {
 interface Step { title: string; desc: string; icon: LucideIcon }
 
 const STEPS: Step[] = [
-  { title: 'Workspace',    desc: 'Create & configure',  icon: KeyRound       },
-  { title: 'Medallion',   desc: 'Layer architecture',  icon: Layers         },
-  { title: 'Metadata',    desc: 'Warehouse & logs',    icon: FileText       },
-  { title: 'Source',      desc: 'Data connections',    icon: Database       },
-  { title: 'Config',      desc: 'Deploy & run',        icon: Settings       },
-  { title: 'Overview',    desc: 'Summary & review',    icon: ClipboardCheck },
+  { title: 'Workspace', desc: 'Create & configure', icon: KeyRound },
+  { title: 'Medallion', desc: 'Layer architecture', icon: Layers },
+  { title: 'Metadata', desc: 'Warehouse & logs', icon: FileText },
+  { title: 'Source', desc: 'Data connections', icon: Database },
+  { title: 'Config', desc: 'Deploy & run', icon: Settings },
+  { title: 'Overview', desc: 'Summary & review', icon: ClipboardCheck },
 ];
 
 // ─── Props ─────────────────────────────────────────────────────────────────────
@@ -53,9 +53,9 @@ export interface StepProgressCardProps {
 
 // ─── Component ─────────────────────────────────────────────────────────────────
 export const StepProgressCard = ({ currentStep, onStepClick }: StepProgressCardProps) => {
-  const n        = STEPS.length;
-  const progress = Math.round(((currentStep + 1) / n) * 100); 
-  const label    = currentStep >= n ? 'Complete' : `Step ${currentStep + 1} of ${n}`;
+  const n = STEPS.length;
+  const progress = Math.round(((currentStep + 1) / n) * 100);
+  const label = currentStep >= n ? 'Complete' : `Step ${currentStep + 1} of ${n}`;
 
   return (
     <div
@@ -87,10 +87,10 @@ export const StepProgressCard = ({ currentStep, onStepClick }: StepProgressCardP
       {/* ── Step list ──────────────────────────────────────────────────────── */}
       <div className="px-4 pt-4 pb-2 flex-1">
         {STEPS.map((step, i) => {
-          const isLast  = i === n - 1;
-          const done    = i < currentStep || (isLast && i === currentStep);
-          const active  = i === currentStep && !isLast;
-          const Icon    = step.icon;
+          const isLast = i === n - 1;
+          const done = i < currentStep || (isLast && i === currentStep);
+          const active = i === currentStep && !isLast;
+          const Icon = step.icon;
           const canClick = done && !!onStepClick;
 
           return (
@@ -164,23 +164,6 @@ export const StepProgressCard = ({ currentStep, onStepClick }: StepProgressCardP
                 >
                   {step.title}
                 </p>
-
-                {active && (
-                  <span
-                    className="inline-flex items-center gap-1 mt-1.5 text-[9px] font-bold px-2 py-0.5 rounded"
-                    style={{
-                      background: G[50],
-                      color: G[600],
-                      border: `0.5px solid ${G[400]}`,
-                    }}
-                  >
-                    <span
-                      className="w-1.5 h-1.5 rounded-full animate-pulse"
-                      style={{ background: G[400] }}
-                    />
-                    In progress
-                  </span>
-                )}
               </div>
             </div>
           );

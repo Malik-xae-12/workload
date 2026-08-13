@@ -58,11 +58,10 @@ const FieldInput = ({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         readOnly={readOnly}
-        className={`w-full h-10 px-3.5 text-[13px] rounded-lg border outline-none transition-all text-slate-800 placeholder:text-slate-400 ${rightSlot ? 'pr-10' : ''} ${
-          readOnly
-            ? 'bg-slate-100 border-slate-200 cursor-not-allowed text-slate-600'
-            : 'bg-slate-50 border-slate-300 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-50'
-        }`}
+        className={`w-full h-10 px-3.5 text-[13px] rounded-lg border outline-none transition-all text-slate-800 placeholder:text-slate-400 ${rightSlot ? 'pr-10' : ''} ${readOnly
+          ? 'bg-slate-100 border-slate-200 cursor-not-allowed text-slate-600'
+          : 'bg-slate-50 border-slate-300 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-50'
+          }`}
       />
       {rightSlot && (
         <div className="absolute right-0 top-0 h-full flex items-center pr-2.5">
@@ -164,7 +163,7 @@ export const CredentialsStep = ({
               value={readOnly ? '••••••••••••••••' : credentials.clientSecret}
               onChange={(v) => onUpdateCredentials('clientSecret', v)}
               placeholder="Enter client secret value"
-              type={readOnly ? 'password' : showSecret ? 'text' : 'password'}
+              type={readOnly ? 'password' : showSecret ? 'password' : 'text'}
               readOnly={readOnly}
               rightSlot={
                 !readOnly && (

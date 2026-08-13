@@ -30,7 +30,7 @@ const navItems: { key: string; label: string; icon: LucideIcon }[] = [
   // { key: 'documentation', label: 'Documentation', icon: BookOpen },
   { key: 'fabric-accelerator', label: 'Fabric Accelerator', icon: FolderKanban },
   { key: 'finin-accelerator', label: 'Finin Accelerator', icon: FolderKanban },
-  { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  // { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { key: 'ai-mapping', label: 'AI Mapping', icon: GitMerge },
 ];
 

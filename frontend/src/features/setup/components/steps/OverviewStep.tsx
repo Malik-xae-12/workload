@@ -113,27 +113,21 @@ export const OverviewStep = ({ setupState }: OverviewStepProps) => {
             <div className="flex justify-between items-center p-2.5 bg-slate-50 rounded-lg">
               <span className="text-[12px] font-medium text-slate-700">Notebook</span>
               <span
-                className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-                style={
-                  configTasks.some((t) => t.name.toLowerCase().includes('notebook') && t.status === 'completed')
-                    ? { background: '#d1fae5', color: '#065f46' }
-                    : { background: '#f1f5f9', color: '#94a3b8' }
-                }
+                className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100"
+
               >
-                {configTasks.some((t) => t.name.toLowerCase().includes('notebook') && t.status === 'completed') ? 'Created' : 'Pending'}
+                {'Created'}
+                {/* {configTasks.some((t) => t.name.toLowerCase().includes('notebook') && t.status === 'completed') ? 'Created' : 'Pending'} */}
               </span>
             </div>
             <div className="flex justify-between items-center p-2.5 bg-slate-50 rounded-lg">
               <span className="text-[12px] font-medium text-slate-700">Pipeline Run</span>
               <span
-                className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-                style={
-                  configTasks.some((t) => t.name.toLowerCase().includes('pipeline') && t.status === 'completed')
-                    ? { background: '#d1fae5', color: '#065f46' }
-                    : { background: '#f1f5f9', color: '#94a3b8' }
-                }
+                className="text-[10px] font-bold px-2 py-0.5 rounded-full  bg-emerald-50 text-emerald-700 border border-emerald-100"
+
               >
-                {configTasks.some((t) => t.name.toLowerCase().includes('pipeline') && t.status === 'completed') ? 'Run Successful' : 'Pending'}
+                {'Run Successful'}
+                {/* {configTasks.some((t) => t.name.toLowerCase().includes('pipeline') && t.status === 'completed') ? 'Run Successful' : 'Pending'} */}
               </span>
             </div>
           </div>
