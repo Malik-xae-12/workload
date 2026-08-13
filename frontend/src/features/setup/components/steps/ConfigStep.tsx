@@ -138,6 +138,22 @@ export const ConfigStep = ({
   const [notebooksUploadingMap, setNotebooksUploadingMap] = useState<Record<string, boolean>>({});
   const [pipelinesUploadingMap, setPipelinesUploadingMap] = useState<Record<string, boolean>>({});
   const [blobConfigStatusMap, setBlobConfigStatusMap] = useState<Record<string, 'idle' | 'loading' | 'success'>>({});
+  // Fabric-mode "Hide details" / "View details" toggle for the Notebooks
+  // and Pipelines tables — same collapse-once-complete pattern the Finin
+  // mode's ArtifactGroupCard/ItlSection already use, per connection so
+  // switching connections doesn't carry over a previous one's collapsed state.
+  const [showNotebooksDetailsMap, setShowNotebooksDetailsMap] = useState<Record<string, boolean>>({});
+  const [showPipelinesDetailsMap, setShowPipelinesDetailsMap] = useState<Record<string, boolean>>({});
+  const showNotebooksDetails = selectedConnection ? showNotebooksDetailsMap[selectedConnection] ?? true : true;
+  const showPipelinesDetails = selectedConnection ? showPipelinesDetailsMap[selectedConnection] ?? true : true;
+  const toggleNotebooksDetails = () => {
+    if (!selectedConnection) return;
+    setShowNotebooksDetailsMap((prev) => ({ ...prev, [selectedConnection]: !(prev[selectedConnection] ?? true) }));
+  };
+  const togglePipelinesDetails = () => {
+    if (!selectedConnection) return;
+    setShowPipelinesDetailsMap((prev) => ({ ...prev, [selectedConnection]: !(prev[selectedConnection] ?? true) }));
+  };
   const notebooksUploading = selectedConnection ? !!notebooksUploadingMap[selectedConnection] : false;
   const pipelinesUploading = selectedConnection ? !!pipelinesUploadingMap[selectedConnection] : false;
   const blobConfigStatus = selectedConnection ? blobConfigStatusMap[selectedConnection] ?? 'idle' : 'idle';
@@ -590,25 +606,36 @@ export const ConfigStep = ({
                 <FileText size={15} className="text-emerald-600" />
                 <h3 className="text-[13px] font-bold text-slate-700">Notebooks</h3>
               </div>
-              <button
-                onClick={handleRunNotebooks}
-                disabled={loading || notebooksUploading || allNotebooksDone || connNotebooks.length === 0}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all ${
-                  allNotebooksDone
-                    ? 'bg-emerald-50 text-emerald-700'
-                    : 'bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50'
-                }`}
-              >
-                {allNotebooksDone ? (
-                  <><CheckCircle2 size={12} /> Created</>
-                ) : notebooksUploading || anyNotebookUploading ? (
-                  <><Loader2 size={12} className="animate-spin" /> Creating...</>
-                ) : (
-                  <><Upload size={12} /> Create</>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleRunNotebooks}
+                  disabled={loading || notebooksUploading || allNotebooksDone || connNotebooks.length === 0}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all ${
+                    allNotebooksDone
+                      ? 'bg-emerald-50 text-emerald-700'
+                      : 'bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50'
+                  }`}
+                >
+                  {allNotebooksDone ? (
+                    <><CheckCircle2 size={12} /> Created</>
+                  ) : notebooksUploading || anyNotebookUploading ? (
+                    <><Loader2 size={12} className="animate-spin" /> Creating...</>
+                  ) : (
+                    <><Upload size={12} /> Create</>
+                  )}
+                </button>
+                {connNotebooks.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={toggleNotebooksDetails}
+                    className="text-[11px] font-bold text-emerald-600 hover:text-emerald-800"
+                  >
+                    {showNotebooksDetails ? 'Hide details' : 'View details'}
+                  </button>
                 )}
-              </button>
+              </div>
             </div>
-            {connConfigLoading ? (
+            {!showNotebooksDetails ? null : connConfigLoading ? (
               <div className="p-4">
                 <div className="space-y-2">
                   {[1, 2, 3, 4].map((i) => (
@@ -739,9 +766,18 @@ export const ConfigStep = ({
                     )}
                   </button>
                 )}
+                {connPipelineFiles.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={togglePipelinesDetails}
+                    className="text-[11px] font-bold text-emerald-600 hover:text-emerald-800"
+                  >
+                    {showPipelinesDetails ? 'Hide details' : 'View details'}
+                  </button>
+                )}
               </div>
             </div>
-            {connConfigLoading ? (
+            {!showPipelinesDetails ? null : connConfigLoading ? (
               <div className="p-4">
                 <div className="space-y-2">
                   {[1, 2, 3, 4, 5].map((i) => (
@@ -949,11 +985,37 @@ const ArtifactGroupCard = ({
     <div className={`bg-white rounded-xl border overflow-hidden shadow-sm ${locked ? 'border-slate-100 opacity-60' : 'border-slate-200'}`}>
       <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
         <h3 className="text-[13px] font-bold text-slate-700">{title}</h3>
-        {fullyComplete ? (
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2">
+          {fullyComplete ? (
             <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-emerald-50 text-emerald-700">
               <CheckCircle2 size={12} /> Completed
             </span>
+          ) : bothDone ? (
+            <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-emerald-50 text-emerald-700">
+              <CheckCircle2 size={12} /> Done
+            </span>
+          ) : locked ? (
+            <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-slate-100 text-slate-400">
+              <Lock size={12} /> Waiting
+            </span>
+          ) : !notebooksDone ? (
+            <button
+              onClick={onCreate}
+              disabled={loading || notebooksUploading || !notebooksExist}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 transition-all"
+            >
+              {notebooksUploading ? <><Loader2 size={12} className="animate-spin" /> Creating...</> : <><Upload size={12} /> Create</>}
+            </button>
+          ) : !pipelinesDone ? (
+            <button
+              onClick={onDeploy}
+              disabled={loading || pipelinesUploading || !pipelinesExist}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 transition-all"
+            >
+              {pipelinesUploading ? <><Loader2 size={12} className="animate-spin" /> Creating...</> : <><Upload size={12} /> Deploy</>}
+            </button>
+          ) : null}
+          {rows.length > 0 && (
             <button
               type="button"
               onClick={() => setShowDetails((v) => !v)}
@@ -961,34 +1023,10 @@ const ArtifactGroupCard = ({
             >
               {showDetails ? 'Hide details' : 'View details'}
             </button>
-          </div>
-        ) : bothDone ? (
-          <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-emerald-50 text-emerald-700">
-            <CheckCircle2 size={12} /> Done
-          </span>
-        ) : locked ? (
-          <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-slate-100 text-slate-400">
-            <Lock size={12} /> Waiting
-          </span>
-        ) : !notebooksDone ? (
-          <button
-            onClick={onCreate}
-            disabled={loading || notebooksUploading || !notebooksExist}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 transition-all"
-          >
-            {notebooksUploading ? <><Loader2 size={12} className="animate-spin" /> Creating...</> : <><Upload size={12} /> Create</>}
-          </button>
-        ) : !pipelinesDone ? (
-          <button
-            onClick={onDeploy}
-            disabled={loading || pipelinesUploading || !pipelinesExist}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 transition-all"
-          >
-            {pipelinesUploading ? <><Loader2 size={12} className="animate-spin" /> Creating...</> : <><Upload size={12} /> Deploy</>}
-          </button>
-        ) : null}
+          )}
+        </div>
       </div>
-      {fullyComplete && !showDetails ? null : rows.length === 0 && loading ? (
+      {!showDetails ? null : rows.length === 0 && loading ? (
         <div className="p-5 space-y-2 animate-pulse" aria-label="Loading artifacts">
           <div className="h-3.5 bg-slate-100 rounded w-3/4" />
           <div className="h-3.5 bg-slate-100 rounded w-2/3" />

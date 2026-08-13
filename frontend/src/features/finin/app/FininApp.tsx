@@ -10,6 +10,7 @@ import { SelectDropdown } from "../../../shared/components/selectdropdown";
 import { useMapping } from "../mapping/hooks/useMapping";
 import "../shared/styles/App.css";
 import type { SourceConnection } from "../../setup/types";
+import { Play, Loader2, CheckCircle2, Database, FileText, XCircle, Workflow, Lock, Download, Upload, FileSpreadsheet, Sparkles } from 'lucide-react';
 
 interface Props {
   connections: SourceConnection[];
@@ -151,234 +152,231 @@ export default function FininApp({ connections, projectId, initialConnectionName
 
   return (
     <div className="finin-app">
-    <div className="app">
-      <header className="app-header">
-        <div className="header-inner">
-          <div className="logo">
-            <div className="logo-mark"><span>F</span></div>
-            <div>
-              <span className="logo-title">Finin</span>
-              <span className="logo-sub">Column Mapping Intelligence</span>
-            </div>
-          </div>
-          {job && <button className="btn-ghost" onClick={reset}>← New Mapping</button>}
-        </div>
-      </header>
-
-      <main className="app-main">
-        {showManual && isDone && job?.result && (
-          <ErrorBoundary>
-            <ManualMapping
-              rows={job.result.rows}
-              sourceColumnsByTable={job.result.source_columns_by_table}
-              onSave={handleManualSave}
-              onBack={() => setShowManual(false)}
-              onDownloadXlsx={(f) => downloadXlsx(job.job_id, f)}
-              readOnly={readOnly}
-            />
-            <ChatPanel jobId={job.job_id} apiBase={apiBase} />
-          </ErrorBoundary>
-        )}
-
-        {loadingSavedMapping && !job && (
-          <div className="saved-mapping-loading">
-            <div className="sml-orbit">
-              <div className="sml-orbit-ring" />
-              <div className="sml-orbit-ring sml-orbit-ring--delay" />
-              <div className="sml-orbit-core">⌘</div>
-            </div>
-            <h2>Loading Saved Mapping</h2>
-            <p className="results-sub">
-              Fetching the previously saved mapping for <strong>{connectionName}</strong>…
-            </p>
-            <div className="sml-progress"><div className="sml-progress-bar" /></div>
-            <div className="sml-actions">
-              <button
-                className="btn-ghost"
-                onClick={async () => {
-                  const found = await fetchSavedMapping();
-                  if (!found) setLoadingSavedMapping(false);
-                }}
-              >
-                Taking a while? Retry
-              </button>
-              <button className="btn-ghost" onClick={() => setLoadingSavedMapping(false)}>
-                Set up connection manually instead
-              </button>
-            </div>
-          </div>
-        )}
-
-        {!showManual && !job && !loadingSavedMapping && (
-          <div className="landing">
-            <div className="landing-hero">
-              <span className="eyebrow"><span className="eyebrow-dot" />AI-Powered Column Mapping</span>
-              <h1>Map columns with meaning,<br /><em>not just names.</em></h1>
-              <p>
-                Connect your Azure SQL databases and let semantic embeddings automatically match
-                source columns to your financial analytics template — with confidence scores and
-                full auditability. Finished mappings save straight into your Fabric Accelerator
-                metadata (SourceInformationSchemaMapped).
-              </p>
-              <ol className="hero-steps">
-                <li>
-                  <span className="hero-step-num">1</span>
-                  <div>
-                    <strong>Connect</strong>
-                    <span>Pick a source connection or enter Azure SQL credentials directly.</span>
-                  </div>
-                </li>
-                <li>
-                  <span className="hero-step-num">2</span>
-                  <div>
-                    <strong>Match</strong>
-                    <span>Semantic embeddings score every column against the financial template.</span>
-                  </div>
-                </li>
-                <li>
-                  <span className="hero-step-num">3</span>
-                  <div>
-                    <strong>Save</strong>
-                    <span>Review, adjust, and commit results to SourceInformationSchemaMapped.</span>
-                  </div>
-                </li>
-              </ol>
-            </div>
-            <ConnectionForm
-              onTest={testConnection}
-              onRun={runMapping}
-              testing={testing}
-              connectionOk={connectionOk}
-              connectionMsg={connectionMsg}
-              projectId={projectId}
-              projectClientId={projectClientId}
-              connections={connections}
-              connectionName={connectionName}
-              onConnectionNameChange={setConnectionName}
-              onTestProject={testConnectionForProject}
-              onRunProject={runMappingForProject}
-            />
-          </div>
-        )}
-
-        {isActive && (
-          <div className="running-view">
-            <h2>Running Semantic Mapping</h2>
-            <ProgressPanel job={job} />
-          </div>
-        )}
-
-        {job?.status === "error" && (
-          <div className="running-view">
-            <h2>Mapping Failed</h2>
-            <ProgressPanel job={job} />
-          </div>
-        )}
-
-        {showManual ? null : isDone && job?.result && (
-          <div className="results-view">
-            <div className="results-header">
+      <div className="app">
+        <header className="app-header">
+          <div className="header-inner">
+            <div className="logo">
+              <div className="logo-mark"><span>F</span></div>
               <div>
-                <h2>Mapping Complete</h2>
-                <p className="results-sub">
-                  Processed {job.result.stats?.total_templates ?? job.result.rows.length} template columns
-                  across {job.result.stats?.template_tables ?? new Set(job.result.rows.map((r) => r.template_table)).size} template tables.
-                </p>
+                <span className="logo-title">Finin</span>
+                <span className="logo-sub">Column Mapping Intelligence</span>
               </div>
-              <div className="form-actions">
-                <button className="btn-manual" onClick={() => setShowManual(true)}>
-                  ✎ Manual Mapping
+            </div>
+            {job && <button className="btn-ghost" onClick={reset}>← New Mapping</button>}
+          </div>
+        </header>
+
+        <main className="app-main">
+          {showManual && isDone && job?.result && (
+            <ErrorBoundary>
+              <ManualMapping
+                rows={job.result.rows}
+                sourceColumnsByTable={job.result.source_columns_by_table}
+                onSave={handleManualSave}
+                onBack={() => setShowManual(false)}
+                onDownloadXlsx={(f) => downloadXlsx(job.job_id, f)}
+                readOnly={readOnly}
+              />
+              <ChatPanel jobId={job.job_id} apiBase={apiBase} />
+            </ErrorBoundary>
+          )}
+
+          {loadingSavedMapping && !job && (
+            <div className="saved-mapping-loading">
+              <div className="sml-orbit">
+                <div className="sml-orbit-ring" />
+                <div className="sml-orbit-ring sml-orbit-ring--delay" />
+                <div className="sml-orbit-core">⌘</div>
+              </div>
+              <h2>Loading Saved Mapping</h2>
+              <p className="results-sub">
+                Fetching the previously saved mapping for <strong>{connectionName}</strong>…
+              </p>
+              <div className="sml-progress"><div className="sml-progress-bar" /></div>
+              <div className="sml-actions">
+                <button
+                  className="btn-ghost"
+                  onClick={async () => {
+                    const found = await fetchSavedMapping();
+                    if (!found) setLoadingSavedMapping(false);
+                  }}
+                >
+                  Taking a while? Retry
+                </button>
+                <button className="btn-ghost" onClick={() => setLoadingSavedMapping(false)}>
+                  Set up connection manually instead
                 </button>
               </div>
             </div>
+          )}
 
-            <div className="se-card">
-              <div className="se-card-header">Save & Export</div>
-
-              {/* Step 1: Save to metadata */}
-              <div className="se-step">
-                <div className={`se-num ${savedToMetadata ? 'se-num--done' : ''}`}>1</div>
-                <div className="se-step-info">
-                  <div className="se-step-title">Save to SourceInformationSchemaMapped</div>
-                  <div className="se-step-sub">
-                    {unmatchedCount > 0
-                      ? `${unmatchedCount} column${unmatchedCount === 1 ? '' : 's'} still unmatched — resolve them in Manual Mapping before saving`
-                      : `Writes mapping rows into Config_${connectionName || '…'}`}
-                  </div>
-                </div>
-                <div className="se-select-wrap">
-                  <SelectDropdown
-                    value={connectionName}
-                    options={connections.map((c) => c.name)}
-                    placeholder="Select Fabric connection…"
-                    onChange={setConnectionName}
-                  />
-                </div>
-                <div className="se-actions">
-                  <button
-                    className={`se-btn ${savedToMetadata ? 'se-btn--done' : ''}`}
-                    onClick={handleSaveToMetadata}
-                    disabled={saving || !connectionName || savedToMetadata }
-                    //disabled={saving || !connectionName || savedToMetadata || unmatchedCount > 0}
-                    title={unmatchedCount > 0 ? `${unmatchedCount} unmatched column(s) must be resolved first` : undefined}
-                  >
-                    {savedToMetadata ? 'Saved' : saving ? `Saving... ${saveProgress}%` : 'Save'}
-                  </button>
-                  {savedToMetadata && (
-                    <button
-                      className="se-btn se-btn--ghost"
-                      onClick={handleSaveToMetadata}
-                      disabled={saving || !connectionName}
-                      //disabled={saving || !connectionName || unmatchedCount > 0}
-                    >
-                      Re-save
-                    </button>
-                  )}
-                </div>
-                {saving && (
-                  <div className="se-progress-row">
-                    <div className="se-progress-track">
-                      <div className="se-progress-fill" style={{ width: `${saveProgress}%` }} />
+          {!showManual && !job && !loadingSavedMapping && (
+            <div className="landing">
+              <div className="landing-hero">
+                <span className="eyebrow"><span className="eyebrow-dot" />AI-Powered Column Mapping</span>
+                <h1>Map columns with meaning,<br /><em>not just names.</em></h1>
+                <p>
+                  Connect your Azure SQL databases and let semantic embeddings automatically match
+                  source columns to your financial analytics template — with confidence scores and
+                  full auditability. Finished mappings save straight into your Fabric Accelerator
+                  metadata (SourceInformationSchemaMapped).
+                </p>
+                <ol className="hero-steps">
+                  <li>
+                    <span className="hero-step-num">1</span>
+                    <div>
+                      <strong>Connect</strong>
+                      <span>Pick a source connection or enter Azure SQL credentials directly.</span>
                     </div>
-                    <span className="se-progress-label">{saveProgress}%</span>
-                  </div>
-                )}
+                  </li>
+                  <li>
+                    <span className="hero-step-num">2</span>
+                    <div>
+                      <strong>Match</strong>
+                      <span>Semantic embeddings score every column against the financial template.</span>
+                    </div>
+                  </li>
+                  <li>
+                    <span className="hero-step-num">3</span>
+                    <div>
+                      <strong>Save</strong>
+                      <span>Review, adjust, and commit results to SourceInformationSchemaMapped.</span>
+                    </div>
+                  </li>
+                </ol>
+              </div>
+              <ConnectionForm
+                onTest={testConnection}
+                onRun={runMapping}
+                testing={testing}
+                connectionOk={connectionOk}
+                connectionMsg={connectionMsg}
+                projectId={projectId}
+                projectClientId={projectClientId}
+                connections={connections}
+                connectionName={connectionName}
+                onConnectionNameChange={setConnectionName}
+                onTestProject={testConnectionForProject}
+                onRunProject={runMappingForProject}
+              />
+            </div>
+          )}
+
+          {isActive && (
+            <div className="running-view">
+              <h2>Running Semantic Mapping</h2>
+              <ProgressPanel job={job} />
+            </div>
+          )}
+
+          {job?.status === "error" && (
+            <div className="running-view">
+              <h2>Mapping Failed</h2>
+              <ProgressPanel job={job} />
+            </div>
+          )}
+
+          {showManual ? null : isDone && job?.result && (
+            <div className="results-view">
+              <div className="results-header">
+                <div>
+                  <h2>Mapping Complete</h2>
+                  <p className="results-sub">
+                    Processed {job.result.stats?.total_templates ?? job.result.rows.length} template columns
+                    across {job.result.stats?.template_tables ?? new Set(job.result.rows.map((r) => r.template_table)).size} template tables.
+                  </p>
+                </div>
+                <div className="form-actions">
+                  <button className="btn-manual" onClick={() => setShowManual(true)}>
+                    ✎ Manual Mapping
+                  </button>
+                </div>
               </div>
 
-              {/* Step 2: Download Column Config Excel */}
-              <div className="se-step">
-                <div className={`se-num ${excelDownloaded ? 'se-num--done' : ''}`}>2</div>
-                <div className="se-step-info">
-                  <div className="se-step-title">Download Column Config Excel</div>
-                  <div className="se-step-sub">Full mapping export for this run</div>
+              <div className="se-card">
+                <div className="se-card-header">Save & Export</div>
+
+                {/* Step 1: Save to metadata */}
+                <div className="se-step">
+                  <div className={`se-num ${savedToMetadata ? 'se-num--done' : ''}`}>1</div>
+                  <div className="se-step-info">
+                    <div className="se-step-title">Save to SourceInformationSchemaMapped</div>
+                    <div className="se-step-sub">
+                      {unmatchedCount > 0
+                        ? `${unmatchedCount} column${unmatchedCount === 1 ? '' : 's'} still unmatched — resolve them in Manual Mapping before saving`
+                        : `Writes mapping rows into Config_${connectionName || '…'}`}
+                    </div>
+                  </div>
+                  <div className="se-select-wrap">
+                    <SelectDropdown
+                      value={connectionName}
+                      options={connections.map((c) => c.name)}
+                      placeholder="Select Fabric connection…"
+                      onChange={setConnectionName}
+                    />
+                  </div>
+                  <div className="se-actions">
+                    <button
+                      className={`se-btn ${savedToMetadata ? 'se-btn--done' : ''}`}
+                      onClick={handleSaveToMetadata}
+                      disabled={saving || !connectionName || savedToMetadata}
+                      //disabled={saving || !connectionName || savedToMetadata || unmatchedCount > 0}
+                      title={unmatchedCount > 0 ? `${unmatchedCount} unmatched column(s) must be resolved first` : undefined}
+                    >
+                      {savedToMetadata ? 'Saved' : saving ? `Saving... ${saveProgress}%` : 'Save'}
+                    </button>
+                    {savedToMetadata && (
+                      <button
+                        className="se-btn se-btn--ghost"
+                        onClick={handleSaveToMetadata}
+                        disabled={saving || !connectionName}
+                      //disabled={saving || !connectionName || unmatchedCount > 0}
+                      >
+                        Re-save
+                      </button>
+                    )}
+                  </div>
+                  {saving && (
+                    <div className="se-progress-row">
+                      <div className="se-progress-track">
+                        <div className="se-progress-fill" style={{ width: `${saveProgress}%` }} />
+                      </div>
+                      <span className="se-progress-label">{saveProgress}%</span>
+                    </div>
+                  )}
                 </div>
-                <div className="se-actions">
-                  <button
-                    className={`se-btn ${excelDownloaded ? 'se-btn--done' : ''}`}
-                    onClick={handleDownloadExcel}
-                    disabled={downloadingExcel || excelDownloaded}
-                  >
-                    {excelDownloaded ? 'Downloaded' : downloadingExcel ? 'Downloading...' : 'Download'}
-                  </button>
-                  {excelDownloaded && (
+
+                {/* Step 2: Download Column Config Excel */}
+                <div className="se-step">
+                  <div className={`se-num ${excelDownloaded ? 'se-num--done' : ''}`}>2</div>
+                  <div className="se-step-info">
+                    <div className="se-step-title">Download Column Config Excel</div>
+                    <div className="se-step-sub">Full mapping export for this run</div>
+                  </div>
+                  <div className="se-actions">
                     <button
                       className="se-btn se-btn--ghost"
                       onClick={handleDownloadExcel}
                       disabled={downloadingExcel}
                     >
-                      Re-download
+                      {downloadingExcel ? (
+                        'Downloading…'
+                      ) : excelDownloaded ? (
+                        <> Re-download</>
+                      ) : (
+                        'Download'
+                      )}
                     </button>
-                  )}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <StatsDashboard stats={job.result.stats || ({} as typeof job.result.stats)} />
-            <ResultsTable rows={job.result.rows} jobId={job.job_id} onDownload={(f) => downloadCsv(job.job_id, f)} onDownloadXlsx={(f) => downloadXlsx(job.job_id, f)} />
-          </div>
-        )}
-      </main>
-    </div>
+              <StatsDashboard stats={job.result.stats || ({} as typeof job.result.stats)} />
+              <ResultsTable rows={job.result.rows} jobId={job.job_id} onDownload={(f) => downloadCsv(job.job_id, f)} onDownloadXlsx={(f) => downloadXlsx(job.job_id, f)} />
+            </div>
+          )}
+        </main>
+      </div>
     </div>
   );
 }

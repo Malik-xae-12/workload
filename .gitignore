@@ -22,3 +22,5 @@ app.db
 .finin_jobs.sqlite3-wal
 app.db-shm
 app.db-wal
+
+testAuth.py
