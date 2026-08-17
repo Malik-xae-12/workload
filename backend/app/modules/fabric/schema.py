@@ -31,6 +31,36 @@ class SourceConnectionCreate(SourceConnectionBase):
     pass
 
 
+class ConnectionNameCheckResponse(BaseModel):
+    available: bool
+    message: str
+
+
+class ListDatabasesRequest(BaseModel):
+    """Everything needed to log in and enumerate databases — same shape as
+    the connection fields in SourceConnectionBase, minus the ones that
+    don't matter for listing (conn_name, database itself, project link
+    info)."""
+
+    db_type: str
+    server: str
+    username: str | None = None
+    password: str | None = None
+    auth_type: str = "Basic"
+    tenant_id: str | None = None
+    client_id: str | None = None
+    client_secret: str | None = None
+
+
+class ListDatabasesResponse(BaseModel):
+    databases: list[str]
+    # False when this db_type isn't supported for auto-listing yet — the
+    # frontend falls back to a plain text field in that case rather than
+    # showing an empty/broken dropdown.
+    supported: bool = True
+    message: str | None = None
+
+
 class SourceConnectionRead(BaseModel):
     id: str
     conn_name: str

@@ -67,6 +67,18 @@ def list_gateways(token: str) -> list[dict]:
     return results
 
 
+def list_connections(token: str) -> list[dict]:
+    """Return every connection visible to the caller across the whole
+    tenant — same set shown in Fabric's "Manage connections and
+    gateways" page, not just connections created from this app/project.
+    """
+    url = f"{FABRIC_API_BASE}/connections"
+    headers = {"Authorization": f"Bearer {token}"}
+    resp = httpx.get(url, headers=headers, timeout=_TIMEOUT)
+    resp.raise_for_status()
+    return resp.json().get("value", [])
+
+
 def get_gateway_id(token: str, gateway_name: str) -> str:
     url = f"{FABRIC_API_BASE}/gateways"
     headers = {"Authorization": f"Bearer {token}"}

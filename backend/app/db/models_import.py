@@ -1,5 +1,8 @@
 from app.db.base import Base  # noqa: F401
 
+# Core (cross-module) models
+from app.core.models import ErrorAuditLog  # noqa: F401
+
 # Users module models
 from app.modules.users.models.user import User  # noqa: F401
 from app.modules.users.models.role import Role, UserRole  # noqa: F401

@@ -20,6 +20,9 @@ export interface WorkspaceData {
 
 export interface SourceConnection {
   id: string;
+  /** The project↔source-connection link id (from listProjectConnections) —
+   * needed for delete, which unlinks by link id, not source-connection id. */
+  linkId?: string;
   name: string;
   databaseType: string;
   server: string;
@@ -38,6 +41,9 @@ export interface MedallionLayer {
   label: string;
   validated: boolean;
   description: string;
+  /** Bronze/Silver: user's choice — 'LH' (Lakehouse) or 'WH' (Warehouse).
+   * Gold is always 'WH' and this is never surfaced as a choice for it. */
+  itemType: 'LH' | 'WH';
 }
 
 export interface MetadataSetup {

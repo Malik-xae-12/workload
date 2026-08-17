@@ -26,6 +26,7 @@ from app.modules.fabric.schema import (
     WorkspaceProvisionRequest,
 )
 from app.modules.fabric.services.auth import get_fabric_token
+from app.core.friendly_errors import to_friendly_message
 from app.modules.fabric.services.notebook import list_workspace_notebooks
 from app.modules.fabric.services.connection import (
     assign_role_to_connection,
@@ -294,8 +295,9 @@ async def create_source_connection_handler(
             client_secret=payload.client_secret,
         )
     except (RuntimeError, ValueError) as e:
-        await repo.finalize_source_connection_status(db, record.id, status="failed", status_error=str(e))
-        raise HTTPException(status_code=502, detail=str(e))
+        friendly = to_friendly_message(str(e), status_code=502)
+        await repo.finalize_source_connection_status(db, record.id, status="failed", status_error=friendly)
+        raise HTTPException(status_code=502, detail=friendly)
  
     fabric_conn_id = conn_data.get("id")
  
@@ -318,6 +320,100 @@ async def create_source_connection_handler(
  
 async def list_source_connections(user: User, db: AsyncSession):
     return await repo.list_source_connections(db, str(user.id))
+ 
+ 
+async def check_connection_name_handler(
+    project_id: str, name: str, user: User, db: AsyncSession
+):
+    """Live "is this name free" check for the Connection Name field —
+    instant feedback while typing, instead of only discovering a clash
+    after filling in the whole form and submitting (which is what used to
+    happen: the name collision was only ever caught by Fabric's own API at
+    creation time, at the very end of the flow).
+
+    Checked against every connection visible in this Fabric tenant (the
+    same set shown on Fabric's "Manage connections and gateways" page),
+    not just connections created from this project — Fabric enforces
+    connection names as tenant-unique, so a project-scoped check let
+    names through that Fabric would still reject at submit time. Falls
+    back to the local project-scoped check if the Fabric call fails
+    (e.g. credentials not yet configured).
+    """
+    from app.modules.fabric.schema import ConnectionNameCheckResponse
+    from app.modules.fabric.services.connection import list_connections
+
+    name = (name or "").strip()
+    if not name:
+        return ConnectionNameCheckResponse(available=False, message="Enter a connection name.")
+
+    try:
+        token, _ = await _get_project_token(project_id, db)
+        fabric_connections = await asyncio.to_thread(list_connections, token)
+        name_taken = any(
+            (c.get("displayName") or c.get("name") or "").strip().lower() == name.lower()
+            for c in fabric_connections
+        )
+        if name_taken:
+            return ConnectionNameCheckResponse(
+                available=False,
+                message=f"\u201c{name}\u201d is already used by another connection in this Fabric tenant.",
+            )
+        return ConnectionNameCheckResponse(available=True, message="This name is available.")
+    except HTTPException:
+        raise
+    except Exception:
+        existing = await repo.find_project_connection_by_name(db, project_id, name)
+        if existing:
+            return ConnectionNameCheckResponse(
+                available=False,
+                message=f"\u201c{name}\u201d is already used by another connection in this project.",
+            )
+        return ConnectionNameCheckResponse(available=True, message="This name is available.")
+
+
+async def list_databases_handler(payload, user: User, db: AsyncSession):
+    """Enumerate the databases visible on a server, so the Database Name
+    field can be a searchable dropdown instead of free text the person has
+    to already know exactly. Only SQL Server family (Azure SQL / SQL
+    Server) is supported today — that's the only ODBC driver this backend
+    ships with (pyodbc). Anything else responds with supported=False so
+    the frontend falls back to a plain text field rather than showing a
+    dropdown that can never populate.
+    """
+    from app.modules.fabric.schema import ListDatabasesResponse
+    from app.modules.fabric.services.list_databases import (
+        DatabaseAccessRestricted,
+        list_sql_server_databases,
+    )
+
+    db_type = (payload.db_type or "").strip().lower()
+    if db_type not in ("azure sql", "sql server"):
+        return ListDatabasesResponse(
+            databases=[],
+            supported=False,
+            message="Database listing isn't available for this database type yet — enter the database name directly.",
+        )
+
+    try:
+        databases, note = await asyncio.to_thread(
+            list_sql_server_databases,
+            server=payload.server,
+            username=payload.username,
+            password=payload.password,
+            auth_type=payload.auth_type,
+            tenant_id=payload.tenant_id,
+            client_id=payload.client_id,
+            client_secret=payload.client_secret,
+        )
+    except DatabaseAccessRestricted as e:
+        # Valid credentials — just not permitted to browse the database
+        # list. Not an error: fall back to a plain text field with a
+        # clear explanation, same as an unsupported db_type would.
+        return ListDatabasesResponse(databases=[], supported=False, message=str(e))
+    except (RuntimeError, ValueError) as e:
+        raise HTTPException(status_code=502, detail=to_friendly_message(str(e), status_code=502))
+
+    return ListDatabasesResponse(databases=databases, supported=True, message=note)
  
  
 # ── Project ↔ Source Connection links ────────────────────────────────

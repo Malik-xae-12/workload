@@ -64,60 +64,20 @@ export default class ErrorBoundary extends Component<Props, State> {
         }}
       >
         <h2 style={{ margin: "0 0 12px 0", fontSize: "18px" }}>
-          💥 Something went wrong
+          Something went wrong
         </h2>
-
-        <div
-          style={{
-            background: "#fff",
-            padding: "16px",
-            borderRadius: "6px",
-            border: "1px solid #fecaca",
-            marginBottom: "16px",
-            overflow: "auto",
-          }}
-        >
-          <p style={{ margin: "0 0 8px 0", fontWeight: 600, fontSize: "14px" }}>
-            Error:
-          </p>
-          <pre
-            style={{
-              margin: 0,
-              fontSize: "13px",
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-              color: "#7f1d1d",
-            }}
-          >
-            {error?.toString()}
-          </pre>
-
-          {errorInfo && (
-            <>
-              <p
-                style={{
-                  margin: "16px 0 8px 0",
-                  fontWeight: 600,
-                  fontSize: "14px",
-                }}
-              >
-                Component Stack:
-              </p>
-              <pre
-                style={{
-                  margin: 0,
-                  fontSize: "12px",
-                  whiteSpace: "pre-wrap",
-                  wordBreak: "break-word",
-                  color: "#991b1b",
-                  opacity: 0.8,
-                }}
-              >
-                {errorInfo.componentStack}
-              </pre>
-            </>
-          )}
-        </div>
+        <p style={{ margin: "0 0 16px 0", fontSize: "14px", color: "#7f1d1d" }}>
+          We hit an unexpected problem loading this page. Please try again — if it keeps happening, contact support.
+        </p>
+        {import.meta.env?.DEV && (
+          <details style={{ marginBottom: "16px" }}>
+            <summary style={{ cursor: "pointer", fontSize: "12px", color: "#991b1b" }}>Technical details (dev only)</summary>
+            <pre style={{ fontSize: "12px", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+              {error?.toString()}
+              {errorInfo ? `\n${errorInfo.componentStack}` : ""}
+            </pre>
+          </details>
+        )}
 
         <button
           onClick={this.handleReset}

@@ -11,10 +11,13 @@ from app.modules.auth.service import fastapi_users
 from app.modules.fabric import service as svc
 from app.modules.fabric.schema import (
     ConfigUploadRead,
+    ConnectionNameCheckResponse,
     FabricCredentialCreate,
     FabricCredentialRead,
     ITLConfigStatusResponse,
     LinkSourceConnectionRequest,
+    ListDatabasesRequest,
+    ListDatabasesResponse,
     MedallionConfigCreate,
     MedallionConfigRead,
     MetadataActionRequest,
@@ -151,6 +154,39 @@ async def list_connections(
     db: AsyncSession = Depends(get_async_session),
 ):
     return await svc.list_source_connections(user, db)
+
+
+@router.get(
+    "/projects/{project_id}/source-connections/check-name",
+    response_model=ConnectionNameCheckResponse,
+)
+async def check_connection_name(
+    project_id: str,
+    name: str,
+    user: User = Depends(current_active_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Live availability check for the Connection Name field — called on
+    every keystroke (debounced client-side) so the person sees a
+    tick/cross while typing instead of only discovering a clash after
+    filling in the whole form and submitting."""
+    return await svc.check_connection_name_handler(project_id, name, user, db)
+
+
+@router.post(
+    "/source-connections/list-databases",
+    response_model=ListDatabasesResponse,
+)
+async def list_databases(
+    payload: ListDatabasesRequest,
+    user: User = Depends(current_active_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Enumerate databases on a server for the Database Name searchable
+    dropdown. Credentials are used only for this one lookup — never
+    persisted here (the actual connection save still goes through the
+    normal /source-connections POST)."""
+    return await svc.list_databases_handler(payload, user, db)
 
 
 # ── Project ↔ Source Connection links ────────────────────────────────

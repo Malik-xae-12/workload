@@ -15,6 +15,7 @@ import {
   refreshAccessToken,
   redirectToLogin,
 } from '../../shared/utils/tokenManager';
+import { toFriendlyClientError } from '../../shared/utils/friendlyError';
 
 const BASE = `${env.apiUrl.replace(/\/+$/, '')}/fabric`;
 
@@ -45,6 +46,13 @@ async function request<T>(
         ...authHeaders(),
         ...options.headers,
       },
+    }).catch((networkErr: Error) => {
+      // fetch() itself rejecting (network down, DNS failure, CORS, etc.)
+      // never reaches the `!res.ok` branch below — catch it here so it
+      // goes through the same friendly-message treatment instead of
+      // surfacing a raw "Failed to fetch" to the UI.
+      console.error(`Network error calling ${endpoint}:`, networkErr);
+      throw new Error(toFriendlyClientError(networkErr.message));
     });
 
   let res = await doFetch();
@@ -61,7 +69,13 @@ async function request<T>(
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail || `Request failed (${res.status})`);
+    // The backend has already rewritten body.detail into a customer-
+    // readable message (see app/core/exceptions.py + friendly_errors.py)
+    // for every error it produces itself — this is just the last-resort
+    // fallback for the rare case a response has no usable detail at all
+    // (e.g. a proxy/gateway error that never reached the FastAPI app).
+    console.error(`API error on ${endpoint} (${res.status}):`, body.detail);
+    throw new Error(body.detail || 'Something went wrong. Please try again.');
   }
   return res.json();
 }
@@ -283,6 +297,47 @@ export function createSourceConnection(data: SourceConnectionPayload) {
 
 export function listSourceConnections() {
   return request<SourceConnectionResponse[]>('/source-connections');
+}
+
+// Live "is this name free" check, called on every keystroke (debounced) —
+// see the backend endpoint's own docstring for why this is scoped to the
+// project rather than checking Fabric directly.
+export interface ConnectionNameCheckResponse {
+  available: boolean;
+  message: string;
+}
+
+export function checkConnectionNameAvailable(projectId: string, name: string) {
+  return request<ConnectionNameCheckResponse>(
+    `/projects/${projectId}/source-connections/check-name?name=${encodeURIComponent(name)}`,
+  );
+}
+
+// Enumerate databases on a server, for the Database Name searchable
+// dropdown. Only Azure SQL / SQL Server are supported for now — see
+// ListDatabasesResponse.supported.
+export interface ListDatabasesPayload {
+  db_type: string;
+  server: string;
+  username?: string;
+  password?: string;
+  auth_type?: string;
+  tenant_id?: string;
+  client_id?: string;
+  client_secret?: string;
+}
+
+export interface ListDatabasesResponse {
+  databases: string[];
+  supported: boolean;
+  message?: string | null;
+}
+
+export function listDatabases(data: ListDatabasesPayload) {
+  return request<ListDatabasesResponse>('/source-connections/list-databases', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
 }
 
 // ── Project ↔ Source Connection links ───────────────────────────────

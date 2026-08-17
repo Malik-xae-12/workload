@@ -17,6 +17,7 @@ import {
   listPipelines,
   uploadPipelines,
   linkSourceConnection,
+  unlinkSourceConnection,
   listProjectConnections,
   listMedallionConfigs,
   getMetadataConfig,
@@ -67,6 +68,7 @@ const initialState: SetupState = {
       label: 'Bronze Layer',
       validated: false,
       description: 'Raw data ingestion from source systems',
+      itemType: 'LH',
     },
     {
       key: 'silver',
@@ -74,6 +76,7 @@ const initialState: SetupState = {
       label: 'Silver Layer',
       validated: false,
       description: 'Enriched and validated business logic',
+      itemType: 'LH',
     },
     {
       key: 'gold',
@@ -81,6 +84,7 @@ const initialState: SetupState = {
       label: 'Gold Layer',
       validated: false,
       description: 'Report-ready aggregated gold standard',
+      itemType: 'WH',
     },
   ],
   selectedConnection: null,
@@ -396,6 +400,7 @@ export const useSetupStore = (projectId: string | null) => {
           const sc = l.source_connection!;
           return {
             id: sc.id,
+            linkId: l.id,
             name: sc.conn_name,
             databaseType: sc.db_type,
             server: sc.server,
@@ -417,9 +422,9 @@ export const useSetupStore = (projectId: string | null) => {
       applyForProject(projectId, (prev) => ({
         ...prev,
         medallionLayers: prev.medallionLayers.map((layer) => {
-          if (layer.key === 'bronze') return { ...layer, name: mc.bronze_name || layer.name, validated: !!mc.bronze_item_id };
-          if (layer.key === 'silver') return { ...layer, name: mc.silver_name || layer.name, validated: !!mc.silver_item_id };
-          if (layer.key === 'gold') return { ...layer, name: mc.gold_name || layer.name, validated: !!mc.gold_item_id };
+          if (layer.key === 'bronze') return { ...layer, name: mc.bronze_name || layer.name, validated: !!mc.bronze_item_id, itemType: mc.bronze_is_lakehouse ? 'LH' : 'WH' };
+          if (layer.key === 'silver') return { ...layer, name: mc.silver_name || layer.name, validated: !!mc.silver_item_id, itemType: mc.silver_is_lakehouse ? 'LH' : 'WH' };
+          if (layer.key === 'gold') return { ...layer, name: mc.gold_name || layer.name, validated: !!mc.gold_item_id, itemType: mc.gold_is_lakehouse ? 'LH' : 'WH' };
           return layer;
         }),
       }));
@@ -576,6 +581,32 @@ export const useSetupStore = (projectId: string | null) => {
   );
 
   /**
+   * Remove a source connection from this project (unlinks it — the
+   * underlying connection record and its Fabric connection are left
+   * intact in case other projects reference it, matching how the
+   * existing unlink endpoint behaves).
+   */
+  const deleteConnectionFromBackend = useCallback(
+    async (conn: SourceConnection) => {
+      if (!projectId || !conn.linkId) return false;
+      setState((prev) => ({ ...prev, loading: true, error: null }));
+      try {
+        await unlinkSourceConnection(projectId, conn.linkId);
+        applyForProject(projectId, (prev) => ({
+          ...prev,
+          loading: false,
+          connections: prev.connections.filter((c) => c.id !== conn.id),
+        }));
+        return true;
+      } catch (e: any) {
+        applyForProject(projectId, (prev) => ({ ...prev, loading: false, error: e.message }));
+        return false;
+      }
+    },
+    [projectId, applyForProject],
+  );
+
+  /**
    * Create medallion architecture in Fabric via the backend.
    */
   const createMedallionInBackend = useCallback(async () => {
@@ -587,9 +618,9 @@ export const useSetupStore = (projectId: string | null) => {
       const gold = state.medallionLayers.find((l) => l.key === 'gold')!;
 
       const result = await createMedallion(projectId, {
-        bronze_is_lakehouse: true,
-        silver_is_lakehouse: true,
-        gold_is_lakehouse: false,
+        bronze_is_lakehouse: bronze.itemType === 'LH',
+        silver_is_lakehouse: silver.itemType === 'LH',
+        gold_is_lakehouse: gold.itemType === 'LH',
         schema_enabled: true,
         bronze_name: bronze.name,
         silver_name: silver.name,
@@ -1122,13 +1153,36 @@ export const useSetupStore = (projectId: string | null) => {
 
   const updateMedallionLayer = (
     key: 'bronze' | 'silver' | 'gold',
-    updates: Partial<{ name: string; validated: boolean }>
+    updates: Partial<{ name: string; validated: boolean; itemType: 'LH' | 'WH' }>
   ) => {
     setState((prev) => ({
       ...prev,
       medallionLayers: prev.medallionLayers.map((layer) =>
         layer.key === key ? { ...layer, ...updates } : layer
       ),
+    }));
+  };
+
+  /**
+   * Bronze/Silver only — switches between Lakehouse and Warehouse. Gold is
+   * always a Warehouse and never calls this.
+   *
+   * Also updates the layer's name to match, but only when the name still
+   * looks like the auto-generated default for its OLD type (e.g.
+   * "LH_Bronze" -> "WH_Bronze") — if the person already customized the
+   * name to something that doesn't follow that "<TYPE>_<Layer>" pattern,
+   * their custom name is left alone rather than being silently overwritten.
+   */
+  const updateMedallionLayerType = (key: 'bronze' | 'silver', itemType: 'LH' | 'WH') => {
+    setState((prev) => ({
+      ...prev,
+      medallionLayers: prev.medallionLayers.map((layer) => {
+        if (layer.key !== key || layer.itemType === itemType) return layer;
+        const layerSuffix = key === 'bronze' ? 'Bronze' : 'Silver';
+        const oldDefaultName = `${layer.itemType}_${layerSuffix}`;
+        const newName = layer.name === oldDefaultName ? `${itemType}_${layerSuffix}` : layer.name;
+        return { ...layer, itemType, name: newName };
+      }),
     }));
   };
 
@@ -1843,6 +1897,7 @@ export const useSetupStore = (projectId: string | null) => {
     addConnection,
     selectConnection,
     updateMedallionLayer,
+    updateMedallionLayerType,
     updateConfigTask,
     updatePipeline,
     updateWarehouseName,
@@ -1850,6 +1905,7 @@ export const useSetupStore = (projectId: string | null) => {
     saveCredentialsToBackend,
     provisionWorkspaceToBackend,
     addConnectionToBackend,
+    deleteConnectionFromBackend,
     createMedallionInBackend,
     createMetadataInBackend,
     createLogInBackend,

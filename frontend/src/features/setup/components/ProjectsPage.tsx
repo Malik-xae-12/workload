@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, FolderKanban, Trash2, ArrowRight, Loader2, Settings } from 'lucide-react';
+import { Plus, FolderKanban, Trash2, ArrowRight, Loader2, Settings, AlertTriangle, X } from 'lucide-react';
 import {
   listProjects,
   createProject,
@@ -25,6 +25,10 @@ export const ProjectsPage = ({ onOpenProject, appType = 'fabric' }: ProjectsPage
   const [newName, setNewName] = useState('');
   const [newDesc, setNewDesc] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // Project pending an explicit delete confirmation — nothing is deleted
+  // just from clicking the trash icon anymore; that only opens this modal.
+  const [projectToDelete, setProjectToDelete] = useState<ProjectResponse | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchProjects = useCallback(async () => {
     setLoading(true);
@@ -59,14 +63,15 @@ export const ProjectsPage = ({ onOpenProject, appType = 'fabric' }: ProjectsPage
   };
 
   const handleDelete = async (id: string) => {
-    setLoading(true);
+    setDeleting(true);
     try {
       await deleteProject(id);
       await fetchProjects();
+      setProjectToDelete(null);
     } catch (e: any) {
       setError(e.message);
     } finally {
-      setLoading(false);
+      setDeleting(false);
     }
   };
 
@@ -186,7 +191,7 @@ export const ProjectsPage = ({ onOpenProject, appType = 'fabric' }: ProjectsPage
                     <Settings size={12} /> Setup <ArrowRight size={12} />
                   </button>
                   <button
-                    onClick={() => handleDelete(project.id)}
+                    onClick={() => setProjectToDelete(project)}
                     className="p-2 text-slate-400 hover:text-rose-500 transition-colors"
                   >
                     <Trash2 size={14} />
@@ -197,6 +202,61 @@ export const ProjectsPage = ({ onOpenProject, appType = 'fabric' }: ProjectsPage
           )}
         </div>
       </div>
+
+      {/* Delete confirmation modal */}
+      {projectToDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm px-4"
+          onClick={() => !deleting && setProjectToDelete(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl max-w-sm w-full overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-full bg-rose-50 flex items-center justify-center shrink-0">
+                  <AlertTriangle size={18} className="text-rose-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-sm font-bold text-slate-900">Delete project?</h3>
+                  <p className="text-[13px] text-slate-500 mt-1">
+                    This will permanently delete <span className="font-semibold text-slate-700">{projectToDelete.name}</span> and
+                    all of its setup progress. This action cannot be undone.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setProjectToDelete(null)}
+                  disabled={deleting}
+                  className="text-slate-400 hover:text-slate-600 disabled:opacity-50"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+            <div className="px-6 pb-6 flex items-center justify-end gap-2.5">
+              <button
+                onClick={() => setProjectToDelete(null)}
+                disabled={deleting}
+                className="px-4 py-2 text-[13px] font-semibold text-slate-600 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 transition-all disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDelete(projectToDelete.id)}
+                disabled={deleting}
+                className="flex items-center gap-1.5 px-4 py-2 text-[13px] font-semibold text-white rounded-lg bg-rose-600 hover:bg-rose-700 transition-all disabled:opacity-60"
+              >
+                {deleting ? (
+                  <><Loader2 size={13} className="animate-spin" /> Deleting…</>
+                ) : (
+                  <><Trash2 size={13} /> Delete Project</>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

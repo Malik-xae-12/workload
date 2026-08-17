@@ -18,6 +18,7 @@ import {
   OverviewStep,
 } from '../components/steps';
 import { useSetupStore } from '../hooks';
+import type { SourceConnection } from '../types';
 import { useNavigate } from 'react-router-dom';
 import { FininPage } from '../../finin/pages/FininPage';
 
@@ -118,6 +119,7 @@ export const SetupPage = () => {
     addConnection,
     selectConnection,
     updateMedallionLayer,
+    updateMedallionLayerType,
     updateConfigTask,
     updatePipeline,
     updateWarehouseName,
@@ -125,6 +127,7 @@ export const SetupPage = () => {
     fetchCredentialsFromBackend,
     saveCredentialsToBackend,
     addConnectionToBackend,
+    deleteConnectionFromBackend,
     createMedallionInBackend,
     createMetadataInBackend,
     createLogInBackend,
@@ -214,7 +217,7 @@ export const SetupPage = () => {
         if (unnamedLayers.length > 0)
           return `Please fill in names for: ${unnamedLayers.map((l) => l.label).join(', ')}`;
         if (unvalidatedLayers.length > 0)
-          return `Please validate: ${unvalidatedLayers.map((l) => l.label).join(', ')}`;
+          return 'Please create the Medallion architecture first';
         return null;
       }
       case 2: {
@@ -252,8 +255,15 @@ export const SetupPage = () => {
     }
   };
 
-  const handleBack = () => {
-    if (activeProjectId && state.currentStep > 0) {
+  // Drives the Next button's dimmed "not ready yet" look — mirrors both
+  // gates handleNext itself checks (validateCurrentStep() plus the
+  // separate credentialsSaved check for step 0), so the button's look
+  // never disagrees with what clicking it will actually do. See the
+  // button's own comment for why this is visual-only rather than the
+  // native `disabled` attribute.
+  const stepIncomplete = !!validateCurrentStep() || (state.currentStep === 0 && !state.credentialsSaved);
+
+  const handleBack = () => {    if (activeProjectId && state.currentStep > 0) {
       setCurrentStep(state.currentStep - 1);
     } else if (activeProjectId && state.currentStep === 0) {
       setActiveProjectId(null);
@@ -272,6 +282,10 @@ export const SetupPage = () => {
     password: string;
   }) => {
     await addConnectionToBackend(connection);
+  };
+
+  const handleDeleteConnection = async (connection: SourceConnection): Promise<boolean> => {
+    return (await deleteConnectionFromBackend(connection)) ?? false;
   };
 
   const handleRunTask = (taskId: string) => {
@@ -324,6 +338,7 @@ export const SetupPage = () => {
           <MedallionStep
             layers={state.medallionLayers}
             onUpdateLayer={(key, name) => updateMedallionLayer(key, { name })}
+            onUpdateLayerType={(key, itemType) => updateMedallionLayerType(key, itemType)}
             onValidateLayer={(key) => updateMedallionLayer(key, { validated: true })}
             onCreateInFabric={createMedallionInBackend}
             loading={state.loading}
@@ -349,6 +364,7 @@ export const SetupPage = () => {
           <SourceStep
             connections={state.connections}
             onAddConnection={handleAddConnection}
+            onDeleteConnection={handleDeleteConnection}
             loading={state.loading}
             error={state.error}
             projectId={activeProjectId}
@@ -555,7 +571,19 @@ export const SetupPage = () => {
                       <button
                         onClick={handleNext}
                         disabled={state.currentStep >= 5 || state.loading}
-                        className="flex-1 h-9 rounded-lg flex items-center justify-center gap-1.5 text-white transition-all disabled:opacity-40 shadow-sm text-[11px] font-bold"
+                        // Deliberately NOT using the native `disabled`
+                        // attribute for "step incomplete" — a truly
+                        // disabled button can't be clicked at all, so
+                        // there'd be no way to tell the person WHY it
+                        // won't advance. Instead it only *looks* disabled
+                        // (dimmed, not-allowed cursor) while incomplete;
+                        // the click still fires and handleNext's own
+                        // validateCurrentStep() shows the specific
+                        // "please fill in ___" toast.
+                        aria-disabled={stepIncomplete}
+                        className={`flex-1 h-9 rounded-lg flex items-center justify-center gap-1.5 text-white transition-all shadow-sm text-[11px] font-bold disabled:opacity-40 ${
+                          stepIncomplete ? 'opacity-40 cursor-not-allowed' : ''
+                        }`}
                         style={{ background: activeNav === 'finin-accelerator' ? 'linear-gradient(135deg, #14b8a6, #0f766e)' : 'linear-gradient(135deg, #1D9E75, #0d6e52)' }}
                       >
                         Next

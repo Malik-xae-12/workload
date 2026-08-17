@@ -3,16 +3,18 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Database, Plus, Save, Loader2, CheckCircle2, XCircle, Server } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { Database, Plus, Save, Loader2, CheckCircle2, XCircle, Server, Check, X, Search, Trash2 } from 'lucide-react';
+import { useState, useEffect, useRef, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 import type { SourceConnection } from '../../types';
-import { listGateways, type GatewayInfo } from '../../../../layouts/services/fabricApi';
+import { listGateways, checkConnectionNameAvailable, listDatabases, type GatewayInfo } from '../../../../layouts/services/fabricApi';
 import { SelectDropdown } from '../../../../shared/components/selectdropdown';
 
 interface SourceStepProps {
   connections: SourceConnection[];
   onAddConnection: (connection: Omit<SourceConnection, 'id' | 'status' | 'fabricConnectionId'> & { is_on_prem?: boolean; gateway_name?: string; auth_type?: string; tenant_id?: string; client_id?: string; client_secret?: string }) => void;
+  onDeleteConnection?: (connection: SourceConnection) => Promise<boolean> | void;
   loading?: boolean;
   error?: string | null;
   projectId: string | null;
@@ -20,7 +22,156 @@ interface SourceStepProps {
 
 type AuthType = 'Basic' | 'ServicePrincipal' | 'OAuth';
 
-export const SourceStep = ({ connections, onAddConnection, loading, error, projectId }: SourceStepProps) => {
+/** Combobox: a text input (used both to type/filter AND as the actual
+ * value — some databases may not come back from listing, e.g. a brand new
+ * one, so free typing always stays possible) with a searchable dropdown of
+ * known databases underneath. Portaled to document.body and positioned
+ * like SelectDropdown, for the same reason: the form card has
+ * overflow-hidden, which would otherwise clip an open menu near the
+ * bottom of the card. */
+function DatabaseNameField({
+  value,
+  onChange,
+  options,
+  loading,
+  supported,
+  placeholder,
+  error,
+  note,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: string[];
+  loading: boolean;
+  supported: boolean;
+  placeholder: string;
+  error?: string | null;
+  note?: string | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const updatePosition = () => {
+    const el = inputRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setRect({ top: r.bottom + 6, left: r.left, width: r.width });
+  };
+
+  useLayoutEffect(() => {
+    if (open) updatePosition();
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (
+        inputRef.current && !inputRef.current.contains(target) &&
+        menuRef.current && !menuRef.current.contains(target)
+      ) {
+        setOpen(false);
+      }
+    };
+    const handleReposition = () => updatePosition();
+    document.addEventListener('mousedown', handleClick);
+    window.addEventListener('scroll', handleReposition, true);
+    window.addEventListener('resize', handleReposition);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      window.removeEventListener('scroll', handleReposition, true);
+      window.removeEventListener('resize', handleReposition);
+    };
+  }, [open]);
+
+  const filtered = options.filter((db) => db.toLowerCase().includes(value.toLowerCase()));
+
+  // Listing isn't supported for this database type (e.g. not Azure SQL /
+  // SQL Server yet) — just a plain text field, no dropdown affordance.
+  if (!supported) {
+    return (
+      <div>
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="w-full h-9 px-3.5 text-[13px] rounded-lg border border-slate-300 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-50 text-slate-800 placeholder:text-slate-400 bg-slate-50"
+        />
+        {note && <p className="mt-1 text-[11px] text-amber-600">{note}</p>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <div className="relative">
+        <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+        <input
+          ref={inputRef}
+          type="text"
+          value={value}
+          onChange={(e) => {
+            onChange(e.target.value);
+            if (!open) setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          placeholder={placeholder}
+          className="w-full h-9 pl-8 pr-8 text-[13px] rounded-lg border border-slate-300 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-50 text-slate-800 placeholder:text-slate-400 bg-slate-50"
+        />
+        {loading && (
+          <Loader2 size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500 animate-spin" />
+        )}
+      </div>
+      {note && !loading && (
+        <p className="mt-1 text-[11px] text-amber-600">{note}</p>
+      )}
+
+      {open &&
+        rect &&
+        createPortal(
+          <div
+            ref={menuRef}
+            className="mm-dd-menu mm-dd-menu--portal"
+            role="listbox"
+            style={{ position: 'fixed', top: rect.top, left: rect.left, width: rect.width }}
+          >
+            <div className="mm-dd-list">
+              {loading ? (
+                <div className="mm-dd-empty">Loading databases…</div>
+              ) : error ? (
+                <div className="mm-dd-empty mm-dd-empty--error">{error}</div>
+              ) : filtered.length === 0 ? (
+                <div className="mm-dd-empty">
+                  {options.length === 0 ? 'No databases found on this server yet' : 'No matches — you can still type a new name'}
+                </div>
+              ) : (
+                filtered.map((db) => (
+                  <div
+                    key={db}
+                    role="option"
+                    aria-selected={db === value}
+                    className={`mm-dd-item ${db === value ? 'selected' : ''}`}
+                    onClick={() => {
+                      onChange(db);
+                      setOpen(false);
+                    }}
+                  >
+                    {db}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>,
+          document.body,
+        )}
+    </div>
+  );
+}
+
+export const SourceStep = ({ connections, onAddConnection, onDeleteConnection, loading, error, projectId }: SourceStepProps) => {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -39,8 +190,27 @@ export const SourceStep = ({ connections, onAddConnection, loading, error, proje
   const [gatewaysLoading, setGatewaysLoading] = useState(false);
   const [gatewaysFetched, setGatewaysFetched] = useState(false);
 
+  // Live "is this connection name free" check — Instagram/GitHub-username
+  // style: debounced as the person types, instead of only finding out
+  // after filling in the whole form and hitting Save.
+  const [nameCheck, setNameCheck] = useState<{ status: 'idle' | 'checking' | 'available' | 'taken'; message?: string }>({ status: 'idle' });
+  const nameCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const nameCheckRequestId = useRef(0);
+
+  // Database listing (Azure SQL / SQL Server only — see supported flag).
+  const [dbOptions, setDbOptions] = useState<string[]>([]);
+  const [dbOptionsLoading, setDbOptionsLoading] = useState(false);
+  const [dbListingSupported, setDbListingSupported] = useState(true);
+  const [dbListError, setDbListError] = useState<string | null>(null);
+  const [dbListNote, setDbListNote] = useState<string | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const dbListTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dbListRequestId = useRef(0);
+
   const isPostgres = formData.databaseType === 'PostgreSQL';
   const isBlob = formData.databaseType === 'Azure Blob';
+  const isAzureSql = formData.databaseType === 'Azure SQL';
 
   // Fetch gateways once when form is shown
   useEffect(() => {
@@ -62,6 +232,115 @@ export const SourceStep = ({ connections, onAddConnection, loading, error, proje
       setFormData((prev) => ({ ...prev, authType: 'Basic' as AuthType, tenantId: '', clientId: '', clientSecret: '' }));
     }
   }, [formData.databaseType]);
+
+  // Azure SQL connections never go through an on-prem gateway (there's
+  // nothing "on-prem" about them) — clear any previously chosen gateway
+  // so a stale selection can't silently be submitted alongside it.
+  useEffect(() => {
+    if (isAzureSql && formData.gatewayName) {
+      setFormData((prev) => ({ ...prev, gatewayName: '' }));
+    }
+  }, [isAzureSql]);
+
+  // Debounced live connection-name availability check.
+  useEffect(() => {
+    if (nameCheckTimer.current) clearTimeout(nameCheckTimer.current);
+    const name = formData.name.trim();
+    if (!name || !projectId) {
+      setNameCheck({ status: 'idle' });
+      return;
+    }
+    setNameCheck({ status: 'checking' });
+    const thisRequestId = ++nameCheckRequestId.current;
+    nameCheckTimer.current = setTimeout(() => {
+      checkConnectionNameAvailable(projectId, name)
+        .then((res) => {
+          if (thisRequestId !== nameCheckRequestId.current) return; // stale response — a newer keystroke already superseded this
+          setNameCheck({ status: res.available ? 'available' : 'taken', message: res.message });
+        })
+        .catch(() => {
+          if (thisRequestId !== nameCheckRequestId.current) return;
+          setNameCheck({ status: 'idle' });
+        });
+    }, 400);
+    return () => {
+      if (nameCheckTimer.current) clearTimeout(nameCheckTimer.current);
+    };
+  }, [formData.name, projectId]);
+
+  // Debounced database listing — refetches whenever the server or
+  // credentials change, for Azure SQL / SQL Server only.
+  useEffect(() => {
+    if (dbListTimer.current) clearTimeout(dbListTimer.current);
+
+    const supported = formData.databaseType === 'Azure SQL' || formData.databaseType === 'SQL Server';
+    setDbListingSupported(supported);
+    if (!supported) {
+      setDbOptions([]);
+      return;
+    }
+
+    const hasCreds =
+      formData.authType === 'ServicePrincipal'
+        ? !!(formData.tenantId && formData.clientId && formData.clientSecret)
+        : !!(formData.username && formData.password);
+    if (!formData.server || !hasCreds) {
+      setDbOptions([]);
+      return;
+    }
+
+    const thisRequestId = ++dbListRequestId.current;
+    dbListTimer.current = setTimeout(() => {
+      setDbOptionsLoading(true);
+      setDbListError(null);
+      setDbListNote(null);
+      listDatabases({
+        db_type: formData.databaseType,
+        server: formData.server,
+        username: formData.username || undefined,
+        password: formData.password || undefined,
+        auth_type: formData.authType,
+        tenant_id: formData.tenantId || undefined,
+        client_id: formData.clientId || undefined,
+        client_secret: formData.clientSecret || undefined,
+      })
+        .then((res) => {
+          if (thisRequestId !== dbListRequestId.current) return;
+          setDbOptions(res.databases);
+          setDbListingSupported(res.supported);
+          // Show the note whenever present — covers both "found some
+          // databases, but the list is limited" and "can't browse the
+          // list at all, here's why" (supported=false) cases.
+          setDbListNote(res.message || null);
+        })
+        .catch((err: any) => {
+          if (thisRequestId !== dbListRequestId.current) return;
+          setDbOptions([]);
+          // Surface the real reason (bad credentials, unreachable server,
+          // etc.) instead of silently showing "no databases found" — that
+          // message previously masked genuine connection failures.
+          setDbListError(err?.message || "We couldn't load databases from that server. Please check the details and try again.");
+        })
+        .finally(() => {
+          if (thisRequestId !== dbListRequestId.current) return;
+          setDbOptionsLoading(false);
+        });
+    }, 600);
+    return () => {
+      if (dbListTimer.current) clearTimeout(dbListTimer.current);
+    };
+  }, [formData.databaseType, formData.server, formData.username, formData.password, formData.authType, formData.tenantId, formData.clientId, formData.clientSecret]);
+
+  const handleDelete = async (conn: SourceConnection) => {
+    if (!onDeleteConnection) return;
+    setDeletingId(conn.id);
+    try {
+      await onDeleteConnection(conn);
+    } finally {
+      setDeletingId(null);
+      setPendingDeleteId(null);
+    }
+  };
 
   const handleSubmit = () => {
     const isOracle = formData.databaseType === 'Oracle';
@@ -96,7 +375,12 @@ export const SourceStep = ({ connections, onAddConnection, loading, error, proje
       return;
     }
 
-    const hasGateway = !!formData.gatewayName;
+    if (nameCheck.status === 'taken') {
+      toast.error(nameCheck.message || 'That connection name is already in use — please choose another.');
+      return;
+    }
+
+    const hasGateway = !isAzureSql && !!formData.gatewayName;
     onAddConnection({
       name: formData.name,
       databaseType: formData.databaseType,
@@ -112,6 +396,7 @@ export const SourceStep = ({ connections, onAddConnection, loading, error, proje
       client_secret: formData.clientSecret || undefined,
     });
     setFormData({ name: '', databaseType: 'Azure SQL', server: '', databaseName: '', username: '', password: '', gatewayName: '', authType: 'Basic', tenantId: '', clientId: '', clientSecret: '' });
+    setNameCheck({ status: 'idle' });
     setShowForm(false);
   };
 
@@ -149,21 +434,54 @@ export const SourceStep = ({ connections, onAddConnection, loading, error, proje
                   </p>
                 </div>
               </div>
-              <span className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border ${
-                conn.status === 'creating'
-                  ? 'text-blue-700 bg-blue-50 border-blue-100'
-                  : conn.status === 'failed'
-                  ? 'text-red-700 bg-red-50 border-red-100'
-                  : 'text-emerald-700 bg-emerald-50 border-emerald-100'
-              }`}>
-                {conn.status === 'creating' ? (
-                  <><Loader2 size={11} className="animate-spin" /> Creating…</>
-                ) : conn.status === 'failed' ? (
-                  <><XCircle size={11} /> Failed{conn.statusError ? `: ${conn.statusError}` : ''}</>
-                ) : (
-                  <><CheckCircle2 size={11} /> {conn.fabricConnectionId ? 'Fabric Connected' : 'Active'}</>
+              <div className="flex items-center gap-2">
+                <span className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border ${
+                  conn.status === 'creating'
+                    ? 'text-blue-700 bg-blue-50 border-blue-100'
+                    : conn.status === 'failed'
+                    ? 'text-red-700 bg-red-50 border-red-100'
+                    : 'text-emerald-700 bg-emerald-50 border-emerald-100'
+                }`}>
+                  {conn.status === 'creating' ? (
+                    <><Loader2 size={11} className="animate-spin" /> Creating…</>
+                  ) : conn.status === 'failed' ? (
+                    <><XCircle size={11} /> Failed{conn.statusError ? `: ${conn.statusError}` : ''}</>
+                  ) : (
+                    <><CheckCircle2 size={11} /> {conn.fabricConnectionId ? 'Fabric Connected' : 'Active'}</>
+                  )}
+                </span>
+                {onDeleteConnection && conn.status !== 'creating' && (
+                  pendingDeleteId === conn.id ? (
+                    <div className="flex items-center gap-1">
+                      <span className="text-[11px] text-slate-500">Delete?</span>
+                      <button
+                        onClick={() => handleDelete(conn)}
+                        disabled={deletingId === conn.id}
+                        className="p-1 rounded text-white bg-red-600 hover:bg-red-700 disabled:opacity-50"
+                        title="Confirm delete"
+                      >
+                        {deletingId === conn.id ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                      </button>
+                      <button
+                        onClick={() => setPendingDeleteId(null)}
+                        disabled={deletingId === conn.id}
+                        className="p-1 rounded text-slate-500 hover:bg-slate-100 disabled:opacity-50"
+                        title="Cancel"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setPendingDeleteId(conn.id)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                      title="Delete connection"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )
                 )}
-              </span>
+              </div>
             </div>
           ))}
         </div>
@@ -211,13 +529,32 @@ export const SourceStep = ({ connections, onAddConnection, loading, error, proje
               <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                 Connection Name <span className="text-rose-400">*</span>
               </label>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g., Production Sales DB"
-                className="w-full h-9 px-3.5 text-[13px] rounded-lg border border-slate-300 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-50 text-slate-800 placeholder:text-slate-400 bg-slate-50"
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="e.g., Production Sales DB"
+                  className={`w-full h-9 px-3.5 pr-8 text-[13px] rounded-lg border outline-none focus:ring-2 text-slate-800 placeholder:text-slate-400 bg-slate-50 ${
+                    nameCheck.status === 'taken'
+                      ? 'border-rose-300 focus:border-rose-400 focus:ring-rose-50'
+                      : nameCheck.status === 'available'
+                      ? 'border-emerald-300 focus:border-emerald-400 focus:ring-emerald-50'
+                      : 'border-slate-300 focus:border-emerald-400 focus:ring-emerald-50'
+                  }`}
+                />
+                <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
+                  {nameCheck.status === 'checking' && <Loader2 size={14} className="text-slate-400 animate-spin" />}
+                  {nameCheck.status === 'available' && <Check size={15} className="text-emerald-500" strokeWidth={3} />}
+                  {nameCheck.status === 'taken' && <X size={15} className="text-rose-500" strokeWidth={3} />}
+                </div>
+              </div>
+              {nameCheck.status === 'taken' && (
+                <p className="text-[11px] text-rose-500">{nameCheck.message}</p>
+              )}
+              {nameCheck.status === 'available' && (
+                <p className="text-[11px] text-emerald-600">Available</p>
+              )}
             </div>
 
             <div className="space-y-1">
@@ -281,13 +618,32 @@ export const SourceStep = ({ connections, onAddConnection, loading, error, proje
                 <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                   {isBlob ? 'Container Name' : 'Database Name'} <span className="text-rose-400">*</span>
                 </label>
-                <input
-                  type="text"
-                  value={formData.databaseName}
-                  onChange={(e) => setFormData({ ...formData, databaseName: e.target.value })}
-                  placeholder={isBlob ? "raw" : "sales_db"}
-                  className="w-full h-9 px-3.5 text-[13px] rounded-lg border border-slate-300 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-50 text-slate-800 placeholder:text-slate-400 bg-slate-50"
-                />
+                {isBlob ? (
+                  <input
+                    type="text"
+                    value={formData.databaseName}
+                    onChange={(e) => setFormData({ ...formData, databaseName: e.target.value })}
+                    placeholder="raw"
+                    className="w-full h-9 px-3.5 text-[13px] rounded-lg border border-slate-300 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-50 text-slate-800 placeholder:text-slate-400 bg-slate-50"
+                  />
+                ) : (
+                  <DatabaseNameField
+                    value={formData.databaseName}
+                    onChange={(v) => setFormData({ ...formData, databaseName: v })}
+                    options={dbOptions}
+                    loading={dbOptionsLoading}
+                    supported={dbListingSupported}
+                    error={dbListError}
+                    note={dbListNote}
+                    placeholder={
+                      dbListingSupported
+                        ? formData.server
+                          ? 'Search databases…'
+                          : 'Enter server details first'
+                        : 'sales_db'
+                    }
+                  />
+                )}
               </div>
             )}
 
@@ -397,7 +753,9 @@ export const SourceStep = ({ connections, onAddConnection, loading, error, proje
                   </>
                 )}
 
-                {/* Gateway selector — shown for all types */}
+                {/* Gateway selector — completely removed for Azure SQL,
+                    which never goes through an on-prem gateway */}
+            {!isAzureSql && (
             <div className="space-y-1.5">
               <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                 Data Gateway
@@ -422,16 +780,19 @@ export const SourceStep = ({ connections, onAddConnection, loading, error, proje
                 </select>
               )}
             </div>
+            )}
 
             <div className="col-span-2 flex gap-3 pt-2">
               <button
                 onClick={handleSubmit}
-                disabled={loading}
+                disabled={loading || nameCheck.status === 'checking'}
                 className="flex items-center gap-2 px-5 py-2.5 text-[13px] font-bold text-white rounded-xl transition-all disabled:opacity-60"
                 style={{ background: 'linear-gradient(135deg, #1D9E75, #0d6e52)' }}
               >
                 {loading ? (
                   <><Loader2 size={14} className="animate-spin" /> Creating in Fabric...</>
+                ) : nameCheck.status === 'checking' ? (
+                  <><Loader2 size={14} className="animate-spin" /> Checking name...</>
                 ) : (
                   <><Save size={14} /> Save Connection</>
                 )}

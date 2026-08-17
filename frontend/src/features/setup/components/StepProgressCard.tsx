@@ -54,8 +54,20 @@ export interface StepProgressCardProps {
 // ─── Component ─────────────────────────────────────────────────────────────────
 export const StepProgressCard = ({ currentStep, onStepClick }: StepProgressCardProps) => {
   const n = STEPS.length;
-  const progress = Math.round(((currentStep + 1) / n) * 100);
   const label = currentStep >= n ? 'Complete' : `Step ${currentStep + 1} of ${n}`;
+  // The bar/footer used to show this as a literal "Completion %" — but it
+  // was really just tracking which step you're on, not how much of the
+  // actual work is done (the steps aren't equal-effort, so "Step 2 of 6"
+  // showing "33% complete" overstated progress on early steps and
+  // understated it on later ones). Replacing the number with a message
+  // tied to the step itself, which is what the bar position actually
+  // reflects.
+  const stageMessage =
+    currentStep >= n
+      ? 'All steps done'
+      : STEPS[currentStep]?.title
+      ? `Currently on: ${STEPS[currentStep].title}`
+      : '';
 
   return (
     <div
@@ -178,25 +190,31 @@ export const StepProgressCard = ({ currentStep, onStepClick }: StepProgressCardP
           background: `linear-gradient(to bottom, ${G[50]}, #f0faf5)`,
         }}
       >
-        {/* Percentage row */}
-        <div className="flex items-center justify-between mb-2">
+        {/* Stage row — a relatable message, not a completion percentage
+            (see stageMessage's comment above for why) */}
+        <div className="flex items-center justify-between mb-2 gap-2">
           <span
-            className="text-[9px] font-bold uppercase tracking-widest"
+            className="text-[9px] font-bold uppercase tracking-widest shrink-0"
             style={{ color: G[400] }}
           >
-            Completion
+            Progress
           </span>
-          <span className="text-[12px] font-bold" style={{ color: G[600] }}>
-            {progress}%
+          <span
+            className="text-[11px] font-bold text-right truncate"
+            style={{ color: G[600] }}
+            title={stageMessage}
+          >
+            {stageMessage}
           </span>
         </div>
 
-        {/* Progress bar */}
+        {/* Progress bar — reflects step position along the journey, not a
+            literal percentage of work completed */}
         <div className="h-1.5 rounded-full overflow-hidden" style={{ background: G[100] }}>
           <div
             className="h-full rounded-full transition-all duration-700"
             style={{
-              width: `${progress}%`,
+              width: `${Math.round((Math.min(currentStep + 1, n) / n) * 100)}%`,
               background: `linear-gradient(90deg, ${G[400]}, ${G[500]})`,
             }}
           />
