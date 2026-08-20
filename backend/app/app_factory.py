@@ -9,7 +9,7 @@ from app.core.config import settings
 from app.core.csrf import CSRFMiddleware
 from app.core.events import create_database
 from app.core.exceptions import register_exception_handlers
-from app.core.rate_limit import limiter
+from app.core.rate_limit import limiter 
 from app.modules.auth.router import router as auth_router
 from app.modules.users.router import router as users_router
 from app.modules.fabric.router import router as fabric_router
