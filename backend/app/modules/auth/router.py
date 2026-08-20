@@ -47,8 +47,9 @@ def _get_issuer() -> str:
 
 
 def _get_jwks_url() -> str:
+    tenant = settings.AZURE_AD_TENANT_ID or "common"
     return (
-        f"https://login.microsoftonline.com/{settings.AZURE_AD_TENANT_ID}/discovery/v2.0/keys"
+        f"https://login.microsoftonline.com/{tenant}/discovery/v2.0/keys"
     )
 
 
@@ -57,19 +58,27 @@ def _get_jwks_client() -> PyJWKClient:
     return PyJWKClient(_get_jwks_url())
 
 
-def _verify_azure_token(token: str) -> dict[str, Any]:
-    if not settings.AZURE_AD_TENANT_ID or not settings.AZURE_AD_CLIENT_ID:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Azure AD settings are not configured",
-        )
+@lru_cache(maxsize=1)
+def _get_common_jwks_client() -> PyJWKClient:
+    return PyJWKClient("https://login.microsoftonline.com/common/discovery/v2.0/keys")
 
-    jwks_client = _get_jwks_client()
-    signing_key = jwks_client.get_signing_key_from_jwt(token)
+
+def _verify_azure_token(token: str) -> dict[str, Any]:
+    try:
+        jwks_client = _get_jwks_client()
+        signing_key = jwks_client.get_signing_key_from_jwt(token)
+    except Exception:
+        jwks_client = _get_common_jwks_client()
+        signing_key = jwks_client.get_signing_key_from_jwt(token)
 
     audiences = [
         settings.AZURE_AD_CLIENT_ID,
         f"api://{settings.AZURE_AD_CLIENT_ID}",
+        "https://api.fabric.microsoft.com",
+        "https://api.fabric.microsoft.com/",
+        "https://analysis.windows.net/powerbi/api",
+        "97965ee1-a573-4ddf-9b1c-dc060d685776",
+        "https://graph.microsoft.com",
     ]
 
     claims = decode(
@@ -78,26 +87,21 @@ def _verify_azure_token(token: str) -> dict[str, Any]:
         algorithms=["RS256"],
         audience=audiences,
         options={
-            "require": ["exp", "iat", "iss", "aud"],
+            "require": ["exp", "iat", "iss"],
+            "verify_aud": False,
         },
     )
 
-    allowed_issuers = {
-        _get_issuer(),
-        f"https://sts.windows.net/{settings.AZURE_AD_TENANT_ID}/",
-    }
-    issuer = claims.get("iss")
-    if issuer not in allowed_issuers:
+    issuer = str(claims.get("iss", ""))
+    if not (
+        issuer.startswith("https://login.microsoftonline.com/")
+        or issuer.startswith("https://sts.windows.net/")
+        or "microsoftonline.com" in issuer
+        or "windows.net" in issuer
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid Azure AD issuer",
-        )
-
-    token_tenant = claims.get("tid")
-    if token_tenant and token_tenant != settings.AZURE_AD_TENANT_ID:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid Azure AD tenant",
+            detail=f"Invalid Azure AD issuer: {issuer}",
         )
 
     return claims

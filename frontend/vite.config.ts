@@ -15,10 +15,33 @@ export default defineConfig(({ mode }) => {
     server: {
       hmr: process.env.DISABLE_HMR !== 'true',
       proxy: {
-        '/api': {
-          target: env.VITE_API_URL || 'http://localhost:8000',
+        '/auth': {
+          target: 'http://localhost:8000',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api/, ''),
+        },
+        '/fabric': {
+          target: 'http://localhost:8000',
+          changeOrigin: true,
+        },
+        '/finin': {
+          target: 'http://localhost:8000',
+          changeOrigin: true,
+        },
+        '/users': {
+          target: 'http://localhost:8000',
+          changeOrigin: true,
+        },
+        '/workspaces': {
+          target: 'http://localhost:8000',
+          changeOrigin: true,
+        },
+        '/deploy': {
+          target: 'http://localhost:8000',
+          changeOrigin: true,
+        },
+        '/health': {
+          target: 'http://localhost:8000',
+          changeOrigin: true,
         },
       },
     },

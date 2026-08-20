@@ -418,7 +418,12 @@ export const useSetupStore = (projectId: string | null) => {
         applyForProject(projectId, (prev) => ({ ...prev, credentialsSaved: false }));
       }
     } else {
-      applyForProject(projectId, (prev) => ({ ...prev, credentialsSaved: false }));
+      // If the project doesn't exist for the current user, clear stale active project
+      try {
+        localStorage.removeItem('fabric_setup_active_project_fabric');
+        localStorage.removeItem('fabric_setup_active_project_finin');
+      } catch {}
+      applyForProject(projectId, (prev) => ({ ...prev, credentialsSaved: false, connectionsLoading: false }));
     }
 
     // 2. Source connections

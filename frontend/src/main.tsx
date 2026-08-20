@@ -1,4 +1,5 @@
 import { StrictMode } from 'react';
+import { bootstrap } from '@ms-fabric/workload-client';
 import { createRoot } from 'react-dom/client';
 import { App } from './app';
 import { Toaster } from 'sonner';
@@ -33,11 +34,11 @@ function renderLoader() {
   );
 }
 
+// Initialize MSAL and render the application
 msalInstance.initialize().then(async () => {
   try {
     const response = await msalInstance.handleRedirectPromise();
     if (response && response.idToken) {
-      // Show the Fabric logo loader while exchanging the token
       renderLoader();
       const tokenPair = await authService.entraIdExchange(response.idToken);
       localStorage.setItem('access_token', tokenPair.access_token);
@@ -49,5 +50,7 @@ msalInstance.initialize().then(async () => {
     console.error('MSAL redirect/token exchange error:', e);
   }
   renderApp();
+}).catch((err) => {
+  console.error('MSAL initialization failed, rendering app anyway:', err);
+  renderApp();
 });
-

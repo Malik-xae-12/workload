@@ -28,10 +28,18 @@ export const SignupPage = () => {
   const handleMicrosoftSignup = async () => {
     setIsLoading(true);
     try {
-      await instance.loginRedirect(loginRequest);
+      const response = await instance.loginPopup(loginRequest);
+      if (response && response.idToken) {
+        const tokenPair = await authService.entraIdExchange(response.idToken);
+        localStorage.setItem('access_token', tokenPair.access_token);
+        localStorage.setItem('refresh_token', tokenPair.refresh_token);
+        toast.success('Successfully signed in with Microsoft');
+        navigate('/setup');
+      }
     } catch (error) {
       console.error('Signup failed:', error);
       toast.error('Authentication failed. Please try again.');
+    } finally {
       setIsLoading(false);
     }
   };

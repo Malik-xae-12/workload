@@ -1,17 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { 
   Eye, 
   EyeOff, 
-  TrendingUp,
-  CheckCircle2
+  TrendingUp, 
+  CheckCircle2 
 } from 'lucide-react';
 import { useMsal } from '@azure/msal-react';
 import { loginRequest } from '../config/msalConfig';
 import { authService } from '../services/authService';
 import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'sonner';
-
 import fabricLogo from '../../../shared/styles/fabric_28_color.png';
 
 export const LoginPage = () => {
@@ -22,26 +21,74 @@ export const LoginPage = () => {
   const { instance } = useMsal();
   const navigate = useNavigate();
 
+  useEffect(() => {
+    const handleMessage = async (event: MessageEvent) => {
+      if (event.data && event.data.type === 'FABRIC_SIGN_IN_RESPONSE') {
+        const token = event.data.token;
+        console.log('✅ Received Fabric token from host:', token);
+        try {
+          // Exchange the Fabric token with our backend to receive a valid session token pair
+          const tokenPair = await authService.entraIdExchange(token);
+          localStorage.setItem('access_token', tokenPair.access_token);
+          localStorage.setItem('refresh_token', tokenPair.refresh_token);
+          toast.success('Successfully signed in with Microsoft Fabric!');
+          navigate('/setup');
+        } catch (err: any) {
+          console.error('Error handling Fabric token:', err);
+          toast.error(err?.message || 'Failed to complete Fabric sign in.');
+        } finally {
+          setIsLoading(false);
+        }
+      } else if (event.data && event.data.type === 'FABRIC_SIGN_IN_ERROR') {
+        console.error('Fabric sign in error from host:', event.data.error);
+        toast.error('Fabric authentication failed: ' + event.data.error);
+        setIsLoading(false);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [navigate]);
+
   const handleMicrosoftLogin = async () => {
     setIsLoading(true);
-    try {
-      await instance.loginRedirect(loginRequest);
-    } catch (error) {
-      console.error('Login failed:', error);
-      toast.error('Authentication failed. Please try again.');
-      setIsLoading(false);
+    const isIframe = window !== window.parent;
+
+    if (isIframe) {
+      // Running inside Fabric Workload -> request token from parent Fabric host
+      console.log('🚀 Requesting token from Fabric parent host...');
+      window.parent.postMessage({ type: 'FABRIC_SIGN_IN_REQUEST' }, '*');
+    } else {
+      // Running Standalone -> use MSAL Popup
+      try {
+        const response = await instance.loginPopup(loginRequest);
+        if (response && response.idToken) {
+          const tokenPair = await authService.entraIdExchange(response.idToken);
+          localStorage.setItem('access_token', tokenPair.access_token);
+          localStorage.setItem('refresh_token', tokenPair.refresh_token);
+          toast.success('Successfully signed in with Microsoft');
+          navigate('/setup');
+        }
+      } catch (error) {
+        console.error('Login failed:', error);
+        toast.error('Authentication failed. Please try again.');
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
-  const handleEmailLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleEmailLogin = async (e?: React.FormEvent | React.MouseEvent) => {
+    if (e && e.preventDefault) e.preventDefault();
     if (!email || !password) {
       toast.error('Please enter your email and password.');
       return;
     }
     setIsLoading(true);
     try {
+      console.log('Attempting login for:', email);
       const tokenPair = await authService.login({ email, password });
+      console.log('Login successful, token received:', tokenPair);
       localStorage.setItem('access_token', tokenPair.access_token);
       localStorage.setItem('refresh_token', tokenPair.refresh_token);
       toast.success('Successfully signed in');
@@ -101,7 +148,7 @@ export const LoginPage = () => {
 
           <form className="space-y-4" onSubmit={handleEmailLogin}>
             <div className="space-y-1.5">
-              <label htmlFor="email" className="text-xs font-semibold text-zinc-700">Email</label>
+              <label htmlFor="email" className="text-xs font-semibold text-zinc-700">Email Enter </label>
               <div className="relative">
                 <input 
                   type="email" 
@@ -144,9 +191,10 @@ export const LoginPage = () => {
             </div>
 
             <button 
-              type="submit"
+              type="button"
+              onClick={handleEmailLogin}
               disabled={isLoading}
-              className="w-full bg-forest-500 text-white font-bold py-2.5 rounded-xl text-sm shadow-lg shadow-forest-500/20 hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-forest-500 text-white font-bold py-2.5 rounded-xl text-sm shadow-lg shadow-forest-500/20 hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
               {isLoading ? 'Signing in...' : 'Sign in'}
             </button>
