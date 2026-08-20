@@ -8,7 +8,7 @@ import { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 import type { SourceConnection } from '../../types';
-import { listGateways, checkConnectionNameAvailable, listDatabases, type GatewayInfo } from '../../../../layouts/services/fabricApi';
+import { listGateways, checkConnectionNameAvailable, type GatewayInfo } from '../../../../layouts/services/fabricApi';
 import { SelectDropdown } from '../../../../shared/components/selectdropdown';
 import { validateSimpleName } from '../../../../shared/utils/nameValidation';
 
@@ -200,15 +200,16 @@ export const SourceStep = ({ connections, onAddConnection, onDeleteConnection, l
   const nameCheckRequestId = useRef(0);
 
   // Database listing (Azure SQL / SQL Server only — see supported flag).
+  // TEMPORARILY DISABLED — see the comment on the effect below. Defaults
+  // to false/unsupported so the plain manual text field renders
+  // immediately with no flash of the (currently inert) dropdown UI.
   const [dbOptions, setDbOptions] = useState<string[]>([]);
   const [dbOptionsLoading, setDbOptionsLoading] = useState(false);
-  const [dbListingSupported, setDbListingSupported] = useState(true);
+  const [dbListingSupported, setDbListingSupported] = useState(false);
   const [dbListError, setDbListError] = useState<string | null>(null);
   const [dbListNote, setDbListNote] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const dbListTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const dbListRequestId = useRef(0);
 
   // Table selection ("Tables to move to Bronze") now happens in the
   // Config → Metadata step, after this connection's Metadata
@@ -279,66 +280,22 @@ export const SourceStep = ({ connections, onAddConnection, onDeleteConnection, l
 
   // Debounced database listing — refetches whenever the server or
   // credentials change, for Azure SQL / SQL Server only.
+  //
+  // TEMPORARILY DISABLED: even when this correctly detects a login that
+  // can't browse the database list (DatabaseAccessRestricted — a scoped/
+  // contained Azure SQL login, common in production) and falls back to a
+  // plain text field with an explanatory note, it was still confusing
+  // enough in practice to look like a hard blocker on adding a source
+  // connection. Rather than debug the UX further right now, this whole
+  // dynamic-listing feature is switched off — every database type just
+  // gets a plain manual text field below, no fetch, no dropdown, nothing
+  // that can go wrong. To re-enable: restore the block that used to be
+  // here (see git history / the previous version of this file) which set
+  // `supported` based on db_type and called `listDatabases(...)`.
   useEffect(() => {
-    if (dbListTimer.current) clearTimeout(dbListTimer.current);
-
-    const supported = formData.databaseType === 'Azure SQL' || formData.databaseType === 'SQL Server';
-    setDbListingSupported(supported);
-    if (!supported) {
-      setDbOptions([]);
-      return;
-    }
-
-    const hasCreds =
-      formData.authType === 'ServicePrincipal'
-        ? !!(formData.tenantId && formData.clientId && formData.clientSecret)
-        : !!(formData.username && formData.password);
-    if (!formData.server || !hasCreds) {
-      setDbOptions([]);
-      return;
-    }
-
-    const thisRequestId = ++dbListRequestId.current;
-    dbListTimer.current = setTimeout(() => {
-      setDbOptionsLoading(true);
-      setDbListError(null);
-      setDbListNote(null);
-      listDatabases({
-        db_type: formData.databaseType,
-        server: formData.server,
-        username: formData.username || undefined,
-        password: formData.password || undefined,
-        auth_type: formData.authType,
-        tenant_id: formData.tenantId || undefined,
-        client_id: formData.clientId || undefined,
-        client_secret: formData.clientSecret || undefined,
-      })
-        .then((res) => {
-          if (thisRequestId !== dbListRequestId.current) return;
-          setDbOptions(res.databases);
-          setDbListingSupported(res.supported);
-          // Show the note whenever present — covers both "found some
-          // databases, but the list is limited" and "can't browse the
-          // list at all, here's why" (supported=false) cases.
-          setDbListNote(res.message || null);
-        })
-        .catch((err: any) => {
-          if (thisRequestId !== dbListRequestId.current) return;
-          setDbOptions([]);
-          // Surface the real reason (bad credentials, unreachable server,
-          // etc.) instead of silently showing "no databases found" — that
-          // message previously masked genuine connection failures.
-          setDbListError(err?.message || "We couldn't load databases from that server. Please check the details and try again.");
-        })
-        .finally(() => {
-          if (thisRequestId !== dbListRequestId.current) return;
-          setDbOptionsLoading(false);
-        });
-    }, 600);
-    return () => {
-      if (dbListTimer.current) clearTimeout(dbListTimer.current);
-    };
-  }, [formData.databaseType, formData.server, formData.username, formData.password, formData.authType, formData.tenantId, formData.clientId, formData.clientSecret]);
+    setDbListingSupported(false);
+    setDbOptions([]);
+  }, [formData.databaseType]);
 
   const handleDelete = async (conn: SourceConnection) => {
     if (!onDeleteConnection) return;
