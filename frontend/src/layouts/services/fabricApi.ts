@@ -845,3 +845,72 @@ export function getBuildSemanticModelStatus(projectId: string, jobId: string) {
     `/projects/${projectId}/semantic-model/build-status/${jobId}`
   );
 }
+
+// ── Source -> Bronze table selection ────────────────────────────────
+
+export interface SourceTable {
+  id: number;
+  schema_name: string;
+  table_name: string;
+  is_active: boolean;
+}
+
+export function listConnectionTables(projectId: string, connectionName: string) {
+  return request<SourceTable[]>(
+    `/projects/${projectId}/connections/${encodeURIComponent(connectionName)}/tables`
+  );
+}
+
+export function updateConnectionTables(
+  projectId: string,
+  connectionName: string,
+  activeIds: number[]
+) {
+  return request<{ status: string; rows_affected: number }>(
+    `/projects/${projectId}/connections/${encodeURIComponent(connectionName)}/tables`,
+    { method: 'PUT', body: JSON.stringify({ active_ids: activeIds }) }
+  );
+}
+
+// Pre-notebook table listing/selection — queries the SOURCE database
+// directly (not the Fabric-side OneTimeConfigETL config table, which
+// doesn't exist yet until that connection's notebook has run).
+
+export type PendingTableSelectionMode = 'all' | 'schema' | 'table';
+
+export interface PendingSourceTable {
+  schema_name: string;
+  table_name: string;
+  is_selected: boolean;
+}
+
+export interface PendingSourceSchema {
+  schema_name: string;
+  is_selected: boolean;
+}
+
+export function listPendingSourceSchemas(connectionId: string) {
+  return request<{ mode: PendingTableSelectionMode; applied: boolean; schemas: PendingSourceSchema[] }>(
+    `/connections/${connectionId}/pending-schemas`
+  );
+}
+
+export function listPendingSourceTables(connectionId: string) {
+  return request<{ mode: PendingTableSelectionMode; applied: boolean; tables: PendingSourceTable[] }>(
+    `/connections/${connectionId}/pending-tables`
+  );
+}
+
+export function savePendingSourceTableSelection(
+  connectionId: string,
+  mode: PendingTableSelectionMode,
+  payload: { schemas?: string[]; selected?: string[] }
+) {
+  return request<{ status: string; mode: PendingTableSelectionMode; selected_count: number; applied: boolean; apply_error?: string }>(
+    `/connections/${connectionId}/pending-tables`,
+    {
+      method: 'PUT',
+      body: JSON.stringify({ mode, schemas: payload.schemas ?? [], selected: payload.selected ?? [] }),
+    }
+  );
+}

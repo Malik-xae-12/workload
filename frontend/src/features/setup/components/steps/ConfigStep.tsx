@@ -3,11 +3,20 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Play, Loader2, CheckCircle2, Database, FileText, XCircle, Workflow, Lock, Download, Upload, FileSpreadsheet, Sparkles } from 'lucide-react';
+import { Play, Loader2, CheckCircle2, Database, FileText, XCircle, Workflow, Lock, Download, Upload, FileSpreadsheet, Sparkles, ChevronRight, ChevronLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import type { SourceConnection, ConfigTask, NotebookItem, PipelineItem } from '../../types';
-import { useEffect, useState, useRef, type JSX } from 'react';
-import { uploadBlobConfig } from '../../../../layouts/services/fabricApi';
+import { useEffect, useState, useRef, Fragment, type JSX } from 'react';
+import {
+  uploadBlobConfig,
+  listPendingSourceSchemas,
+  listPendingSourceTables,
+  savePendingSourceTableSelection,
+  type PendingTableSelectionMode,
+  type PendingSourceSchema,
+  type PendingSourceTable,
+} from '../../../../layouts/services/fabricApi';
+import { SelectDropdown } from '../../../../shared/components/selectdropdown';
 
 interface ConfigStepProps {
   projectId: string;
@@ -99,6 +108,7 @@ export const ConfigStep = ({
   onRunItlNotebook,
   onRunItlPipelines,
   itlNotebookRunStatus,
+  itlStatusChecked,
   onDeployGoldStoredProcedures,
   onDeployMasterExecutor,
   onExecuteMasterSp,
@@ -116,7 +126,20 @@ export const ConfigStep = ({
   // Slice per-connection arrays — each connection is fully independent
   const connNotebooks: NotebookItem[] = (selectedConnection ? notebooks[selectedConnection] : undefined) ?? [];
   const connPipelineFiles: PipelineItem[] = (selectedConnection ? pipelineFiles[selectedConnection] : undefined) ?? [];
-  const connConfigLoading = selectedConnection ? (configLoading as Record<string, boolean>)[selectedConnection] ?? false : false;
+  // Defaults to true (not false) until proven otherwise — undefined here
+  // means "the fetch hasn't even started yet", not "nothing to load".
+  // Defaulting to false let ArtifactGroupCard's auto-create/auto-deploy
+  // effects run on their very first mount — before this connection's
+  // notebooks/pipelines had actually been fetched back from the backend
+  // — since React fires a child's effects before its parent's, so this
+  // component's own fetch-trigger effect (which sets configLoading=true)
+  // hadn't run yet. With notebooksDone/pipelinesDone still reading their
+  // empty-array defaults at that moment too, the auto-create/auto-deploy
+  // conditions looked satisfied and fired for real — re-uploading
+  // notebooks and REDEPLOYING pipelines (WatermarkUpdate, Master, etc.)
+  // on every single page reload. Defaulting to true keeps everything
+  // gated shut until the real fetch resolves.
+  const connConfigLoading = selectedConnection ? (configLoading as Record<string, boolean>)[selectedConnection] ?? true : false;
   // Same slicing for ITL state — without this, ITL status leaked across sources
   // (e.g. showing "Done"/"Deployed" for a source that was never run) whenever
   // more than one connection existed in the workspace.
@@ -138,6 +161,16 @@ export const ConfigStep = ({
   const [notebooksUploadingMap, setNotebooksUploadingMap] = useState<Record<string, boolean>>({});
   const [pipelinesUploadingMap, setPipelinesUploadingMap] = useState<Record<string, boolean>>({});
   const [blobConfigStatusMap, setBlobConfigStatusMap] = useState<Record<string, 'idle' | 'loading' | 'success'>>({});
+  // Whether a Tables-to-move-to-Bronze selection has actually been saved
+  // (and applied to WH_MetaData) for a given connection. Undefined means
+  // "not known yet" (TableSelectionPanel hasn't reported in), which is
+  // treated as not-applied so OTL stays locked until it has — this also
+  // covers a page reload: TableSelectionPanel re-fetches on mount and
+  // reports back whatever was actually saved last time via its
+  // onAppliedChange callback, so a real prior save is picked back up
+  // immediately instead of asking the person to save again.
+  const [tableSelectionAppliedMap, setTableSelectionAppliedMap] = useState<Record<string, boolean>>({});
+  const tableSelectionApplied = selectedConnection ? !!tableSelectionAppliedMap[selectedConnection] : false;
   // Fabric-mode "Hide details" / "View details" toggle for the Notebooks
   // and Pipelines tables — same collapse-once-complete pattern the Finin
   // mode's ArtifactGroupCard/ItlSection already use, per connection so
@@ -158,7 +191,6 @@ export const ConfigStep = ({
   const pipelinesUploading = selectedConnection ? !!pipelinesUploadingMap[selectedConnection] : false;
   const blobConfigStatus = selectedConnection ? blobConfigStatusMap[selectedConnection] ?? 'idle' : 'idle';
   const pendingPipelineDeployMap = useRef<Record<string, boolean>>({});
-  const autoRunTriggeredMap = useRef<Record<string, boolean>>({});
 
   useEffect(() => {
     if (selectedConnection && connections.length > 0) {
@@ -209,54 +241,16 @@ export const ConfigStep = ({
     }
   }, [allNotebooksDone, anyNotebookUploading, notebooksUploading, selectedConnection]);
 
-  // Guards the actual moment we decide to auto-trigger a run. Keyed by
-  // "connId:pipelineName" and set the instant we call onRunPipeline —
-  // synchronously, before any state update/re-render happens. Without
-  // this, two effects that both look for "the next eligible pipeline"
-  // (or the same effect re-entering before its own state write lands,
-  // e.g. under React StrictMode's dev double-invoke) can both observe
-  // the same pipeline as still 'not-started' and BOTH call
-  // onRunPipeline for it — which is exactly why 02_PL_SourceToBronze
-  // (or whichever pipeline is next in line at that moment) was ending up
-  // running twice per deploy, even though runPipelineFromFiles's own
-  // guard checks runStatus first: that check is on state that hasn't
-  // been updated yet in the second, near-simultaneous call.
-  const autoRunPipelineGuardRef = useRef<Set<string>>(new Set());
-  const triggerAutoRun = (connId: string, pf: PipelineItem) => {
-    const key = `${connId}:${pf.name}`;
-    if (autoRunPipelineGuardRef.current.has(key)) return;
-    autoRunPipelineGuardRef.current.add(key);
-    onRunPipeline(pf.name);
-  };
-
-  // Auto-run MetaDataConfig after all pipelines deployed (scoped to the current connection)
-  useEffect(() => {
-    if (!selectedConnection) return;
-    if (allPipelinesDone && !anyPipelineRunning && !autoRunTriggeredMap.current[selectedConnection]) {
-      const metadata = sortedPipelineFiles.find((p) => p.name.includes('MetaDataConfig'));
-      if (metadata?.fabricItemId && !metadata.runStatus) {
-        autoRunTriggeredMap.current[selectedConnection] = true;
-        triggerAutoRun(selectedConnection, metadata);
-      }
-    }
-  }, [allPipelinesDone, selectedConnection]);
-
-  // Auto-run next pipeline after previous completes
-  useEffect(() => {
-    if (!allPipelinesDone) return;
-    for (let i = 0; i < sortedPipelineFiles.length; i++) {
-      const pf = sortedPipelineFiles[i];
-      if (pf.runStatus === 'completed') continue;
-      if (pf.runStatus === 'running') break;
-      if (i === 0 || sortedPipelineFiles[i - 1].runStatus === 'completed') {
-        if (pf.fabricItemId && (!pf.runStatus || pf.runStatus === 'not-started') && selectedConnection) {
-          triggerAutoRun(selectedConnection, pf);
-        }
-      }
-      break;
-    }
-  }, [connPipelineFiles.map(p => p.runStatus).join(',')]);
-
+  // NOTE: pipeline auto-running is now owned entirely by ArtifactGroupCard,
+  // which auto-runs the pipeline(s) within its own group (Metadata's
+  // 01_PL_SQL_ConfigCreation, then OTL's 02_PL_SourceToBronze) one at a
+  // time, right where onRunPipeline is actually wired up. There used to
+  // also be a connection-wide chain effect here that scanned every
+  // pipeline across both groups and auto-ran whichever was "next" — with
+  // ArtifactGroupCard's own per-group effect now doing the same job, the
+  // two fired independently for the same pipeline (e.g. 02_PL_SourceToBronze
+  // getting run/created twice: once from each effect). Removed here so
+  // there's exactly one place that decides when a pipeline auto-runs.
   const deployInFlightMap = useRef<Record<string, boolean>>({});
 
   const deployPipelines = async () => {
@@ -271,19 +265,6 @@ export const ConfigStep = ({
     } finally {
       setPipelinesUploadingMap((prev) => ({ ...prev, [connId]: false }));
       deployInFlightMap.current[connId] = false;
-    }
-  };
-
-  const handleRunNotebooks = async () => {
-    if (!selectedConn) return;
-    const connId = selectedConn.id;
-    setNotebooksUploadingMap((prev) => ({ ...prev, [connId]: true }));
-    pendingPipelineDeployMap.current[connId] = true;
-    onRunTask('1');
-    try {
-      await onUploadNotebooks(selectedConn.name, connIndex);
-    } finally {
-      setNotebooksUploadingMap((prev) => ({ ...prev, [connId]: false }));
     }
   };
 
@@ -306,16 +287,29 @@ export const ConfigStep = ({
     }
   };
 
+  // Auto-trigger Blob Configuration too — same "no manual click needed"
+  // rule applies here; it's just another artifact-creation step, not one
+  // of the two things (Table Selection, ITL Excel) that genuinely need a
+  // person's judgment.
+  const autoBlobConfigRef = useRef<Record<string, boolean>>({});
+  useEffect(() => {
+    if (!isBlob || !selectedConn) return;
+    const connId = selectedConn.id;
+    const status = blobConfigStatusMap[connId] || 'idle';
+    if (status !== 'idle' || autoBlobConfigRef.current[connId]) return;
+    autoBlobConfigRef.current[connId] = true;
+    handleUploadBlobConfig();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isBlob, selectedConn?.id, blobConfigStatusMap[selectedConn?.id || '']]);
 
-  const handleDeployPipelines = async () => {
-    await deployPipelines();
-  };
 
-  // ── Finin mode: paired "Config Files" → "Bronze / Silver" artifact groups.
-  // Fabric mode keeps the original bulk create-all-notebooks-then-all-pipelines
-  // flow above; Finin mode creates+deploys one notebook/pipeline pair at a
-  // time. State here is keyed per-connection, same pattern as the maps above,
-  // so switching connections never shows stale progress from a different one.
+  // ── Metadata → OTL: paired artifact groups, used for both Fabric and
+  // Finin modes. "Metadata" creates+deploys 01_NB_SQL_ConfigCreation +
+  // 01_PL_SQL_ConfigCreation together; "OTL" creates+deploys
+  // 01_NB_BronzeToSilver + 02_PL_SourceToBronze together, one
+  // notebook/pipeline pair at a time. State here is keyed per-connection,
+  // same pattern as the maps above, so switching connections never shows
+  // stale progress from a different one.
   const isConfigCreationItem = (name: string) => name.toLowerCase().includes('configcreation');
   const group1Notebooks = connNotebooks.filter((nb) => isConfigCreationItem(nb.name));
   const group1Pipelines = sortedPipelineFiles.filter((p) => isConfigCreationItem(p.name));
@@ -351,7 +345,7 @@ export const ConfigStep = ({
     group1PendingDeployMap.current[connId] = true;
     onRunTask('1');
     try {
-      await onUploadNotebooks(selectedConn.name, connIndex, group1Notebooks.map((nb) => nb.filename), 'finin');
+      await onUploadNotebooks(selectedConn.name, connIndex, group1Notebooks.map((nb) => nb.filename), appMode);
     } finally {
       setGroup1NotebooksUploadingMap((prev) => ({ ...prev, [connId]: false }));
     }
@@ -364,7 +358,7 @@ export const ConfigStep = ({
     setGroup1PipelinesUploadingMap((prev) => ({ ...prev, [connId]: true }));
     onRunTask('2');
     try {
-      await onUploadPipelines(selectedConn.name, connIndex, group1Pipelines.map((p) => p.filename), 'finin');
+      await onUploadPipelines(selectedConn.name, connIndex, group1Pipelines.map((p) => p.filename), appMode);
     } finally {
       setGroup1PipelinesUploadingMap((prev) => ({ ...prev, [connId]: false }));
       deployInFlightMap.current[`g1:${connId}`] = false;
@@ -377,7 +371,7 @@ export const ConfigStep = ({
     group2PendingDeployMap.current[connId] = true;
     onRunTask('1');
     try {
-      await onUploadNotebooks(selectedConn.name, connIndex, group2Notebooks.map((nb) => nb.filename), 'finin');
+      await onUploadNotebooks(selectedConn.name, connIndex, group2Notebooks.map((nb) => nb.filename), appMode);
     } finally {
       setGroup2NotebooksUploadingMap((prev) => ({ ...prev, [connId]: false }));
     }
@@ -390,7 +384,7 @@ export const ConfigStep = ({
     setGroup2PipelinesUploadingMap((prev) => ({ ...prev, [connId]: true }));
     onRunTask('2');
     try {
-      await onUploadPipelines(selectedConn.name, connIndex, group2Pipelines.map((p) => p.filename), 'finin');
+      await onUploadPipelines(selectedConn.name, connIndex, group2Pipelines.map((p) => p.filename), appMode);
     } finally {
       setGroup2PipelinesUploadingMap((prev) => ({ ...prev, [connId]: false }));
       deployInFlightMap.current[`g2:${connId}`] = false;
@@ -468,398 +462,203 @@ export const ConfigStep = ({
       )}
 
 
-      {/* Connection Selection */}
+      {/* Connection Selection — dropdown instead of a card grid, so this
+          stays usable with 10+ connections. */}
       <div className="mb-6">
         <h3 className="text-sm font-bold text-slate-700 mb-3">Select Connection</h3>
         {connections.length === 0 && connectionsLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 animate-pulse" aria-label="Loading connections">
-            <div className="h-20 bg-slate-100 rounded-xl" />
-            <div className="h-20 bg-slate-100 rounded-xl" />
-          </div>
+          <div className="h-11 bg-slate-100 rounded-xl animate-pulse" aria-label="Loading connections" />
         ) : connections.length === 0 ? (
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-8 text-center">
             <p className="text-sm text-slate-500">No connections available. Add one in the Source step.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {connections.map((conn) => (
-              <button
-                key={conn.id}
-                onClick={() => onSelectConnection(conn.id)}
-                className={`p-4 rounded-xl border-2 transition-all text-left ${selectedConnection === conn.id
-                    ? 'border-emerald-500 bg-emerald-50/50'
-                    : 'border-slate-200 bg-white hover:border-emerald-200'
-                  }`}
-              >
-                <div className="flex items-start gap-3">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${selectedConnection === conn.id ? 'bg-emerald-600' : 'bg-slate-100'
-                    }`}>
-                    <Database size={18} className={selectedConnection === conn.id ? 'text-white' : 'text-slate-500'} />
+          <>
+            <SelectDropdown
+              value={connections.find((c) => c.id === selectedConnection)?.name ?? ''}
+              options={connections.map((c) => c.name)}
+              placeholder="Select a connection…"
+              onChange={(name) => {
+                const c = connections.find((c) => c.name === name);
+                if (c) onSelectConnection(c.id);
+              }}
+            />
+            {(() => {
+              const conn = connections.find((c) => c.id === selectedConnection);
+              if (!conn) return null;
+              return (
+                <div className="mt-2.5 p-4 rounded-xl border-2 border-emerald-500 bg-emerald-50/50">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-emerald-600">
+                      <Database size={18} className="text-white" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-sm font-bold text-slate-900 mb-0.5">{conn.name}</h4>
+                      <p className="text-xs text-slate-500 truncate">{conn.databaseType} • {conn.server}</p>
+                    </div>
+                    <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="text-sm font-bold text-slate-900 mb-0.5">{conn.name}</h4>
-                    <p className="text-xs text-slate-500 truncate">{conn.databaseType} • {conn.server}</p>
-                  </div>
-                  {selectedConnection === conn.id && <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />}
                 </div>
-              </button>
-            ))}
-          </div>
+              );
+            })()}
+          </>
         )}
       </div>
 
       {selectedConnection && (
         <div className="space-y-5">
-          {appMode === 'finin' ? (
-            <>
-              <ArtifactGroupCard
-                title="Config Files"
-                rows={[
-                  ...group1Notebooks.map((nb) => ({ key: `nb-${nb.filename}`, name: nb.name, kind: 'Notebook' as const, uploadStatus: nb.uploadStatus })),
-                  ...group1Pipelines.map((p) => ({ key: `pl-${p.filename}`, name: p.name, kind: 'Pipeline' as const, uploadStatus: p.uploadStatus, runStatus: p.runStatus, fabricItemId: p.fabricItemId })),
-                ]}
-                locked={false}
-                loading={loading || connConfigLoading || !!connectionsLoading}
-                notebooksExist={group1Notebooks.length > 0}
-                pipelinesExist={group1Pipelines.length > 0}
-                notebooksDone={group1NotebooksDone}
-                pipelinesDone={group1PipelinesDone}
-                notebooksUploading={group1NotebooksUploading || group1AnyNotebookUploading}
-                pipelinesUploading={group1PipelinesUploading || group1PipelineAutoPending}
-                onCreate={handleGroup1Create}
-                onDeploy={handleGroup1Deploy}
-                onRunPipeline={onRunPipeline}
-              />
+          <>
+            <ArtifactGroupCard
+              key={`metadata-${selectedConn?.id}`}
+              title="OTL Metadata Creation"
+              icon={<Database size={13} />}
+              requireManualStart
+              rows={[
+                ...group1Notebooks.map((nb) => ({ key: `nb-${nb.filename}`, name: nb.name, kind: 'Notebook' as const, uploadStatus: nb.uploadStatus })),
+                ...group1Pipelines.map((p) => ({ key: `pl-${p.filename}`, name: p.name, kind: 'Pipeline' as const, uploadStatus: p.uploadStatus, runStatus: p.runStatus, fabricItemId: p.fabricItemId })),
+              ]}
+              locked={false}
+              loading={loading || connConfigLoading || !!connectionsLoading}
+              notebooksExist={group1Notebooks.length > 0}
+              pipelinesExist={group1Pipelines.length > 0}
+              notebooksDone={group1NotebooksDone}
+              pipelinesDone={group1PipelinesDone}
+              notebooksUploading={group1NotebooksUploading || group1AnyNotebookUploading}
+              pipelinesUploading={group1PipelinesUploading || group1PipelineAutoPending}
+              onCreate={handleGroup1Create}
+              onDeploy={handleGroup1Deploy}
+              onRunPipeline={onRunPipeline}
+            />
 
-              {group1PipelinesRan && !connConfigLoading && (
-                isConnectionMapped ? (
-                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center justify-between gap-4">
-                    <div className="flex items-start gap-2.5">
-                      <CheckCircle2 size={18} className="text-emerald-600 shrink-0 mt-0.5" />
-                      <div>
-                        <p className="text-[13px] font-bold text-emerald-900">Source columns mapped</p>
-                        <p className="text-[11px] text-emerald-700 mt-0.5">
-                          <code>SourceInformationSchemaMapped</code> is built for{' '}
-                          <span className="font-semibold">{selectedConn?.name}</span>. You can review or adjust it any time.
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={onGoToAIMapping}
-                      disabled={!onGoToAIMapping}
-                      className="shrink-0 flex items-center gap-1.5 px-4 py-2 text-[11px] font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition-all"
-                    >
-                      View Mapping →
-                    </button>
-                  </div>
-                ) : (
-                  <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 flex items-center justify-between gap-4">
+            {appMode === 'finin' && group1PipelinesRan && !connConfigLoading && (
+              isConnectionMapped ? (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center justify-between gap-4">
+                  <div className="flex items-start gap-2.5">
+                    <CheckCircle2 size={18} className="text-emerald-600 shrink-0 mt-0.5" />
                     <div>
-                      <p className="text-[13px] font-bold text-teal-900">Map source columns before Bronze/Silver</p>
-                      <p className="text-[11px] text-teal-700 mt-0.5">
-                        Head to AI Mapping to build <code>SourceInformationSchemaMapped</code> for{' '}
-                        <span className="font-semibold">{selectedConn?.name}</span> — 01_NB_BronzeToSilver reads from it
-                        instead of SourceInformationSchema. You'll return here automatically once it's saved.
+                      <p className="text-[13px] font-bold text-emerald-900">Source columns mapped</p>
+                      <p className="text-[11px] text-emerald-700 mt-0.5">
+                        <code>SourceInformationSchemaMapped</code> is built for{' '}
+                        <span className="font-semibold">{selectedConn?.name}</span>. You can review or adjust it any time.
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={onGoToAIMapping}
-                      disabled={!onGoToAIMapping}
-                      className="shrink-0 flex items-center gap-1.5 px-4 py-2 text-[11px] font-bold rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 transition-all"
-                    >
-                      Go to AI Mapping →
-                    </button>
                   </div>
-                )
-              )}
+                  <button
+                    type="button"
+                    onClick={onGoToAIMapping}
+                    disabled={!onGoToAIMapping}
+                    className="shrink-0 flex items-center gap-1.5 px-4 py-2 text-[11px] font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition-all"
+                  >
+                    View Mapping →
+                  </button>
+                </div>
+              ) : (
+                <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-[13px] font-bold text-teal-900">Map source columns before Bronze/Silver</p>
+                    <p className="text-[11px] text-teal-700 mt-0.5">
+                      Head to AI Mapping to build <code>SourceInformationSchemaMapped</code> for{' '}
+                      <span className="font-semibold">{selectedConn?.name}</span> — 01_NB_BronzeToSilver reads from it
+                      instead of SourceInformationSchema. You'll return here automatically once it's saved.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onGoToAIMapping}
+                    disabled={!onGoToAIMapping}
+                    className="shrink-0 flex items-center gap-1.5 px-4 py-2 text-[11px] font-bold rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 transition-all"
+                  >
+                    Go to AI Mapping →
+                  </button>
+                </div>
+              )
+            )}
 
-              <ArtifactGroupCard
-                title="Bronze / Silver"
-                rows={[
-                  ...group2Notebooks.map((nb) => ({ key: `nb-${nb.filename}`, name: nb.name, kind: 'Notebook' as const, uploadStatus: nb.uploadStatus })),
-                  ...group2Pipelines.map((p) => ({ key: `pl-${p.filename}`, name: p.name, kind: 'Pipeline' as const, uploadStatus: p.uploadStatus, runStatus: p.runStatus, fabricItemId: p.fabricItemId })),
-                ]}
-                locked={appMode === 'finin' ? !isConnectionMapped : !group1PipelinesDone}
-                loading={loading || connConfigLoading || !!connectionsLoading}
-                notebooksExist={group2Notebooks.length > 0}
-                pipelinesExist={group2Pipelines.length > 0}
-                notebooksDone={group2NotebooksDone}
-                pipelinesDone={group2PipelinesDone}
-                notebooksUploading={group2NotebooksUploading || group2AnyNotebookUploading}
-                pipelinesUploading={group2PipelinesUploading || group2PipelineAutoPending}
-                onCreate={handleGroup2Create}
-                onDeploy={handleGroup2Deploy}
-                onRunPipeline={onRunPipeline}
+            {/* Tables to move to Bronze — shown only once Metadata's
+                01_PL_SQL_ConfigCreation has actually finished RUNNING
+                (not just been deployed): that's the earliest moment
+                OneTimeConfigETL exists in WH_MetaData for the picker to
+                read from and, on Save, write IsActive into directly. */}
+            {selectedConn && group1PipelinesRan && !connConfigLoading && (
+              <TableSelectionPanel
+                connection={selectedConn}
+                onAppliedChange={(applied) =>
+                  setTableSelectionAppliedMap((prev) => ({ ...prev, [selectedConn.id]: applied }))
+                }
               />
-            </>
-          ) : (
-            <>
-              {/* Notebooks */}
-              {selectedConn?.databaseType?.toLowerCase() !== 'azure blob' && (
-                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-                  <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
-                    <div className="flex items-center gap-2">
-                      <FileText size={15} className="text-emerald-600" />
-                      <h3 className="text-[13px] font-bold text-slate-700">Notebooks</h3>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={handleRunNotebooks}
-                        disabled={loading || notebooksUploading || allNotebooksDone || connNotebooks.length === 0}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all ${allNotebooksDone
-                            ? 'bg-emerald-50 text-emerald-700'
-                            : 'bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50'
-                          }`}
-                      >
-                        {allNotebooksDone ? (
-                          <><CheckCircle2 size={12} /> Created</>
-                        ) : notebooksUploading || anyNotebookUploading ? (
-                          <><Loader2 size={12} className="animate-spin" /> Creating...</>
-                        ) : (
-                          <><Upload size={12} /> Create</>
-                        )}
-                      </button>
-                      {connNotebooks.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={toggleNotebooksDetails}
-                          className="text-[11px] font-bold text-emerald-600 hover:text-emerald-800"
-                        >
-                          {showNotebooksDetails ? 'Hide details' : 'View details'}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  {!showNotebooksDetails ? null : connConfigLoading ? (
-                    <div className="p-4">
-                      <div className="space-y-2">
-                        {[1, 2, 3, 4].map((i) => (
-                          <div key={i} className="flex items-center gap-4 px-5 py-3 animate-pulse">
-                            <div className="w-6 h-6 bg-slate-200 rounded" />
-                            <div className="flex-1">
-                              <div className="h-3 bg-slate-200 rounded w-1/3 mb-2" />
-                              <div className="h-2 bg-slate-200 rounded w-1/6" />
-                            </div>
-                            <div className="w-20 h-3 bg-slate-200 rounded" />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : connNotebooks.length === 0 ? (
-                    <div className="p-8 text-center">
-                      <FileText size={24} className="text-slate-300 mx-auto mb-2" />
-                      <p className="text-xs text-slate-500">No notebooks found</p>
-                    </div>
-                  ) : (
-                    <table className="w-full">
-                      <thead className="border-b border-slate-100">
-                        <tr>
-                          <th className="px-5 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Name</th>
-                          <th className="px-5 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-50">
-                        {connNotebooks.map((nb) => (
-                          <tr key={nb.filename} className="hover:bg-slate-50/50">
-                            <td className="px-5 py-3">
-                              <div className="flex items-center gap-2">
-                                <FileText size={13} className="text-slate-400" />
-                                <span className="text-[12px] font-medium text-slate-800">{nb.name}</span>
-                              </div>
-                            </td>
-                            <td className="px-5 py-3">
-                              {nb.uploadStatus === 'success' ? (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700"><CheckCircle2 size={11} /> Created</span>
-                              ) : nb.uploadStatus === 'uploading' ? (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600"><Loader2 size={11} className="animate-spin" /> Creating</span>
-                              ) : nb.uploadStatus === 'failed' ? (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600"><XCircle size={11} /> Failed</span>
-                              ) : (
-                                <span className="text-[10px] font-bold text-amber-600">Not Created</span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-              )}
+            )}
 
-              {/* Blob Configuration */}
-              {selectedConn?.databaseType?.toLowerCase() === 'azure blob' && (
-                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm mb-6">
-                  <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
-                    <div className="flex items-center gap-2">
-                      <FileText size={15} className="text-emerald-600" />
-                      <h3 className="text-[13px] font-bold text-slate-700">Blob Configuration</h3>
-                    </div>
-                    <button
-                      onClick={handleUploadBlobConfig}
-                      disabled={loading || blobConfigStatus === 'loading' || blobConfigStatus === 'success'}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all ${blobConfigStatus === 'success'
-                          ? 'bg-emerald-50 text-emerald-700'
-                          : 'bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50'
-                        }`}
-                    >
-                      {blobConfigStatus === 'success' ? (
-                        <><CheckCircle2 size={12} /> Generated</>
-                      ) : blobConfigStatus === 'loading' ? (
-                        <><Loader2 size={12} className="animate-spin" /> Generating...</>
-                      ) : (
-                        <><Upload size={12} /> Generate & Upload</>
-                      )}
-                    </button>
-                  </div>
-                  <div className="p-5 flex flex-col justify-center items-center text-center">
-                    <Database size={24} className="text-slate-300 mb-2" />
-                    <p className="text-sm text-slate-600">
-                      Discover the folder structure in the Azure Blob Storage container and upload the schema (<code>blob_config.json</code>) to the Bronze Lakehouse.
-                    </p>
-                    <p className="text-xs text-slate-400 mt-2">
-                      The pipeline will read this configuration to know which folders to process.
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Pipelines */}
+            {/* Blob Configuration — Azure Blob sources don't have a
+                Metadata/OTL notebook pair; they need the discovered
+                folder structure uploaded instead before OTL can run. */}
+            {isBlob && (
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
                 <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
                   <div className="flex items-center gap-2">
-                    <Workflow size={15} className="text-emerald-600" />
-                    <h3 className="text-[13px] font-bold text-slate-700">Pipelines</h3>
+                    <FileText size={15} className="text-emerald-600" />
+                    <h3 className="text-[13px] font-bold text-slate-700">Blob Configuration</h3>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {allPipelinesRan ? (
-                      <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-emerald-50 text-emerald-700">
-                        <CheckCircle2 size={12} /> Done
-                      </span>
+                  <button
+                    onClick={handleUploadBlobConfig}
+                    disabled={loading || blobConfigStatus === 'loading' || blobConfigStatus === 'success'}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all ${blobConfigStatus === 'success'
+                        ? 'bg-emerald-50 text-emerald-700'
+                        : 'bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50'
+                      }`}
+                  >
+                    {blobConfigStatus === 'success' ? (
+                      <><CheckCircle2 size={12} /> Generated</>
+                    ) : blobConfigStatus === 'loading' ? (
+                      <><Loader2 size={12} className="animate-spin" /> Generating...</>
                     ) : (
-                      <button
-                        onClick={handleDeployPipelines}
-                        disabled={loading || pipelinesUploading || allPipelinesDone || connPipelineFiles.length === 0 || notebooksUploading || (!allNotebooksDone && !allPipelinesDone)}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all ${allPipelinesDone
-                            ? 'bg-emerald-50 text-emerald-700'
-                            : (notebooksUploading || (!allNotebooksDone && !allPipelinesDone))
-                              ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                              : 'bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50'
-                          }`}
-                      >
-                        {allPipelinesDone ? (
-                          <><CheckCircle2 size={12} /> Created</>
-                        ) : pipelinesUploading || anyPipelineUploading ? (
-                          <><Loader2 size={12} className="animate-spin" /> Creating...</>
-                        ) : notebooksUploading ? (
-                          <><Lock size={12} /> Waiting for Notebooks</>
-                        ) : !allNotebooksDone ? (
-                          <><Lock size={12} /> Create Notebooks First</>
-                        ) : (
-                          <><Upload size={12} /> Create</>
-                        )}
-                      </button>
+                      <><Upload size={12} /> Generate & Upload</>
                     )}
-                    {connPipelineFiles.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={togglePipelinesDetails}
-                        className="text-[11px] font-bold text-emerald-600 hover:text-emerald-800"
-                      >
-                        {showPipelinesDetails ? 'Hide details' : 'View details'}
-                      </button>
-                    )}
-                  </div>
+                  </button>
                 </div>
-                {!showPipelinesDetails ? null : connConfigLoading ? (
-                  <div className="p-4">
-                    <div className="space-y-2">
-                      {[1, 2, 3, 4, 5].map((i) => (
-                        <div key={i} className="flex items-center gap-4 px-5 py-3 animate-pulse">
-                          <div className="w-6 h-6 bg-slate-200 rounded" />
-                          <div className="flex-1">
-                            <div className="h-3 bg-slate-200 rounded w-1/2 mb-2" />
-                            <div className="h-2 bg-slate-200 rounded w-1/4" />
-                          </div>
-                          <div className="w-28 h-3 bg-slate-200 rounded" />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : connPipelineFiles.length === 0 ? (
-                  <div className="p-8 text-center">
-                    <Workflow size={24} className="text-slate-300 mx-auto mb-2" />
-                    <p className="text-xs text-slate-500">No pipelines found</p>
-                  </div>
-                ) : (
-                  <table className="w-full">
-                    <thead className="border-b border-slate-100">
-                      <tr>
-                        <th className="px-5 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Name</th>
-                        <th className="px-5 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
-                        {allPipelinesDone && (
-                          <th className="px-5 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Run</th>
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-50">
-                      {sortedPipelineFiles.map((pl, i) => {
-                        const prevDone = i === 0 || sortedPipelineFiles[i - 1].runStatus === 'completed';
-                        const isLocked = !prevDone && (!pl.runStatus || pl.runStatus === 'not-started');
-                        return (
-                          <tr key={pl.filename} className="hover:bg-slate-50/50" style={pl.runStatus === 'running' ? { background: '#f0f7ff' } : {}}>
-                            <td className="px-5 py-3">
-                              <div className="flex items-center gap-2">
-                                <Workflow size={13} className="text-slate-400" />
-                                <span className="text-[12px] font-medium text-slate-800">{pl.name}</span>
-                              </div>
-                            </td>
-                            <td className="px-5 py-3">
-                              {pl.uploadStatus === 'success' ? (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700"><CheckCircle2 size={11} /> Created</span>
-                              ) : pl.uploadStatus === 'uploading' ? (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600"><Loader2 size={11} className="animate-spin" /> Creating</span>
-                              ) : pl.uploadStatus === 'failed' ? (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600"><XCircle size={11} /> Failed</span>
-                              ) : (
-                                <span className="text-[10px] font-bold text-amber-600">Not Created</span>
-                              )}
-                            </td>
-                            {(pl.uploadStatus === 'success' || pl.runStatus) && (
-                              <td className="px-5 py-3">
-                                {pl.runStatus === 'completed' ? (
-                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700"><CheckCircle2 size={11} /> Done</span>
-                                ) : pl.runStatus === 'running' ? (
-                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600"><Loader2 size={11} className="animate-spin" /> Running</span>
-                                ) : pl.runStatus === 'failed' ? (
-                                  <button
-                                    onClick={() => onRunPipeline(pl.name)}
-                                    className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-md bg-red-600 text-white hover:bg-red-700 transition-all"
-                                  >
-                                    <Play size={10} /> Retry
-                                  </button>
-                                ) : isLocked ? (
-                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400"><Lock size={10} /> Waiting</span>
-                                ) : pl.uploadStatus === 'success' ? (
-                                  <button
-                                    onClick={() => onRunPipeline(pl.name)}
-                                    className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-md bg-emerald-600 text-white hover:bg-emerald-700 transition-all"
-                                  >
-                                    <Play size={10} /> Run
-                                  </button>
-                                ) : null}
-                              </td>
-                            )}
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                )}
+                <div className="p-5 flex flex-col justify-center items-center text-center">
+                  <Database size={24} className="text-slate-300 mb-2" />
+                  <p className="text-sm text-slate-600">
+                    Discover the folder structure in the Azure Blob Storage container and upload the schema (<code>blob_config.json</code>) to the Bronze Lakehouse.
+                  </p>
+                  <p className="text-xs text-slate-400 mt-2">
+                    The pipeline will read this configuration to know which folders to process.
+                  </p>
+                </div>
               </div>
-            </>
-          )}
+            )}
+
+            <ArtifactGroupCard
+              key={`otl-${selectedConn?.id}`}
+              title="One Time Load"
+              icon={<Workflow size={13} />}
+              rows={[
+                ...group2Notebooks.map((nb) => ({ key: `nb-${nb.filename}`, name: nb.name, kind: 'Notebook' as const, uploadStatus: nb.uploadStatus })),
+                ...group2Pipelines.map((p) => ({ key: `pl-${p.filename}`, name: p.name, kind: 'Pipeline' as const, uploadStatus: p.uploadStatus, runStatus: p.runStatus, fabricItemId: p.fabricItemId })),
+              ]}
+              locked={
+                appMode === 'finin'
+                  ? !isConnectionMapped
+                  : isBlob
+                    ? !group1PipelinesDone
+                    // Non-blob: wait for the table selection to actually be
+                    // saved (even picking "Select All" counts) before OTL's
+                    // SourceToBronze pipeline is allowed to deploy/run —
+                    // otherwise it can run against IsActive='1' for every
+                    // table before a save ever lands.
+                    : !group1PipelinesRan || !tableSelectionApplied
+              }
+              loading={loading || connConfigLoading || !!connectionsLoading}
+              notebooksExist={group2Notebooks.length > 0}
+              pipelinesExist={group2Pipelines.length > 0}
+              notebooksDone={group2NotebooksDone}
+              pipelinesDone={group2PipelinesDone}
+              notebooksUploading={group2NotebooksUploading || group2AnyNotebookUploading}
+              pipelinesUploading={group2PipelinesUploading || group2PipelineAutoPending}
+              onCreate={handleGroup2Create}
+              onDeploy={handleGroup2Deploy}
+              onRunPipeline={onRunPipeline}
+            />
+          </>
 
           {/* ITL Configuration Section – shown after all OTL pipelines run */}
           {allPipelinesRan && (
@@ -876,6 +675,7 @@ export const ConfigStep = ({
               onRunItlNotebook={onRunItlNotebook}
               onRunItlPipelines={() => onRunItlPipelines(selectedConn!.name)}
               itlNotebookRunStatus={connItlNotebookRunStatus}
+              itlStatusChecked={!!itlStatusChecked[selectedConn!.id]}
             />
           )}
 
@@ -930,6 +730,10 @@ interface ArtifactRow {
 
 interface ArtifactGroupCardProps {
   title: string;
+  /** Small icon shown beside the title so each section is recognizable
+   * at a glance without reading the text (e.g. a database icon for
+   * Metadata, a workflow icon for One Time Load). */
+  icon?: JSX.Element;
   rows: ArtifactRow[];
   locked: boolean;
   loading: boolean;
@@ -942,12 +746,18 @@ interface ArtifactGroupCardProps {
   onCreate: () => void;
   onDeploy: () => void;
   onRunPipeline: (pipelineName: string) => void;
+  /** When true, the initial "Create" step never auto-fires — it waits for
+   *  a real click on the Create button. Everything after that first click
+   *  (deploy, pipeline auto-run, etc.) still happens automatically. Used
+   *  for Metadata so simply selecting a connection can't kick off real
+   *  work by accident. */
+  requireManualStart?: boolean;
 }
 
 const ArtifactGroupCard = ({
-  title, rows, locked, loading, notebooksExist, pipelinesExist,
+  title, icon, rows, locked, loading, notebooksExist, pipelinesExist,
   notebooksDone, pipelinesDone, notebooksUploading, pipelinesUploading,
-  onCreate, onDeploy, onRunPipeline,
+  onCreate, onDeploy, onRunPipeline, requireManualStart,
 }: ArtifactGroupCardProps): JSX.Element => {
   const bothDone = (!notebooksExist || notebooksDone) && (!pipelinesExist || pipelinesDone);
   const pipelineRows = rows.filter((r) => r.kind === 'Pipeline');
@@ -956,7 +766,90 @@ const ArtifactGroupCard = ({
   // full table (with Run/Retry buttons) visible even after everything had
   // finished, which looked like the stage was still asking the user to act.
   const fullyComplete = bothDone && (pipelineRows.length === 0 || pipelineRows.every((r) => r.runStatus === 'completed'));
-  const [showDetails, setShowDetails] = useState(true);
+  // Collapsed by default — most people using this screen aren't
+  // technical and don't need (or want) to watch artifact-by-artifact
+  // detail; the header's status badge + progress bar is the whole
+  // story for them. Anyone who does want to see it clicks "View details".
+  const [showDetails, setShowDetails] = useState(false);
+  // Pipelines shown at the top level; notebooks nest underneath their
+  // pipeline as a sub-artifact instead of being listed as their own row
+  // — expanded by default so the notebook is visible without an extra
+  // click (there's normally just the one, so collapsing by default would
+  // only hide something people actually want to see).
+  const [expandedPipelineKeys, setExpandedPipelineKeys] = useState<Set<string>>(
+    () => new Set(pipelineRows.map((r) => r.key))
+  );
+  const toggleExpanded = (key: string) => {
+    setExpandedPipelineKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
+  // Percent of this group's rows that are fully done — notebooks count as
+  // done once created, pipelines only once actually run to completion —
+  // shown as a simple progress bar so non-technical users get an
+  // at-a-glance sense of "how much is left" without reading a table.
+  const totalUnits = rows.length;
+  const doneUnits = rows.filter((r) =>
+    r.kind === 'Notebook' ? r.uploadStatus === 'success' : r.runStatus === 'completed'
+  ).length;
+  const progressPct = totalUnits > 0 ? Math.round((doneUnits / totalUnits) * 100) : 0;
+
+  // Guards against the same create/deploy call firing twice in quick
+  // succession (StrictMode double-invoke, or this effect re-firing before
+  // its own state write has landed).
+  const autoCreateGuardRef = useRef(false);
+  const autoDeployGuardRef = useRef(false);
+  // For requireManualStart groups (Metadata): true once the person has
+  // actually clicked Create for real — separate from autoCreateGuardRef,
+  // which just prevents double-firing. Starts true whenever
+  // requireManualStart is off (nothing to gate) or the group already has
+  // work in flight/done (covers remounts after a real start already
+  // happened, e.g. coming back from another step).
+  const [manuallyStarted, setManuallyStarted] = useState(
+    !requireManualStart || notebooksUploading || notebooksDone
+  );
+
+  // Auto-create notebooks the moment this group unlocks — no click
+  // needed, UNLESS requireManualStart is set (Metadata), in which case
+  // this waits for manuallyStarted instead: selecting a connection alone
+  // must never kick off real work, only an actual click on Create does.
+  useEffect(() => {
+    if (locked || loading || !notebooksExist || notebooksDone || notebooksUploading) return;
+    if (requireManualStart && !manuallyStarted) return;
+    if (autoCreateGuardRef.current) return;
+    autoCreateGuardRef.current = true;
+    onCreate();
+  }, [locked, loading, notebooksExist, notebooksDone, notebooksUploading, requireManualStart, manuallyStarted]);
+
+  // Auto-deploy pipelines the moment notebooks are done — no click needed.
+  useEffect(() => {
+    if (locked || loading || !notebooksDone || !pipelinesExist || pipelinesDone || pipelinesUploading) return;
+    if (autoDeployGuardRef.current) return;
+    autoDeployGuardRef.current = true;
+    onDeploy();
+  }, [locked, loading, notebooksDone, pipelinesExist, pipelinesDone, pipelinesUploading]);
+
+  // If something actually needs a person's attention (a failed create/
+  // deploy/run), open the details automatically so they're not staring
+  // at a collapsed "Waiting" card with no idea what to do — the whole
+  // point of auto-collapsing everything else is that nothing needs
+  // attention until something goes wrong.
+  useEffect(() => {
+    const anyFailed = rows.some((r) => r.uploadStatus === 'failed' || r.runStatus === 'failed');
+    if (anyFailed) setShowDetails(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows.map((r) => `${r.uploadStatus}:${r.runStatus}`).join(',')]);
+
+  // Guards against the same pipeline being auto-run twice in quick
+  // succession — e.g. React 18 StrictMode's dev-only double-invoke of
+  // effects, or this effect re-firing before the just-triggered run's
+  // status has made it back into `rows` yet. Keyed by pipeline name;
+  // cleared once the row's own runStatus reflects the run so a genuine
+  // retry (via the Retry button) still works.
+  const autoRunGuardRef = useRef<Set<string>>(new Set());
 
   // Auto-run each deployed pipeline in this group once it's ready, one at a
   // time — same chained pattern as the Fabric-mode Pipelines table (a row
@@ -969,6 +862,8 @@ const ArtifactGroupCard = ({
       if (pr.runStatus === 'running') break;
       const prevDone = i === 0 || pipelineRows[i - 1].runStatus === 'completed';
       if (prevDone && pr.fabricItemId && (!pr.runStatus || pr.runStatus === 'not-started')) {
+        if (autoRunGuardRef.current.has(pr.name)) break;
+        autoRunGuardRef.current.add(pr.name);
         onRunPipeline(pr.name);
       }
       break;
@@ -976,62 +871,113 @@ const ArtifactGroupCard = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pipelinesDone, pipelineRows.map((r) => `${r.key}:${r.runStatus}`).join(',')]);
 
+  // Anyone-can-read status for the header, in the exact vocabulary asked
+  // for: Creating (artifacts being uploaded), Running (a pipeline is
+  // executing), Done (everything finished). Locked/Waiting stays for the
+  // "hasn't started yet" case.
+  const anyPipelineRunning = pipelineRows.some((r) => r.runStatus === 'running');
+  const groupStatus: 'locked' | 'creating' | 'running' | 'done' | 'idle' =
+    locked ? 'locked'
+      : fullyComplete ? 'done'
+      : notebooksUploading || pipelinesUploading ? 'creating'
+      : anyPipelineRunning ? 'running'
+      : 'idle';
+
   return (
-    <div className={`bg-white rounded-xl border overflow-hidden shadow-sm ${locked ? 'border-slate-100 opacity-60' : 'border-slate-200'}`}>
-      <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
-        <h3 className="text-[13px] font-bold text-slate-700">{title}</h3>
-        <div className="flex items-center gap-2">
-          {fullyComplete ? (
-            <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-emerald-50 text-emerald-700">
-              <CheckCircle2 size={12} /> Completed
-            </span>
-          ) : bothDone ? (
-            <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-emerald-50 text-emerald-700">
-              <CheckCircle2 size={12} /> Done
-            </span>
-          ) : locked ? (
-            <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-slate-100 text-slate-400">
-              <Lock size={12} /> Waiting
-            </span>
-          ) : !notebooksDone ? (
-            <button
-              onClick={onCreate}
-              disabled={loading || notebooksUploading || !notebooksExist}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 transition-all"
-            >
-              {notebooksUploading ? <><Loader2 size={12} className="animate-spin" /> Creating...</> : <><Upload size={12} /> Create</>}
-            </button>
-          ) : !pipelinesDone ? (
-            <button
-              onClick={onDeploy}
-              disabled={loading || pipelinesUploading || !pipelinesExist}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 transition-all"
-            >
-              {pipelinesUploading ? <><Loader2 size={12} className="animate-spin" /> Creating...</> : <><Upload size={12} /> Deploy</>}
-            </button>
-          ) : null}
-          {rows.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setShowDetails((v) => !v)}
-              className="text-[11px] font-bold text-teal-600 hover:text-teal-800"
-            >
-              {showDetails ? 'Hide details' : 'View details'}
-            </button>
-          )}
+    <div className={`bg-white rounded-xl border overflow-hidden shadow-sm transition-opacity duration-300 ${locked ? 'border-slate-100 opacity-60' : 'border-slate-200'}`}>
+      <div className="px-5 py-3 border-b border-slate-100">
+        <div className="flex items-center justify-between">
+          <h3 className="text-[13px] font-bold text-slate-700 flex items-center gap-2">
+            {icon && (
+              <span className="w-6 h-6 rounded-md bg-emerald-50 flex items-center justify-center text-emerald-600 shrink-0">
+                {icon}
+              </span>
+            )}
+            {title}
+          </h3>
+          <div className="flex items-center gap-2">
+            {groupStatus === 'done' ? (
+              <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-emerald-50 text-emerald-700">
+                <CheckCircle2 size={12} /> Done
+              </span>
+            ) : groupStatus === 'locked' ? (
+              <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-slate-100 text-slate-400">
+                <Lock size={12} /> Waiting
+              </span>
+            ) : groupStatus === 'creating' ? (
+              <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-blue-50 text-blue-700">
+                <Loader2 size={12} className="animate-spin" /> Creating
+              </span>
+            ) : groupStatus === 'running' ? (
+              <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-blue-50 text-blue-700">
+                <Loader2 size={12} className="animate-spin" /> Running
+              </span>
+            ) : (
+              // Idle-but-unlocked: this is a transient sliver of time
+              // right before the auto-create/auto-deploy effect above
+              // fires — everything is automatic, so a manual button is
+              // just a fallback for a stuck/failed attempt, kept small
+              // and secondary rather than a prompt to act.
+              <>
+                {!notebooksDone ? (
+                  <button
+                    onClick={() => { setManuallyStarted(true); onCreate(); }}
+                    disabled={loading || notebooksUploading || !notebooksExist}
+                    className="cursor-pointer flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  >
+                    <Upload size={12} /> Create
+                  </button>
+                ) : !pipelinesDone ? (
+                  <button
+                    onClick={onDeploy}
+                    disabled={loading || pipelinesUploading || !pipelinesExist}
+                    className="cursor-pointer flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  >
+                    <Upload size={12} /> Deploy
+                  </button>
+                ) : null}
+              </>
+            )}
+            {rows.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowDetails((v) => !v)}
+                className="cursor-pointer text-[11px] font-bold text-teal-600 hover:text-teal-800 transition-colors"
+              >
+                {showDetails ? 'Hide details' : 'View details'}
+              </button>
+            )}
+          </div>
         </div>
+        {totalUnits > 0 && !fullyComplete && (
+          <div className="mt-2.5 flex items-center gap-2">
+            <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-teal-500 to-emerald-500 transition-all duration-500 ease-out"
+                style={{ width: `${progressPct}%` }}
+              />
+            </div>
+            <span className="text-[10px] font-semibold text-slate-400 tabular-nums shrink-0">{doneUnits}/{totalUnits}</span>
+          </div>
+        )}
       </div>
-      {!showDetails ? null : rows.length === 0 && loading ? (
-        <div className="p-5 space-y-2 animate-pulse" aria-label="Loading artifacts">
-          <div className="h-3.5 bg-slate-100 rounded w-3/4" />
-          <div className="h-3.5 bg-slate-100 rounded w-2/3" />
-          <div className="h-3.5 bg-slate-100 rounded w-1/2" />
-        </div>
-      ) : rows.length === 0 ? (
-        <div className="p-8 text-center">
-          <p className="text-xs text-slate-500">No artifacts found</p>
-        </div>
-      ) : (
+      <div
+        className="grid transition-[grid-template-rows] duration-300 ease-in-out"
+        style={{ gridTemplateRows: showDetails ? '1fr' : '0fr' }}
+      >
+        <div className="overflow-hidden">
+          <div className={`transition-all duration-300 ease-in-out ${showDetails ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'}`}>
+            {rows.length === 0 && loading ? (
+              <div className="p-5 space-y-2 animate-pulse" aria-label="Loading artifacts">
+                <div className="h-3.5 bg-slate-100 rounded w-3/4" />
+                <div className="h-3.5 bg-slate-100 rounded w-2/3" />
+                <div className="h-3.5 bg-slate-100 rounded w-1/2" />
+              </div>
+            ) : rows.length === 0 ? (
+              <div className="p-8 text-center">
+                <p className="text-xs text-slate-500">No artifacts found</p>
+              </div>
+            ) : (
         <table className="w-full">
           <thead className="border-b border-slate-100">
             <tr>
@@ -1042,64 +988,527 @@ const ArtifactGroupCard = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            {rows.map((row) => (
-              <tr key={row.key} className="hover:bg-slate-50/50" style={row.runStatus === 'running' ? { background: '#f0f7ff' } : {}}>
-                <td className="px-5 py-3">
-                  <div className="flex items-center gap-2">
-                    {row.kind === 'Notebook' ? <FileText size={13} className="text-slate-400" /> : <Workflow size={13} className="text-slate-400" />}
-                    <span className="text-[12px] font-medium text-slate-800">{row.name}</span>
-                  </div>
-                </td>
-                <td className="px-5 py-3">
-                  <span className="text-[11px] font-semibold text-slate-500">{row.kind}</span>
-                </td>
-                <td className="px-5 py-3">
-                  {row.uploadStatus === 'success' ? (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700"><CheckCircle2 size={11} /> Created</span>
-                  ) : row.uploadStatus === 'uploading' ? (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600"><Loader2 size={11} className="animate-spin" /> Creating</span>
-                  ) : row.uploadStatus === 'failed' ? (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600"><XCircle size={11} /> Failed</span>
-                  ) : locked ? (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400"><Lock size={11} /> Waiting</span>
-                  ) : (
-                    <span className="text-[10px] font-bold text-amber-600">Not Created</span>
-                  )}
-                </td>
-                <td className="px-5 py-3">
-                  {row.kind !== 'Pipeline' ? (
-                    <span className="text-[10px] text-slate-300">—</span>
-                  ) : row.uploadStatus !== 'success' && !row.runStatus ? (
-                    <span className="text-[10px] text-slate-300">—</span>
-                  ) : row.runStatus === 'completed' ? (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700"><CheckCircle2 size={11} /> Completed</span>
-                  ) : row.runStatus === 'running' ? (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600"><Loader2 size={11} className="animate-spin" /> Running</span>
-                  ) : row.runStatus === 'failed' ? (
-                    <button
-                      onClick={() => onRunPipeline(row.name)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-md bg-red-600 text-white hover:bg-red-700 transition-all"
-                    >
-                      <XCircle size={11} /> Retry
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => onRunPipeline(row.name)}
-                      disabled={!row.fabricItemId}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-md bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                    >
-                      <Play size={10} /> Run
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {/* Notebooks nest under their pipeline as a sub-artifact
+                (toggle to expand/collapse) rather than being listed as
+                their own top-level row — a notebook never has a "Run"
+                of its own here, it's created as part of deploying the
+                pipeline it belongs to. Any pipeline row with no
+                notebooks attached (shouldn't normally happen for
+                Metadata/OTL, each pairs exactly one of each) just
+                renders with nothing to expand. */}
+            {pipelineRows.map((pipelineRow) => {
+              const children = rows.filter((r) => r.kind === 'Notebook');
+              const isExpanded = expandedPipelineKeys.has(pipelineRow.key);
+              return (
+                <Fragment key={pipelineRow.key}>
+                  <tr
+                    className={`hover:bg-slate-50/50 ${children.length > 0 ? 'cursor-pointer' : ''}`}
+                    style={pipelineRow.runStatus === 'running' ? { background: '#f0f7ff' } : {}}
+                    onClick={children.length > 0 ? () => toggleExpanded(pipelineRow.key) : undefined}
+                  >
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-2">
+                        {children.length > 0 && (
+                          <ChevronRight
+                            size={12}
+                            className={`text-slate-400 shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
+                          />
+                        )}
+                        <Workflow size={13} className="text-slate-400" />
+                        <span className="text-[12px] font-medium text-slate-800">{pipelineRow.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3">
+                      <span className="text-[11px] font-semibold text-slate-500">Pipeline</span>
+                    </td>
+                    <td className="px-5 py-3">
+                      {pipelineRow.uploadStatus === 'success' ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700"><CheckCircle2 size={11} /> Created</span>
+                      ) : pipelineRow.uploadStatus === 'uploading' ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600"><Loader2 size={11} className="animate-spin" /> Creating</span>
+                      ) : pipelineRow.uploadStatus === 'failed' ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600"><XCircle size={11} /> Failed</span>
+                      ) : locked ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400"><Lock size={11} /> Waiting</span>
+                      ) : (
+                        <span className="text-[10px] font-bold text-amber-600">Not Created</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3">
+                      {pipelineRow.uploadStatus !== 'success' && !pipelineRow.runStatus ? (
+                        <span className="text-[10px] text-slate-300">—</span>
+                      ) : pipelineRow.runStatus === 'completed' ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700"><CheckCircle2 size={11} /> Completed</span>
+                      ) : pipelineRow.runStatus === 'running' ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600"><Loader2 size={11} className="animate-spin" /> Running</span>
+                      ) : pipelineRow.runStatus === 'failed' ? (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onRunPipeline(pipelineRow.name); }}
+                          className="cursor-pointer inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-md bg-red-600 text-white hover:bg-red-700 transition-all"
+                        >
+                          <XCircle size={11} /> Retry
+                        </button>
+                      ) : (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onRunPipeline(pipelineRow.name); }}
+                          disabled={!pipelineRow.fabricItemId}
+                          className="cursor-pointer inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-md bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                        >
+                          <Play size={10} /> Run
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                  {isExpanded && children.map((nb) => (
+                    <tr key={nb.key} className="bg-slate-50/50 hover:bg-slate-100/60">
+                      <td className="px-5 py-3 pl-11">
+                        <div className="flex items-center gap-2">
+                          <FileText size={12} className="text-slate-300" />
+                          <span className="text-[11px] font-medium text-slate-600">{nb.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3">
+                        <span className="text-[11px] font-semibold text-slate-400">Notebook</span>
+                      </td>
+                      <td className="px-5 py-3">
+                        {nb.uploadStatus === 'success' ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700"><CheckCircle2 size={11} /> Created</span>
+                        ) : nb.uploadStatus === 'uploading' ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600"><Loader2 size={11} className="animate-spin" /> Creating</span>
+                        ) : nb.uploadStatus === 'failed' ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600"><XCircle size={11} /> Failed</span>
+                        ) : locked ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400"><Lock size={11} /> Waiting</span>
+                        ) : (
+                          <span className="text-[10px] font-bold text-amber-600">Not Created</span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3">
+                        {/* Notebooks don't have their own run status here
+                            — they're created as part of this pipeline's
+                            deploy, not run independently. */}
+                        <span className="text-[10px] text-slate-300">—</span>
+                      </td>
+                    </tr>
+                  ))}
+                </Fragment>
+              );
+            })}
+            {/* Fallback: a notebook with no pipeline sibling at all
+                (shouldn't happen for Metadata/OTL, kept only so nothing
+                silently disappears if that ever changes). */}
+            {rows.filter((r) => r.kind === 'Notebook').length > 0 && pipelineRows.length === 0 &&
+              rows.filter((r) => r.kind === 'Notebook').map((nb) => (
+                <tr key={nb.key} className="hover:bg-slate-50/50">
+                  <td className="px-5 py-3">
+                    <div className="flex items-center gap-2">
+                      <FileText size={13} className="text-slate-400" />
+                      <span className="text-[12px] font-medium text-slate-800">{nb.name}</span>
+                    </div>
+                  </td>
+                  <td className="px-5 py-3"><span className="text-[11px] font-semibold text-slate-500">Notebook</span></td>
+                  <td className="px-5 py-3">
+                    {nb.uploadStatus === 'success' ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700"><CheckCircle2 size={11} /> Created</span>
+                    ) : nb.uploadStatus === 'uploading' ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600"><Loader2 size={11} className="animate-spin" /> Creating</span>
+                    ) : nb.uploadStatus === 'failed' ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600"><XCircle size={11} /> Failed</span>
+                    ) : (
+                      <span className="text-[10px] font-bold text-amber-600">Not Created</span>
+                    )}
+                  </td>
+                  <td className="px-5 py-3"><span className="text-[10px] text-slate-300">—</span></td>
+                </tr>
+              ))}
           </tbody>
         </table>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Tables to move to Bronze (Select All / SchemaWise / TableWise) ─────
+// Lives in the Metadata step, after that connection's Metadata
+// (ConfigCreation) notebook + pipeline are created. Reads directly from
+// the source database, so it works even before OTL's config-creation
+// notebook has actually run and created OneTimeConfigETL — the pick is
+// applied automatically the next time this connection's tables are
+// opened via the (post-notebook) table picker. 'sys' is always excluded.
+
+const TableSelectionPanel = ({
+  connection,
+  onAppliedChange,
+}: {
+  connection: SourceConnection;
+  onAppliedChange?: (applied: boolean) => void;
+}) => {
+  const [mode, setMode] = useState<PendingTableSelectionMode>('all');
+  const [loadingData, setLoadingData] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [schemas, setSchemas] = useState<PendingSourceSchema[]>([]);
+  const [tables, setTables] = useState<PendingSourceTable[]>([]);
+  const [selectedSchemas, setSelectedSchemas] = useState<Set<string>>(new Set());
+  const [selectedTableKeys, setSelectedTableKeys] = useState<Set<string>>(new Set());
+  const [tableSearch, setTableSearch] = useState('');
+  const [saving, setSaving] = useState(false);
+  // "Hide details" — collapses the whole picker body down to just the
+  // header + a one-line summary. This is the one section that genuinely
+  // needs a person's action (picking tables), so — unlike every other
+  // section, which stays collapsed until there's something to show —
+  // this one opens itself automatically once it's relevant (right after
+  // the fetch below resolves) and only collapses once Save actually
+  // succeeds; from then on it stays collapsed like everything else,
+  // reopening only if the person clicks "View details" to change it.
+  const [showDetails, setShowDetails] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
+  // Table Wise Selection drills down: null = showing the schema list,
+  // otherwise the schema whose tables are currently shown.
+  const [openSchema, setOpenSchema] = useState<string | null>(null);
+  const requestId = useRef(0);
+
+  const tableKey = (t: PendingSourceTable) => `${t.schema_name}.${t.table_name}`;
+
+  useEffect(() => {
+    const reqId = ++requestId.current;
+    setLoadingData(true);
+    setLoadError(null);
+    Promise.all([listPendingSourceSchemas(connection.id), listPendingSourceTables(connection.id)])
+      .then(([schemaRes, tableRes]) => {
+        if (requestId.current !== reqId) return;
+        setMode(tableRes.mode || 'all');
+        setSchemas(schemaRes.schemas);
+        setTables(tableRes.tables);
+        setSelectedSchemas(new Set(schemaRes.schemas.filter((s) => s.is_selected).map((s) => s.schema_name)));
+        setSelectedTableKeys(new Set(tableRes.tables.filter((t) => t.is_selected).map(tableKey)));
+        const alreadyApplied = !!tableRes.applied;
+        setJustSaved(alreadyApplied);
+        // Open automatically if there's a real pick to make (nothing
+        // saved/applied yet); otherwise a prior save already happened
+        // (e.g. a page reload) so it stays collapsed like every other
+        // finished section.
+        setShowDetails(!alreadyApplied);
+        onAppliedChange?.(alreadyApplied);
+      })
+      .catch((e) => {
+        if (requestId.current !== reqId) return;
+        setLoadError(e?.message || 'Failed to load tables for this connection.');
+        onAppliedChange?.(false);
+      })
+      .finally(() => {
+        if (requestId.current === reqId) setLoadingData(false);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connection.id]);
+
+
+  // Distinct schemas that actually have tables under Table Wise mode,
+  // derived from the flat table list so it always matches what's really
+  // there (rather than trusting the separate schema list, which could in
+  // principle drift from it).
+  const schemaGroups = tables.reduce<Record<string, PendingSourceTable[]>>((acc, t) => {
+    (acc[t.schema_name] ||= []).push(t);
+    return acc;
+  }, {});
+  const tableWiseSchemaNames = Object.keys(schemaGroups).sort();
+
+  const selectedCountForSchema = (schemaName: string) =>
+    (schemaGroups[schemaName] || []).filter((t) => selectedTableKeys.has(tableKey(t))).length;
+
+  const tablesInOpenSchema = openSchema ? schemaGroups[openSchema] || [] : [];
+  const filteredTablesInSchema = tablesInOpenSchema.filter((t) =>
+    !tableSearch.trim() || t.table_name.toLowerCase().includes(tableSearch.trim().toLowerCase())
+  );
+  const allFilteredInSchemaSelected =
+    filteredTablesInSchema.length > 0 && filteredTablesInSchema.every((t) => selectedTableKeys.has(tableKey(t)));
+
+  const toggleSchema = (s: string) => {
+    setSelectedSchemas((prev) => {
+      const next = new Set(prev);
+      if (next.has(s)) next.delete(s); else next.add(s);
+      return next;
+    });
+  };
+  const toggleTable = (key: string) => {
+    setSelectedTableKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+  const selectAllInOpenSchema = () => {
+    setSelectedTableKeys((prev) => {
+      const next = new Set(prev);
+      filteredTablesInSchema.forEach((t) => next.add(tableKey(t)));
+      return next;
+    });
+  };
+  const deselectAllInOpenSchema = () => {
+    setSelectedTableKeys((prev) => {
+      const next = new Set(prev);
+      filteredTablesInSchema.forEach((t) => next.delete(tableKey(t)));
+      return next;
+    });
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      let res: { applied: boolean; apply_error?: string };
+      if (mode === 'all') {
+        res = await savePendingSourceTableSelection(connection.id, 'all', {});
+      } else if (mode === 'schema') {
+        const picked = Array.from(selectedSchemas);
+        res = await savePendingSourceTableSelection(connection.id, 'schema', { schemas: picked });
+      } else {
+        const picked = Array.from(selectedTableKeys);
+        res = await savePendingSourceTableSelection(connection.id, 'table', { selected: picked });
+      }
+
+      if (res.applied) {
+        const countLabel =
+          mode === 'all'
+            ? `every table (except 'sys')`
+            : mode === 'schema'
+              ? `tables from ${selectedSchemas.size} schema${selectedSchemas.size === 1 ? '' : 's'}`
+              : `${selectedTableKeys.size} of ${tables.length} table${tables.length === 1 ? '' : 's'}`;
+        toast.success(`Saved — ${countLabel} will move to Bronze.`);
+      } else {
+        // Saved locally but couldn't be written into WH_MetaData yet
+        // (e.g. the metadata warehouse isn't reachable right now) — will
+        // retry automatically the next time this connection's tables are
+        // opened, but flag it so it isn't mistaken for fully done.
+        toast.error(res.apply_error || 'Selection saved, but could not be applied to WH_MetaData yet — it will retry automatically.');
+      }
+      // Once saved (applied or not — either way there's nothing more to
+      // do right now), collapse the details and lock the Save button so
+      // it reads as "done" instead of inviting another click.
+      setJustSaved(true);
+      setShowDetails(false);
+      onAppliedChange?.(res.applied);
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to save table selection.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Re-arm Save (and clear the "just saved" lock) the moment the person
+  // actually changes something, so editing after a save works normally.
+  const markDirty = () => {
+    if (justSaved) {
+      setJustSaved(false);
+      onAppliedChange?.(false);
+    }
+  };
+
+  const summaryText =
+    mode === 'all'
+      ? `Every table (except 'sys') will move to Bronze.`
+      : mode === 'schema'
+        ? `${selectedSchemas.size} schema${selectedSchemas.size === 1 ? '' : 's'} selected.`
+        : `${selectedTableKeys.size} of ${tables.length} table${tables.length === 1 ? '' : 's'} selected.`;
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+      <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
+        <div className="flex items-center gap-2">
+          <FileText size={15} className="text-emerald-600" />
+          <h3 className="text-[13px] font-bold text-slate-700">Required Tables Selection</h3>
+        </div>
+        <div className="flex items-center gap-2">
+          {justSaved && (
+            <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-emerald-50 text-emerald-700">
+              <CheckCircle2 size={11} /> Saved
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => setShowDetails((v) => !v)}
+            className="cursor-pointer text-[11px] font-bold text-teal-600 hover:text-teal-800 transition-colors"
+          >
+            {showDetails ? 'Hide details' : 'View details'}
+          </button>
+        </div>
+      </div>
+
+      {/* Animated collapse: grid-rows trick gives a smooth height
+          transition without needing to know the content's real height
+          up front (max-height tricks either clip early or leave a big
+          empty gap — this doesn't). */}
+      <div
+        className="grid transition-[grid-template-rows] duration-300 ease-in-out"
+        style={{ gridTemplateRows: showDetails ? '1fr' : '0fr' }}
+      >
+        <div className="overflow-hidden">
+          <div
+            className={`p-5 transition-all duration-300 ease-in-out ${showDetails ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'}`}
+          >
+            {/* Selection mode */}
+            <div className="flex items-center gap-2 mb-4">
+              {(['all', 'schema', 'table'] as PendingTableSelectionMode[]).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => { setMode(m); setOpenSchema(null); markDirty(); }}
+                  disabled={justSaved}
+                  className={`cursor-pointer px-3 py-1.5 text-[12px] font-semibold rounded-lg border transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                    mode === m
+                      ? 'bg-emerald-600 text-white border-emerald-600'
+                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  {m === 'all' ? 'Select All' : m === 'schema' ? 'SchemaWise Selection' : 'Table Wise Selection'}
+                </button>
+              ))}
+            </div>
+
+            {loadingData ? (
+              <div className="flex items-center justify-center gap-2 py-8 text-slate-400 text-[12px]">
+                <Loader2 size={14} className="animate-spin" /> Loading…
+              </div>
+            ) : loadError ? (
+              <div className="p-3.5 rounded-xl border border-red-200 bg-red-50 text-[12px] text-red-700">{loadError}</div>
+            ) : mode === 'all' ? (
+              <p className="text-[12px] text-slate-500">
+                Every table in this source will move to Bronze.
+              </p>
+            ) : mode === 'schema' ? (
+              schemas.length === 0 ? (
+                <div className="py-8 text-center text-[12px] text-slate-400">No schemas found for this connection yet.</div>
+              ) : (
+                <div className="max-h-72 overflow-y-auto border border-slate-100 rounded-lg divide-y divide-slate-50">
+                  {schemas.map((s) => (
+                    <label key={s.schema_name} className="flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50 cursor-pointer text-[13px]">
+                      <input
+                        type="checkbox"
+                        checked={selectedSchemas.has(s.schema_name)}
+                        onChange={() => { toggleSchema(s.schema_name); markDirty(); }}
+                        disabled={justSaved}
+                        className="w-3.5 h-3.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-400 cursor-pointer disabled:cursor-not-allowed"
+                      />
+                      <span className="text-slate-800 font-medium">{s.schema_name}</span>
+                    </label>
+                  ))}
+                </div>
+              )
+            ) : tables.length === 0 ? (
+              <div className="py-8 text-center text-[12px] text-slate-400">No tables found for this connection yet.</div>
+            ) : openSchema === null ? (
+              /* Table Wise Selection, step 1: pick a schema */
+              <div className="max-h-72 overflow-y-auto border border-slate-100 rounded-lg divide-y divide-slate-50">
+                {tableWiseSchemaNames.map((s) => {
+                  const count = schemaGroups[s].length;
+                  const selectedCount = selectedCountForSchema(s);
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => { setOpenSchema(s); setTableSearch(''); }}
+                      className="cursor-pointer w-full flex items-center justify-between gap-2.5 px-3 py-2.5 hover:bg-slate-50 transition-colors text-left text-[13px]"
+                    >
+                      <div className="flex items-center gap-2">
+                        <FileText size={13} className="text-slate-400" />
+                        <span className="text-slate-800 font-medium">{s}</span>
+                        <span className="text-[11px] text-slate-400">({count} table{count === 1 ? '' : 's'})</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {selectedCount > 0 && (
+                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
+                            {selectedCount} selected
+                          </span>
+                        )}
+                        <ChevronRight size={14} className="text-slate-300" />
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              /* Table Wise Selection, step 2: tables inside the chosen schema */
+              <>
+                <div className="flex items-center gap-2 mb-3">
+                  <button
+                    type="button"
+                    onClick={() => setOpenSchema(null)}
+                    className="cursor-pointer flex items-center gap-1 text-[12px] font-semibold text-teal-600 hover:text-teal-800 transition-colors shrink-0"
+                  >
+                    <ChevronLeft size={14} /> All schemas
+                  </button>
+                  <span className="text-slate-300">/</span>
+                  <span className="text-[12px] font-bold text-slate-700 truncate">{openSchema}</span>
+                </div>
+                <div className="flex items-center gap-2 mb-3">
+                  <input
+                    type="text"
+                    value={tableSearch}
+                    onChange={(e) => setTableSearch(e.target.value)}
+                    placeholder={`Filter tables in ${openSchema}…`}
+                    className="flex-1 h-9 px-3.5 text-[13px] rounded-lg border border-slate-300 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-50 text-slate-800 placeholder:text-slate-400 bg-slate-50"
+                  />
+                  <button
+                    onClick={() => { (allFilteredInSchemaSelected ? deselectAllInOpenSchema : selectAllInOpenSchema)(); markDirty(); }}
+                    disabled={justSaved}
+                    className="cursor-pointer h-9 px-3 text-[12px] font-semibold text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-50 transition-colors whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {allFilteredInSchemaSelected ? 'Deselect all' : 'Select all'}
+                  </button>
+                </div>
+                <div className="max-h-72 overflow-y-auto border border-slate-100 rounded-lg divide-y divide-slate-50">
+                  {filteredTablesInSchema.map((t) => (
+                    <label key={tableKey(t)} className="flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50 cursor-pointer text-[13px]">
+                      <input
+                        type="checkbox"
+                        checked={selectedTableKeys.has(tableKey(t))}
+                        onChange={() => { toggleTable(tableKey(t)); markDirty(); }}
+                        disabled={justSaved}
+                        className="w-3.5 h-3.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-400 cursor-pointer disabled:cursor-not-allowed"
+                      />
+                      <span className="text-slate-800 font-medium">{t.table_name}</span>
+                    </label>
+                  ))}
+                  {filteredTablesInSchema.length === 0 && (
+                    <div className="py-6 text-center text-[12px] text-slate-400">No tables match "{tableSearch}".</div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {!loadingData && !loadError && (
+              <div className="flex items-center justify-end gap-2 mt-3.5">
+                <button
+                  onClick={handleSave}
+                  disabled={saving || justSaved}
+                  className="cursor-pointer flex items-center gap-2 px-4 py-2 text-[12px] font-bold text-white rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ background: 'linear-gradient(135deg, #1D9E75, #0d6e52)' }}
+                >
+                  {saving ? (
+                    <><Loader2 size={12} className="animate-spin" /> Saving…</>
+                  ) : justSaved ? (
+                    <><CheckCircle2 size={12} /> Saved</>
+                  ) : (
+                    <><Upload size={12} /> Save Selection</>
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Collapsed one-line summary, shown only while details are hidden. */}
+      {!showDetails && !loadingData && !loadError && (
+        <div className="px-5 pb-4 -mt-1">
+          <p className="text-[12px] text-slate-500 mt-3">{summaryText}</p>
+        </div>
       )}
     </div>
   );
 };
+
 
 // ── ITL Sub-component ─────────────────────────────────────────────────
 
@@ -1115,6 +1524,15 @@ interface ItlSectionProps {
   onRunItlNotebook: (connectionName: string) => Promise<boolean>;
   onRunItlPipelines: () => Promise<boolean>;
   itlNotebookRunStatus: string;
+  // True once the backend's persisted ITL state (downloaded/uploaded
+  // flags, notebook run status, deployed-pipeline run statuses) has
+  // actually been fetched and restored into itlPipelineFiles /
+  // itlNotebookRunStatus for this connection. Every auto-trigger effect
+  // below waits for this — without it, a page refresh briefly sees
+  // "nothing has run yet" (state hasn't been restored) and immediately
+  // auto-fires a real run, which is exactly what was causing pipelines
+  // to fire repeatedly and lose their real completed status.
+  itlStatusChecked: boolean;
 }
 
 const ItlSection = ({
@@ -1129,11 +1547,19 @@ const ItlSection = ({
   onRunItlNotebook,
   onRunItlPipelines,
   itlNotebookRunStatus,
+  itlStatusChecked,
 }: ItlSectionProps): JSX.Element => {
   const [downloading, setDownloading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [runningNotebook, setRunningNotebook] = useState(false);
   const [deploying, setDeploying] = useState(false);
+  // Name of the last file uploaded via "Upload Filled Excel" this session
+  // — shown next to the button so it's clear which file is currently in
+  // use, and swaps to the new name the moment a different file is
+  // uploaded. Session-local only (not persisted across a reload) since
+  // the backend doesn't track the original filename, only that a file
+  // was uploaded.
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const autoDeployTriggeredRef = useRef(false);
 
@@ -1141,7 +1567,14 @@ const ItlSection = ({
   const notebookFailed = itlNotebookRunStatus === 'failed';
   const allItlDeployed = itlPipelineFiles.length > 0 && itlPipelineFiles.every((p) => p.uploadStatus === 'success');
   const anyItlFailed = itlPipelineFiles.some((p) => p.uploadStatus === 'failed');
-  const [runningPipelines, setRunningPipelines] = useState(false);  // Must match the real Fabric item names from upload_itl_pipelines() exactly
+  const [runningPipelines, setRunningPipelines] = useState(false);
+  // 03_PL_InvokePipeline, 04_PL_IncrementalSourceToBronze, and
+  // 05_PL_SourceDelete are sub-pipelines the Master pipeline invokes
+  // internally — nested under it in the results table instead of listed
+  // as their own top-level rows, toggled open/closed by clicking Master.
+  const SUB_PIPELINE_SUFFIXES = ['03_PL_InvokePipeline', '04_PL_IncrementalSourceToBronze', '05_PL_SourceDelete'];
+  const [masterExpanded, setMasterExpanded] = useState(false);
+  // Must match the real Fabric item names from upload_itl_pipelines() exactly
   // (the pipeline JSON's own "name" field, connection-prefixed) — including
   // the "NN_PL_" numbering and the literal space in "Master pipeline". A
   // shorthand here means these never match anything in itlPipelineFiles, so
@@ -1165,16 +1598,71 @@ const ItlSection = ({
   // too means the button correctly stays "Running" either way.
   const anyItlPipelineRunning = itlPipelineFiles.some((p) => p.runStatus === 'running');
 
-  // Every step for THIS connection done — download, upload, notebook run,
-  // pipelines deployed, and the run sequence completed. `key={selectedConn.id}`
-  // on ItlSection remounts this component per connection, so showDetails
-  // below is naturally isolated per source rather than leaking across them.
-  const fullyComplete = itlConfigDownloaded && itlConfigUploaded && notebookRan && allItlDeployed && allItlPipelinesRan;
-  const [showDetails, setShowDetails] = useState(true);
+  // Two independent collapse states — "ITL Config Creation" (download +
+  // upload, manual) and "Incremental Load" (notebook run → deploy →
+  // pipeline run, fully automatic). Config Creation needs a person's
+  // action, so — like Table Selection — it opens itself by default and
+  // only collapses once both steps are actually done; Incremental Load
+  // needs no action at all, so it stays collapsed like every other
+  // automatic section.
+  const configCreationDone = itlConfigDownloaded && itlConfigUploaded;
+  const [showConfigDetails, setShowConfigDetails] = useState(!configCreationDone);
+  const [showIncrementalDetails, setShowIncrementalDetails] = useState(false);
+  const incrementalDone = notebookRan && allItlDeployed && allItlPipelinesRan;
+  const incrementalUnitsDone = [notebookRan, allItlDeployed, allItlPipelinesRan].filter(Boolean).length;
+  const incrementalAnyRunning = runningNotebook || deploying || runningPipelines || anyItlPipelineRunning;
+
+  // Collapse Config Creation the moment both steps finish (covers the
+  // person completing them during this mount, not just a fresh remount
+  // that already starts collapsed via the initializer above).
+  useEffect(() => {
+    if (configCreationDone) setShowConfigDetails(false);
+  }, [configCreationDone]);
+
+  // Open Incremental Load automatically if something in it actually needs
+  // attention (a failed notebook run, pipeline deploy, or pipeline run) —
+  // same rule as every other auto-driven section: stay collapsed until
+  // there's genuinely something to look at.
+  useEffect(() => {
+    if (notebookFailed || anyItlFailed || anyItlPipelineFailed) setShowIncrementalDetails(true);
+  }, [notebookFailed, anyItlFailed, anyItlPipelineFailed]);
+
+
+  // Auto-run the ITL notebook the moment the filled Excel is uploaded —
+  // no click needed. Deploy (step 4) already auto-triggers off notebookRan
+  // below; this closes the gap one step earlier.
+  //
+  // Gated on itlStatusChecked: without it, this fires on every page
+  // refresh before the persisted notebook_run_status has even been
+  // fetched back — itlNotebookRunStatus briefly reads as "never run",
+  // so it looked like nothing had happened yet and this kicked off a
+  // brand new run every single reload.
+  const autoRunNotebookRef = useRef(false);
+  useEffect(() => {
+    if (!itlStatusChecked || !itlConfigUploaded || notebookRan || runningNotebook || autoRunNotebookRef.current) return;
+    autoRunNotebookRef.current = true;
+    setRunningNotebook(true);
+    onRunItlNotebook(connectionName).then((ok) => {
+      setRunningNotebook(false);
+      if (ok) toast.success('ITL Notebook executed');
+      else { toast.error('Failed to run ITL notebook'); autoRunNotebookRef.current = false; }
+    });
+  }, [itlStatusChecked, itlConfigUploaded, notebookRan]);
+
+  // NOTE: ITL pipeline running (WatermarkUpdate → MasterPipeline) is
+  // deliberately NOT auto-triggered — only the manual "Run"/"Re-run"
+  // button in the table below ever calls onRunItlPipelines now. This
+  // used to auto-run once (gated on itlStatusChecked to avoid firing
+  // before the persisted run_status had loaded back from the DB), but
+  // that guard still meant a run could kick off automatically the very
+  // first time deploy finished — which wasn't wanted here at all. The
+  // persisted run_status (already stored in config_uploads and restored
+  // by the fetch above) is simply displayed as-is until a person
+  // explicitly re-runs.
 
   // Auto-deploy ITL pipelines once notebook succeeds
   useEffect(() => {
-    if (notebookRan && !allItlDeployed && !deploying && !autoDeployTriggeredRef.current) {
+    if (itlStatusChecked && notebookRan && !allItlDeployed && !deploying && !autoDeployTriggeredRef.current) {
       autoDeployTriggeredRef.current = true;
       setDeploying(true);
       onUploadItlPipelines().then((ok) => {
@@ -1183,7 +1671,8 @@ const ItlSection = ({
         else toast.error('Some ITL pipelines failed to deploy');
       });
     }
-  }, [notebookRan]);
+  }, [itlStatusChecked, notebookRan]);
+
 
   const handleDownload = async () => {
     setDownloading(true);
@@ -1199,272 +1688,418 @@ const ItlSection = ({
     setUploading(true);
     const ok = await onUploadItlConfig(file);
     setUploading(false);
-    if (ok) toast.success('ITL Config uploaded successfully');
-    else toast.error('Failed to upload ITL config');
+    if (ok) {
+      setUploadedFileName(file.name);
+      toast.success('ITL Config uploaded successfully');
+    } else {
+      toast.error('Failed to upload ITL config');
+    }
     // Reset input
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-      <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
-        <div className="flex items-center gap-2">
-          <Workflow size={15} className="text-emerald-600" />
-          <h3 className="text-[13px] font-bold text-slate-700">ITL (Incremental Load)</h3>
+    <>
+      {/* Card 1: ITL Config Creation — download + upload stay manual;
+          these need a human to actually fill in watermark values, so
+          they're intentionally exempt from auto-run. */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+        <div className="px-5 py-3 border-b border-slate-100">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <FileSpreadsheet size={15} className="text-emerald-600" />
+              <h3 className="text-[13px] font-bold text-slate-700">ITL Config Creation</h3>
+            </div>
+            <div className="flex items-center gap-2">
+              {configCreationDone ? (
+                <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-emerald-50 text-emerald-700">
+                  <CheckCircle2 size={12} /> Done
+                </span>
+              ) : (
+                <>  </>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowConfigDetails((v) => !v)}
+                className="cursor-pointer text-[11px] font-bold text-emerald-600 hover:text-emerald-800 transition-colors"
+              >
+                {showConfigDetails ? 'Hide details' : 'View details'}
+              </button>
+            </div>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          {allItlDeployed && !fullyComplete && (
-            <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-emerald-50 text-emerald-700">
-              <CheckCircle2 size={12} /> Done
-            </span>
-          )}
-          {fullyComplete && (
-            <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-emerald-50 text-emerald-700">
-              <CheckCircle2 size={12} /> Completed
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={() => setShowDetails((v) => !v)}
-            className="text-[11px] font-bold text-emerald-600 hover:text-emerald-800"
-          >
-            {showDetails ? 'Hide details' : 'View details'}
-          </button>
+
+        <div
+          className="grid transition-[grid-template-rows] duration-300 ease-in-out"
+          style={{ gridTemplateRows: showConfigDetails ? '1fr' : '0fr' }}
+        >
+          <div className="overflow-hidden">
+            <div className={`p-5 space-y-4 transition-all duration-300 ease-in-out ${showConfigDetails ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'}`}>
+              {/* Step 1: Download Excel */}
+              <div className="flex items-center gap-4">
+                <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold bg-emerald-100 text-emerald-700">1</div>
+                <div className="flex-1">
+                  <p className="text-[12px] font-medium text-slate-700">Download ITL Config Excel</p>
+                  <p className="text-[10px] text-slate-500">OTL config with watermark columns to fill</p>
+                </div>
+                <button
+                  onClick={handleDownload}
+                  disabled={loading || downloading}
+                  className={`cursor-pointer flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed ${itlConfigDownloaded
+                      ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                      : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                    }`}
+                >
+                  {downloading ? (
+                    <><Loader2 size={12} className="animate-spin" /> Downloading...</>
+                  ) : itlConfigDownloaded ? (
+                    <><CheckCircle2 size={12} /> Download</>
+                  ) : (
+                    <><Download size={12} /> Download</>
+                  )}
+                </button>
+              </div>
+
+              {/* Step 2: Upload Filled Excel */}
+              <div className="flex items-center gap-4">
+                <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold bg-emerald-100 text-emerald-700">2</div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[12px] font-medium text-slate-700">Upload Filled Excel</p>
+                  {uploadedFileName ? (
+                    <p className="text-[10px] text-emerald-700 font-semibold truncate" title={uploadedFileName}>
+                      {uploadedFileName}
+                    </p>
+                  ) : (
+                    <p className="text-[10px] text-slate-500">Fill watermark fields and upload back</p>
+                  )}
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={loading || uploading}
+                  className={`cursor-pointer flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed ${itlConfigUploaded
+                      ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                      : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                    }`}
+                >
+                  {uploading ? (
+                    <><Loader2 size={12} className="animate-spin" /> Uploading...</>
+                  ) : itlConfigUploaded ? (
+                    <><CheckCircle2 size={12} /> Upload</>
+                  ) : (
+                    <><Upload size={12} /> Upload</>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      {showDetails && (
-        <div className="p-5 space-y-4">
-          {/* Step 1: Download Excel */}
-          <div className="flex items-center gap-4">
-            <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold bg-emerald-100 text-emerald-700">1</div>
-            <div className="flex-1">
-              <p className="text-[12px] font-medium text-slate-700">Download ITL Config Excel</p>
-              <p className="text-[10px] text-slate-500">OTL config with watermark columns to fill</p>
+      {/* Card 2: Incremental Load — notebook run, pipeline deploy, and the
+          watermark/master pipeline run all fire automatically in sequence
+          once the filled Excel is uploaded; the buttons below are just a
+          manual fallback for a stuck/failed step. */}
+      <div className={`bg-white rounded-xl border overflow-hidden shadow-sm transition-opacity duration-300 ${!itlConfigUploaded ? 'border-slate-100 opacity-60' : 'border-slate-200'}`}>
+        <div className="px-5 py-3 border-b border-slate-100">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Workflow size={15} className="text-emerald-600" />
+              <h3 className="text-[13px] font-bold text-slate-700">Incremental Load</h3>
             </div>
-            <button
-              onClick={handleDownload}
-              disabled={loading || downloading}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all disabled:opacity-50 ${itlConfigDownloaded
-                  ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                  : 'bg-emerald-600 text-white hover:bg-emerald-700'
-                }`}
-            >
-              {downloading ? (
-                <><Loader2 size={12} className="animate-spin" /> Downloading...</>
-              ) : itlConfigDownloaded ? (
-                <><CheckCircle2 size={12} /> Re-download</>
+            <div className="flex items-center gap-2">
+              {incrementalDone ? (
+                <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-emerald-50 text-emerald-700">
+                  <CheckCircle2 size={12} /> Done
+                </span>
+              ) : !itlConfigUploaded ? (
+                <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-slate-100 text-slate-400">
+                  <Lock size={12} /> Waiting
+                </span>
+              ) : notebookFailed || anyItlFailed || anyItlPipelineFailed ? (
+                <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-red-50 text-red-700">
+                  <XCircle size={12} /> Failed
+                </span>
+              ) : incrementalAnyRunning ? (
+                <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-blue-50 text-blue-700">
+                  <Loader2 size={12} className="animate-spin" /> Running
+                </span>
+              ) : allItlDeployed ? (
+                // Notebook + deploy finished automatically; running the
+                // pipelines themselves is a deliberate manual step now
+                // (Run/Re-run button below) — this genuinely IS just
+                // sitting here waiting for a click, not doing anything,
+                // so it shouldn't look like it's still working.
+                <>  </>
               ) : (
-                <><Download size={12} /> Download</>
+                <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-blue-50 text-blue-700">
+                  <Loader2 size={12} className="animate-spin" /> Creating
+                </span>
               )}
-            </button>
-          </div>
-
-          {/* Step 2: Upload Filled Excel */}
-          <div className="flex items-center gap-4">
-            <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold bg-emerald-100 text-emerald-700">2</div>
-            <div className="flex-1">
-              <p className="text-[12px] font-medium text-slate-700">Upload Filled Excel</p>
-              <p className="text-[10px] text-slate-500">Fill watermark fields and upload back</p>
-            </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx,.xls"
-              onChange={handleFileChange}
-              className="hidden"
-            />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={loading || uploading}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all disabled:opacity-50 ${itlConfigUploaded
-                  ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                  : 'bg-emerald-600 text-white hover:bg-emerald-700'
-                }`}
-            >
-              {uploading ? (
-                <><Loader2 size={12} className="animate-spin" /> Uploading...</>
-              ) : itlConfigUploaded ? (
-                <><CheckCircle2 size={12} /> Re-upload</>
-              ) : (
-                <><Upload size={12} /> Upload</>
-              )}
-            </button>
-          </div>
-
-          {/* Step 3: Run ITL Notebook */}
-          <div className="flex items-center gap-4">
-            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold ${notebookRan ? 'bg-emerald-100 text-emerald-700' : notebookFailed ? 'bg-red-100 text-red-700' : itlConfigUploaded ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'
-              }`}>3</div>
-            <div className="flex-1">
-              <p className="text-[12px] font-medium text-slate-700">Run ITL Notebook</p>
-              <p className="text-[10px] text-slate-500">Execute incremental config creation notebook</p>
-            </div>
-            <button
-              onClick={async () => {
-                setRunningNotebook(true);
-                const ok = await onRunItlNotebook(connectionName);
-                setRunningNotebook(false);
-                if (ok) toast.success(notebookRan ? 'ITL Notebook re-executed' : 'ITL Notebook executed');
-                else toast.error('Failed to run ITL notebook');
-              }}
-              disabled={runningNotebook || !itlConfigUploaded}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all ${notebookFailed
-                  ? 'bg-red-50 text-red-700 hover:bg-red-100'
-                  : notebookRan
-                    ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                    : !itlConfigUploaded
-                      ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                      : 'bg-emerald-600 text-white hover:bg-emerald-700'
-                } disabled:opacity-50`}
-            >
-              {runningNotebook ? (
-                <><Loader2 size={12} className="animate-spin" /> Running...</>
-              ) : notebookFailed ? (
-                <><XCircle size={12} /> Failed – Retry</>
-              ) : notebookRan ? (
-                <><CheckCircle2 size={12} /> Re-run</>
-              ) : (
-                <><Play size={12} /> Run</>
-              )}
-            </button>
-          </div>
-
-          {/* Step 4: Deploy ITL Pipelines – auto-triggered after notebook */}
-          <div className="flex items-center gap-4">
-            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold ${allItlDeployed ? 'bg-emerald-100 text-emerald-700' : anyItlFailed ? 'bg-red-100 text-red-700' : notebookRan ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'
-              }`}>4</div>
-            <div className="flex-1">
-              <p className="text-[12px] font-medium text-slate-700">Deploy ITL Pipelines</p>
-              <p className="text-[10px] text-slate-500">Auto-deployed after notebook completes</p>
-            </div>
-            {notebookRan || allItlDeployed || anyItlFailed || deploying ? (
               <button
                 type="button"
-                onClick={() => {
-                  if (deploying) return;
-                  setDeploying(true);
-                  onUploadItlPipelines().then((ok) => {
-                    setDeploying(false);
-                    if (ok) toast.success(allItlDeployed ? 'ITL pipelines redeployed' : 'ITL pipelines deployed');
-                    else toast.error('Some ITL pipelines failed to deploy');
-                  });
-                }}
-                disabled={deploying || loading}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all disabled:opacity-50 ${anyItlFailed && !allItlDeployed
-                    ? 'bg-red-50 text-red-700 hover:bg-red-100'
-                    : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                  }`}
+                onClick={() => setShowIncrementalDetails((v) => !v)}
+                className="cursor-pointer text-[11px] font-bold text-emerald-600 hover:text-emerald-800 transition-colors"
               >
-                {deploying ? (
-                  <><Loader2 size={12} className="animate-spin" /> {allItlDeployed ? 'Redeploying...' : 'Deploying...'}</>
-                ) : anyItlFailed && !allItlDeployed ? (
-                  <><XCircle size={12} /> Failed – Retry</>
-                ) : allItlDeployed ? (
-                  <><CheckCircle2 size={12} /> Redeploy</>
-                ) : (
-                  <><Upload size={12} /> Deploy</>
-                )}
+                {showIncrementalDetails ? 'Hide details' : 'View details'}
               </button>
-            ) : (
-              <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-slate-100 text-slate-400">
-                Pending
-              </span>
-            )}
+            </div>
           </div>
-
-          {/* Step 5: Run Pipelines – WaterMarkUpdate -> MasterPipeline (MailTrigger temporarily removed) */}
-          {allItlDeployed && (
-            <div className="flex items-center gap-4 mt-3">
-              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold ${allItlPipelinesRan ? 'bg-emerald-100 text-emerald-700' : anyItlPipelineFailed ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'
-                }`}>5</div>
-              <div className="flex-1">
-                <p className="text-[12px] font-medium text-slate-700">Run Pipelines</p>
-                <p className="text-[10px] text-slate-500">Runs WaterMarkUpdate → MasterPipeline in order</p>
+          {itlConfigUploaded && !incrementalDone && (
+            <div className="mt-2.5 flex items-center gap-2">
+              <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-teal-500 to-emerald-500 transition-all duration-500 ease-out"
+                  style={{ width: `${Math.round((incrementalUnitsDone / 3) * 100)}%` }}
+                />
               </div>
-              <button
-                type="button"
-                onClick={async () => {
-                  if (runningPipelines || anyItlPipelineRunning) return;
-                  setRunningPipelines(true);
-                  const ok = await onRunItlPipelines();
-                  setRunningPipelines(false);
-                  if (ok) toast.success('ITL pipeline run completed');
-                  else toast.error('ITL pipeline run failed');
-                }}
-                disabled={runningPipelines || anyItlPipelineRunning}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all disabled:opacity-50 ${anyItlPipelineFailed
-                    ? 'bg-red-50 text-red-700 hover:bg-red-100'
-                    : allItlPipelinesRan
-                      ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                      : 'bg-emerald-600 text-white hover:bg-emerald-700'
-                  }`}
-              >
-                {(runningPipelines || anyItlPipelineRunning) ? (
-                  <><Loader2 size={12} className="animate-spin" /> Running...</>
-                ) : anyItlPipelineFailed ? (
-                  <><XCircle size={12} /> Failed – Retry</>
-                ) : allItlPipelinesRan ? (
-                  <><CheckCircle2 size={12} /> Re-run</>
-                ) : (
-                  <><Play size={12} /> Run Pipelines</>
-                )}
-              </button>
-            </div>
-          )}
-
-          {/* ITL Pipeline Results */}
-          {itlPipelineFiles.length > 0 && (
-            <div className="mt-3 border-t border-slate-100 pt-3">
-              <table className="w-full">
-                <thead className="border-b border-slate-100">
-                  <tr>
-                    <th className="px-3 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Pipeline</th>
-                    <th className="px-3 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
-                    <th className="px-3 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Run</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {itlPipelineFiles.map((pl) => (
-                    <tr key={pl.name} className="hover:bg-slate-50/50">
-                      <td className="px-3 py-2">
-                        <div className="flex items-center gap-2">
-                          <Workflow size={12} className="text-slate-400" />
-                          <span className="text-[11px] font-medium text-slate-800">{pl.name}</span>
-                        </div>
-                      </td>
-                      <td className="px-3 py-2">
-                        {pl.uploadStatus === 'success' ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700"><CheckCircle2 size={11} /> Created</span>
-                        ) : pl.uploadStatus === 'uploading' ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600"><Loader2 size={11} className="animate-spin" /> Creating</span>
-                        ) : pl.uploadStatus === 'failed' ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600"><XCircle size={11} /> Failed</span>
-                        ) : (
-                          <span className="text-[10px] font-bold text-slate-400">Pending</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
-                        {pl.runStatus === 'completed' ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700"><CheckCircle2 size={11} /> Success</span>
-                        ) : pl.runStatus === 'running' ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600"><Loader2 size={11} className="animate-spin" /> Running</span>
-                        ) : pl.runStatus === 'failed' ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600"><XCircle size={11} /> Failed</span>
-                        ) : (
-                          <span className="text-[10px] text-slate-300">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <span className="text-[10px] font-semibold text-slate-400 tabular-nums shrink-0">{incrementalUnitsDone}/3</span>
             </div>
           )}
         </div>
-      )}
-    </div>
 
+        <div
+          className="grid transition-[grid-template-rows] duration-300 ease-in-out"
+          style={{ gridTemplateRows: showIncrementalDetails ? '1fr' : '0fr' }}
+        >
+          <div className="overflow-hidden">
+            <div className={`p-5 space-y-4 transition-all duration-300 ease-in-out ${showIncrementalDetails ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'}`}>
+              {/* Step 3: Run ITL Notebook — auto-fires once Excel is uploaded */}
+              <div className="flex items-center gap-4">
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold ${notebookRan ? 'bg-emerald-100 text-emerald-700' : notebookFailed ? 'bg-red-100 text-red-700' : itlConfigUploaded ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'
+                  }`}>1</div>
+                <div className="flex-1">
+                  <p className="text-[12px] font-medium text-slate-700">Run ITL Notebook</p>
+                  <p className="text-[10px] text-slate-500">Auto-runs once the filled Excel is uploaded</p>
+                </div>
+                <button
+                  onClick={async () => {
+                    setRunningNotebook(true);
+                    const ok = await onRunItlNotebook(connectionName);
+                    setRunningNotebook(false);
+                    if (ok) toast.success(notebookRan ? 'ITL Notebook re-executed' : 'ITL Notebook executed');
+                    else toast.error('Failed to run ITL notebook');
+                  }}
+                  disabled={runningNotebook || !itlConfigUploaded}
+                  className={`cursor-pointer flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all ${notebookFailed
+                      ? 'bg-red-50 text-red-700 hover:bg-red-100'
+                      : notebookRan
+                        ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                        : !itlConfigUploaded
+                          ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                          : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  {runningNotebook ? (
+                    <><Loader2 size={12} className="animate-spin" /> Running...</>
+                  ) : notebookFailed ? (
+                    <><XCircle size={12} /> Failed – Retry</>
+                  ) : notebookRan ? (
+                    <><CheckCircle2 size={12} /> Run</>
+                  ) : (
+                    <><Play size={12} /> Run</>
+                  )}
+                </button>
+              </div>
+
+              {/* Step 4: Deploy ITL Pipelines — auto-fires once the notebook succeeds */}
+              <div className="flex items-center gap-4">
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold ${allItlDeployed ? 'bg-emerald-100 text-emerald-700' : anyItlFailed ? 'bg-red-100 text-red-700' : notebookRan ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'
+                  }`}>2</div>
+                <div className="flex-1">
+                  <p className="text-[12px] font-medium text-slate-700">Deploy ITL Pipelines</p>
+                  <p className="text-[10px] text-slate-500">Auto-deployed once the notebook completes</p>
+                </div>
+                {notebookRan || allItlDeployed || anyItlFailed || deploying ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (deploying) return;
+                      setDeploying(true);
+                      onUploadItlPipelines().then((ok) => {
+                        setDeploying(false);
+                        if (ok) toast.success(allItlDeployed ? 'ITL pipelines redeployed' : 'ITL pipelines deployed');
+                        else toast.error('Some ITL pipelines failed to deploy');
+                      });
+                    }}
+                    disabled={deploying || loading}
+                    className={`cursor-pointer flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed ${anyItlFailed && !allItlDeployed
+                        ? 'bg-red-50 text-red-700 hover:bg-red-100'
+                        : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                      }`}
+                  >
+                    {deploying ? (
+                      <><Loader2 size={12} className="animate-spin" /> Deploying...</>
+                    ) : anyItlFailed && !allItlDeployed ? (
+                      <><XCircle size={12} /> Failed – Retry</>
+                    ) : allItlDeployed ? (
+                      <><CheckCircle2 size={12} /> Deploy</>
+                    ) : (
+                      <><Upload size={12} /> Deploy</>
+                    )}
+                  </button>
+                ) : (
+                  <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-slate-100 text-slate-400">
+                    Waiting
+                  </span>
+                )}
+              </div>
+
+              {/* Step 5: Run Pipelines — auto-fires once deployed; WatermarkUpdate -> MasterPipeline */}
+              {allItlDeployed && (
+                <div className="flex items-center gap-4 mt-3">
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold ${allItlPipelinesRan ? 'bg-emerald-100 text-emerald-700' : anyItlPipelineFailed ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'
+                    }`}>3</div>
+                  <div className="flex-1">
+                    <p className="text-[12px] font-medium text-slate-700">Run Pipelines</p>
+                    <p className="text-[10px] text-slate-500">Auto-runs WatermarkUpdate → MasterPipeline in order</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (runningPipelines || anyItlPipelineRunning) return;
+                      setRunningPipelines(true);
+                      const ok = await onRunItlPipelines();
+                      setRunningPipelines(false);
+                      if (ok) toast.success('ITL pipeline run completed');
+                      else toast.error('ITL pipeline run failed');
+                    }}
+                    disabled={runningPipelines || anyItlPipelineRunning}
+                    className={`cursor-pointer flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed ${anyItlPipelineFailed
+                        ? 'bg-red-50 text-red-700 hover:bg-red-100'
+                        : allItlPipelinesRan
+                          ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                          : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                      }`}
+                  >
+                    {(runningPipelines || anyItlPipelineRunning) ? (
+                      <><Loader2 size={12} className="animate-spin" /> Running...</>
+                    ) : anyItlPipelineFailed ? (
+                      <><XCircle size={12} /> Failed – Retry</>
+                    ) : allItlPipelinesRan ? (
+                      <><CheckCircle2 size={12} /> Run</>
+                    ) : (
+                      <><Play size={12} /> Run</>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {/* ITL Pipeline Results */}
+              {itlPipelineFiles.length > 0 && (
+                <div className="mt-3 border-t border-slate-100 pt-3">
+                  <table className="w-full">
+                    <thead className="border-b border-slate-100">
+                      <tr>
+                        <th className="px-3 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Pipeline</th>
+                        <th className="px-3 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
+                        <th className="px-3 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Run</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {itlPipelineFiles
+                        .filter((pl) => !SUB_PIPELINE_SUFFIXES.some((suffix) => pl.name.endsWith(`_${suffix}`)))
+                        .map((pl) => {
+                          const isMaster = pl.name.endsWith('_02_PL_Master pipeline');
+                          const subRows = isMaster
+                            ? itlPipelineFiles.filter((p) =>
+                                SUB_PIPELINE_SUFFIXES.some((suffix) => p.name.endsWith(`_${suffix}`))
+                              )
+                            : [];
+                          return (
+                            <Fragment key={pl.name}>
+                              <tr
+                                className={`hover:bg-slate-50/50 ${isMaster ? 'cursor-pointer' : ''}`}
+                                onClick={isMaster ? () => setMasterExpanded((v) => !v) : undefined}
+                              >
+                                <td className="px-3 py-2">
+                                  <div className="flex items-center gap-2">
+                                    {isMaster && subRows.length > 0 && (
+                                      <ChevronRight
+                                        size={12}
+                                        className={`text-slate-400 shrink-0 transition-transform duration-200 ${masterExpanded ? 'rotate-90' : ''}`}
+                                      />
+                                    )}
+                                    <Workflow size={12} className="text-slate-400" />
+                                    <span className="text-[11px] font-medium text-slate-800">{pl.name}</span>
+                                    {isMaster && subRows.length > 0 && (
+                                      <span className="text-[10px] text-slate-400">({subRows.length} sub-pipeline{subRows.length === 1 ? '' : 's'})</span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2">
+                                  {pl.uploadStatus === 'success' ? (
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700"><CheckCircle2 size={11} /> Created</span>
+                                  ) : pl.uploadStatus === 'uploading' ? (
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600"><Loader2 size={11} className="animate-spin" /> Creating</span>
+                                  ) : pl.uploadStatus === 'failed' ? (
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600"><XCircle size={11} /> Failed</span>
+                                  ) : (
+                                    <span className="text-[10px] font-bold text-slate-400">Pending</span>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2">
+                                  {pl.runStatus === 'completed' ? (
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700"><CheckCircle2 size={11} /> Completed</span>
+                                  ) : pl.runStatus === 'running' ? (
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600"><Loader2 size={11} className="animate-spin" /> Running</span>
+                                  ) : pl.runStatus === 'failed' ? (
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600"><XCircle size={11} /> Failed</span>
+                                  ) : (
+                                    <span className="text-[10px] text-slate-300">—</span>
+                                  )}
+                                </td>
+                              </tr>
+                              {isMaster && masterExpanded && subRows.map((sub) => (
+                                <tr key={sub.name} className="bg-slate-50/50 hover:bg-slate-100/60">
+                                  <td className="px-3 py-2 pl-9">
+                                    <div className="flex items-center gap-2">
+                                      <Workflow size={11} className="text-slate-300" />
+                                      <span className="text-[11px] font-medium text-slate-600">{sub.name}</span>
+                                    </div>
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    {sub.uploadStatus === 'success' ? (
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700"><CheckCircle2 size={11} /> Created</span>
+                                    ) : sub.uploadStatus === 'uploading' ? (
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600"><Loader2 size={11} className="animate-spin" /> Creating</span>
+                                    ) : sub.uploadStatus === 'failed' ? (
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600"><XCircle size={11} /> Failed</span>
+                                    ) : (
+                                      <span className="text-[10px] font-bold text-slate-400">Pending</span>
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    {sub.runStatus === 'completed' ? (
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700"><CheckCircle2 size={11} /> Completed</span>
+                                    ) : sub.runStatus === 'running' ? (
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600"><Loader2 size={11} className="animate-spin" /> Running</span>
+                                    ) : sub.runStatus === 'failed' ? (
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600"><XCircle size={11} /> Failed</span>
+                                    ) : (
+                                      <span className="text-[10px] text-slate-300">—</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </Fragment>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
   );
 };
 
@@ -1654,7 +2289,7 @@ const MasterExecuteSection = ({
             {executing ? (
               <><Loader2 size={13} className="animate-spin" /> Executing…</>
             ) : result ? (
-              <><Play size={13} /> Re-run</>
+              <><Play size={13} /> Execute Master SP</>
             ) : (
               <><Play size={13} /> Execute Master SP</>
             )}
@@ -1829,7 +2464,7 @@ const SemanticModelSection = ({
             {uploading ? (
               <><Loader2 size={13} className="animate-spin" /> Uploading…</>
             ) : excel ? (
-              <><FileSpreadsheet size={13} /> Re-upload Excel</>
+              <><FileSpreadsheet size={13} /> Upload Excel</>
             ) : (
               <><FileSpreadsheet size={13} /> Upload Excel</>
             )}

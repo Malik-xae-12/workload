@@ -115,7 +115,7 @@ export const MedallionStep = ({ layers, onUpdateLayer, onUpdateLayerType, onVali
         <div className="divide-y divide-slate-100">
           {layers.map((layer) => {
             const meta = layerMeta[layer.key];
-            const canChooseType = layer.key !== 'gold';
+            const isBronzeOrSilver = layer.key !== 'gold';
             return (
               <div key={layer.key} className="px-5 py-4">
                 <div className="flex items-center gap-2 mb-2">
@@ -127,32 +127,7 @@ export const MedallionStep = ({ layers, onUpdateLayer, onUpdateLayerType, onVali
                   {layer.validated && <CheckCircle2 size={13} className="text-emerald-500 ml-auto" />}
                 </div>
 
-                {canChooseType && (
-                  <div className="flex items-center gap-1.5 mb-2">
-                    {(['LH', 'WH'] as const).map((type) => (
-                      <button
-                        key={type}
-                        type="button"
-                        onClick={() => onUpdateLayerType(layer.key as 'bronze' | 'silver', type)}
-                        disabled={layer.validated}
-                        className={`px-2.5 py-1 rounded-md text-[10px] font-bold border transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
-                          layer.itemType === type
-                            ? 'bg-emerald-600 border-emerald-600 text-white'
-                            : 'bg-white border-slate-300 text-slate-500 hover:border-emerald-300 hover:text-emerald-600'
-                        }`}
-                      >
-                        {itemTypeMeta[type].label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {!canChooseType && (
-                  <div className="mb-2">
-                    <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-bold border border-amber-200 bg-amber-50 text-amber-700">
-                      Warehouse (fixed for Gold)
-                    </span>
-                  </div>
-                )}
+                
 
                 <input
                   type="text"

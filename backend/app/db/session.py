@@ -153,6 +153,10 @@ async def _migrate_existing_db() -> None:
                 await conn.execute(text(
                     "ALTER TABLE source_connections ADD COLUMN status_error VARCHAR(1000)"
                 ))
+            if "selected_tables_json" not in existing_cols:
+                await conn.execute(text(
+                    "ALTER TABLE source_connections ADD COLUMN selected_tables_json TEXT"
+                ))
 
             # capacity_assigned was only ever returned in the workspace-
             # provisioning API response, never persisted — so reloading the

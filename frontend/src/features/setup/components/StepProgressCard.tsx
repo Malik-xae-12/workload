@@ -47,27 +47,34 @@ const STEPS: Step[] = [
 export interface StepProgressCardProps {
   /** 0-based index of the current active step. Pass STEPS.length for "complete". */
   currentStep: number;
+  /** Furthest step ever reached — drives the progress bar/percentage so
+   *  going Back to revisit an earlier step never makes progress appear to
+   *  regress. Falls back to currentStep if omitted (keeps this prop
+   *  optional for any other caller that hasn't been updated). */
+  highestStepReached?: number;
   /** Called with the step index when a completed step circle is clicked. */
   onStepClick?: (step: number) => void;
 }
 
 // ─── Component ─────────────────────────────────────────────────────────────────
-export const StepProgressCard = ({ currentStep, onStepClick }: StepProgressCardProps) => {
+export const StepProgressCard = ({ currentStep, highestStepReached, onStepClick }: StepProgressCardProps) => {
   const n = STEPS.length;
   const label = currentStep >= n ? 'Complete' : `Step ${currentStep + 1} of ${n}`;
-  // The bar/footer used to show this as a literal "Completion %" — but it
-  // was really just tracking which step you're on, not how much of the
-  // actual work is done (the steps aren't equal-effort, so "Step 2 of 6"
-  // showing "33% complete" overstated progress on early steps and
-  // understated it on later ones). Replacing the number with a message
-  // tied to the step itself, which is what the bar position actually
-  // reflects.
-  const stageMessage =
-    currentStep >= n
-      ? 'All steps done'
-      : STEPS[currentStep]?.title
-      ? `Currently on: ${STEPS[currentStep].title}`
-      : '';
+  // Shown as a percentage of steps completed (not a message about which
+  // step you're on) — this used to say "Currently on: <step>" instead,
+  // but that reads like a status message, not progress; a percentage
+  // answers "how much have I actually gotten through" at a glance, which
+  // is what this card is for.
+  //
+  // Driven by highestStepReached, NOT currentStep: clicking Back to
+  // revisit an earlier step must never make the shown progress go
+  // backwards — only actually reaching a new step (moving the
+  // high-water mark forward) should change it. Uses the exact same
+  // formula the bar below uses so the number and the bar's fill always
+  // agree.
+  const progressStep = Math.max(currentStep, highestStepReached ?? currentStep);
+  const progressPct = Math.round((Math.min(progressStep + 1, n) / n) * 100);
+  const stageMessage = progressStep >= n ? 'All steps done' : `${progressPct}% complete`;
 
   return (
     <div
@@ -100,7 +107,12 @@ export const StepProgressCard = ({ currentStep, onStepClick }: StepProgressCardP
       <div className="px-4 pt-4 pb-2 flex-1">
         {STEPS.map((step, i) => {
           const isLast = i === n - 1;
-          const done = i < currentStep || (isLast && i === currentStep);
+          // "done" (checkmark) reflects the furthest step ever reached,
+          // not just currentStep — so clicking Back to revisit an
+          // earlier step doesn't visually un-complete the steps after it;
+          // "active" (highlighted, in-progress) still tracks currentStep,
+          // since that's genuinely where the person is right now.
+          const done = i < progressStep || (isLast && i === progressStep);
           const active = i === currentStep && !isLast;
           const Icon = step.icon;
           const canClick = done && !!onStepClick;
@@ -190,8 +202,7 @@ export const StepProgressCard = ({ currentStep, onStepClick }: StepProgressCardP
           background: `linear-gradient(to bottom, ${G[50]}, #f0faf5)`,
         }}
       >
-        {/* Stage row — a relatable message, not a completion percentage
-            (see stageMessage's comment above for why) */}
+        {/* Stage row — percentage of steps completed */}
         <div className="flex items-center justify-between mb-2 gap-2">
           <span
             className="text-[9px] font-bold uppercase tracking-widest shrink-0"
@@ -214,7 +225,7 @@ export const StepProgressCard = ({ currentStep, onStepClick }: StepProgressCardP
           <div
             className="h-full rounded-full transition-all duration-700"
             style={{
-              width: `${Math.round((Math.min(currentStep + 1, n) / n) * 100)}%`,
+              width: `${progressPct}%`,
               background: `linear-gradient(90deg, ${G[400]}, ${G[500]})`,
             }}
           />

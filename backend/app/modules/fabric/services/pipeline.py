@@ -920,9 +920,19 @@ def upload_pipelines(
             with open(path, "r", encoding="utf-8") as fh:
                 raw_json = json.load(fh)
             filled = _apply_replacements(raw_json, replacements)
-            # Prefix with connection name to avoid conflicts when multiple connections exist
-            original_name = filled.get("name", base_name)
-            pipeline_display_name = f"{connection_name}_{original_name}"
+            # Always derive the saved/uploaded display name from base_name
+            # (the filename, e.g. "01_PL_WatermarkUpdate") -- NEVER from the
+            # pipeline JSON's own internal "name" field. Those two used to
+            # diverge here (this line alone used filled.get("name", ...) while
+            # the two except-blocks below already correctly used base_name),
+            # and whenever they didn't match, the resulting
+            # "{connection_name}_{original_name}" saved to ConfigUpload.item_name
+            # didn't match any entry in router.py's _ITL_SUFFIXES allowlist -- so
+            # get_itl_config_status silently reported this (successfully
+            # deployed!) pipeline as never-deployed on every future status check,
+            # which made the frontend's auto-deploy-after-notebook effect
+            # re-trigger on every single page refresh.
+            pipeline_display_name = f"{connection_name}_{base_name}"
             definition_body = {"properties": filled["properties"]} if "properties" in filled else filled
             data = _upload_single_pipeline(
                 token, workspace_id, pipeline_display_name, filled, folder_id

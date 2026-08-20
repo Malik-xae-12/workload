@@ -9,6 +9,7 @@ import { useMsal } from '@azure/msal-react';
 import { fabricTokenRequest } from '../../../auth/config/msalConfig';
 import { CredentialsStep } from './CredentialsStep';
 import type { CredentialFields } from './CredentialsStep';
+import { validateSimpleName } from '../../../../shared/utils/nameValidation';
 
 type ProvisionPhase = 'idle' | 'creating' | 'adding-admin' | 'assigning-capacity' | 'done' | 'error';
 
@@ -45,6 +46,7 @@ export const WorkspaceSetupStep = ({
 }: WorkspaceSetupStepProps) => {
   const { instance: msalInstance, accounts } = useMsal();
   const [name, setName] = useState(savedName || '');
+  const nameValidation = validateSimpleName(name);
   const [phase, setPhase] = useState<ProvisionPhase>(workspaceId ? 'done' : 'idle');
   const [provisionError, setProvisionError] = useState<string | null>(null);
   const [credSaving, setCredSaving] = useState(false);
@@ -71,11 +73,29 @@ export const WorkspaceSetupStep = ({
   };
 
   const handleProvision = async () => {
-    if (!name.trim()) return;
+    const { trimmed, isValid, warning } = validateSimpleName(name);
+    if (!isValid) {
+      setProvisionError(warning || 'Please enter a workspace name.');
+      setPhase('error');
+      return;
+    }
+    setName(trimmed);
     setProvisionError(null);
     setPhase('creating');
 
-    // Try to get a user-delegated Fabric token for capacity assignment
+    // Try to get a user-delegated Fabric token for capacity assignment —
+    // SILENT ONLY. This step must never open an interactive popup: the
+    // only place in this app allowed to do that is the Credentials step's
+    // "Sign in with Microsoft" / "Switch account" buttons. An
+    // acquireTokenPopup() fallback here used to fire on essentially every
+    // click of this button (silent fails for anyone who hasn't been
+    // through that specific OAuth consent flow, which is most people —
+    // e.g. everyone using Service Principal auth, or signed in via the
+    // app's own basic login rather than the Fabric-scoped one), popping
+    // open a window that just rendered the whole app again. If silent
+    // acquisition fails, this simply continues without a user token —
+    // capacity assignment falls back to the project's own credentials,
+    // same as the outer catch below already assumed.
     let userFabricToken: string | undefined;
     try {
       const account = accounts[0];
@@ -87,13 +107,7 @@ export const WorkspaceSetupStep = ({
         userFabricToken = tokenResponse.accessToken;
       }
     } catch {
-      // If silent fails, try popup
-      try {
-        const tokenResponse = await msalInstance.acquireTokenPopup(fabricTokenRequest);
-        userFabricToken = tokenResponse.accessToken;
-      } catch {
-        // Continue without user token — capacity assignment will be skipped
-      }
+      // Continue without user token — capacity assignment will be skipped
     }
 
     // Simulate phase progression while the actual API call runs
@@ -101,7 +115,7 @@ export const WorkspaceSetupStep = ({
     const phaseTimer2 = setTimeout(() => setPhase('assigning-capacity'), 5000);
 
     try {
-      const ok = await onProvision(name.trim(), userFabricToken);
+      const ok = await onProvision(trimmed, userFabricToken);
       clearTimeout(phaseTimer1);
       clearTimeout(phaseTimer2);
       if (ok) {
@@ -138,7 +152,7 @@ export const WorkspaceSetupStep = ({
         />
 
         {/* Workspace success card */}
-        <div className="max-w-2xl">
+        <div className="max-w-6xl">
           <div className="bg-white rounded-2xl border border-emerald-200 overflow-hidden shadow-sm">
             <div
               className="px-6 py-4 flex items-center gap-3"
@@ -160,12 +174,7 @@ export const WorkspaceSetupStep = ({
                 <span className="text-slate-500 font-medium">Workspace Name</span>
                 <span className="text-slate-800 font-semibold">{savedName || name}</span>
               </div>
-              {workspaceId && (
-                <div className="flex items-center justify-between text-[13px]">
-                  <span className="text-slate-500 font-medium">Workspace ID</span>
-                  <span className="text-slate-700 font-mono text-[12px]">{workspaceId}</span>
-                </div>
-              )}
+              
               {capacityAssigned === false && (
                 <div className="flex items-start gap-2.5 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg mt-2">
                   <AlertTriangle size={15} className="text-amber-500 shrink-0 mt-0.5" />
@@ -220,17 +229,26 @@ export const WorkspaceSetupStep = ({
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Fabric_Production_Workspace"
+                  onBlur={() => setName((v) => v.trim())}
+                  placeholder="e.g. FabricProductionWorkspace"
                   disabled={isProvisioning}
                   className={`w-full h-10 px-3.5 text-[13px] rounded-lg border outline-none transition-all placeholder:text-slate-400 ${
                     isProvisioning
                       ? 'bg-slate-100 border-slate-200 cursor-not-allowed text-slate-600'
+                      : nameValidation.warning
+                      ? 'bg-slate-50 border-rose-300 text-slate-800 focus:border-rose-400 focus:ring-2 focus:ring-rose-50'
                       : 'bg-slate-50 border-slate-300 text-slate-800 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-50'
                   }`}
                 />
-                <p className="text-[11px] text-slate-400">
-                  A new workspace will be created in your Fabric tenant with this name.
-                </p>
+                {nameValidation.warning ? (
+                  <p className="text-[11px] text-rose-500 flex items-center gap-1">
+                    <AlertCircle size={11} className="shrink-0" /> {nameValidation.warning}
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-slate-400">
+                    A new workspace will be created in your Fabric tenant with this name.
+                  </p>
+                )}
               </div>
 
               {/* Provisioning progress */}
@@ -288,10 +306,10 @@ export const WorkspaceSetupStep = ({
               {!isProvisioning && (
                 <button
                   onClick={handleProvision}
-                  disabled={!name.trim() || loading}
+                  disabled={!nameValidation.isValid || loading}
                   className="w-full h-11 rounded-lg text-[13px] font-bold text-white transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
                   style={{
-                    background: name.trim()
+                    background: nameValidation.isValid
                       ? 'linear-gradient(135deg, #1D9E75, #0d6e52)'
                       : '#94a3b8',
                   }}

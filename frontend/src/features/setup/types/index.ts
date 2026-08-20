@@ -98,6 +98,10 @@ export interface FabricCredentials {
 
 export interface SetupState {
   currentStep: number;
+  /** Furthest step ever reached — used for progress display so going
+   *  Back never makes shown progress regress. See initialState's comment
+   *  in useSetupStore.ts. */
+  highestStepReached: number;
   workspace: WorkspaceData;
   credentials: FabricCredentials;
   connections: SourceConnection[];

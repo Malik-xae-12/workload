@@ -57,6 +57,16 @@ _KNOWN_PATTERNS: list[tuple[re.Pattern, Callable]] = [
         lambda m: "We couldn't reach that database in time. Please double-check the server address and that it's reachable, then try again.",
     ),
     (
+        # pyodbc's "TCP Provider ... connection attempt failed ..." /
+        # "Communication link failure" (SQLSTATE 08S01) — a dropped or
+        # blocked TCP connection to the SQL endpoint, distinct from a
+        # clean timeout. Common causes: VPN/firewall blocking the port,
+        # the warehouse's SQL endpoint being temporarily unavailable, or
+        # a flaky network link.
+        re.compile(r"(tcp provider|communication link failure|08s01)", re.IGNORECASE),
+        lambda m: "We lost the connection while talking to the SQL endpoint. This is usually a network/firewall/VPN issue on your end rather than a problem with your credentials — please check your connection and try again.",
+    ),
+    (
         re.compile(r"(login failed|authentication failed|invalid username or password|access denied for user)", re.IGNORECASE),
         lambda m: "That username or password wasn't accepted by the database. Please check your credentials and try again.",
     ),

@@ -368,3 +368,122 @@ def setup_metadata_layer(
 
     else:
         raise ValueError(f"Invalid action: {action}")
+
+
+# ── Source → Bronze table selection ─────────────────────────────────────
+#
+# The OTL config-creation notebook (01_NB_*_ConfigCreation) discovers every
+# table in a source connection via INFORMATION_SCHEMA and inserts one row
+# per table into WH_MetaData.Config_<connection_name>.OneTimeConfigETL,
+# with IsActive defaulted to '1' for all of them — that's why every table
+# moves from source to Bronze today. Flipping IsActive to '0' for
+# unwanted tables here is exactly what the Bronze-copy pipeline/notebook
+# already respects; no pipeline changes needed, just a way to edit this
+# table's IsActive column.
+
+
+def _connect_warehouse(client_id: str, client_secret: str, server: str, database: str):
+    drivers = pyodbc.drivers()
+    driver_name = "ODBC Driver 18 for SQL Server"
+    if driver_name not in drivers:
+        driver_name = "ODBC Driver 17 for SQL Server"
+        if driver_name not in drivers:
+            raise RuntimeError(
+                "No suitable ODBC driver found. Install 'ODBC Driver 17 for SQL Server' or '18'."
+            )
+    conn_str = (
+        f"DRIVER={{{driver_name}}};"
+        f"SERVER={server};"
+        f"DATABASE={database};"
+        "Authentication=ActiveDirectoryServicePrincipal;"
+        f"UID={client_id};"
+        f"PWD={client_secret};"
+        "Encrypt=yes;"
+        "TrustServerCertificate=no;"
+    )
+    return pyodbc.connect(conn_str, autocommit=True)
+
+
+def list_source_tables(
+    client_id: str, client_secret: str, server: str, database: str, connection_name: str,
+) -> list[dict]:
+    """List every table discovered for *connection_name* in its
+    OneTimeConfigETL config table, with current IsActive state."""
+    config_schema = f"Config_{connection_name}"
+    conn = _connect_warehouse(client_id, client_secret, server, database)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"SELECT COUNT(*) FROM sys.schemas WHERE name = ?", (config_schema,)
+        )
+        if cursor.fetchone()[0] != 1:
+            raise ValueError(
+                f"No config schema '{config_schema}' found — run the OTL config-creation "
+                "notebook for this connection first (Notebooks step)."
+            )
+        cursor.execute(
+            f"SELECT Id, SourceSchemaName, SourceTableName, IsActive "
+            f"FROM [{config_schema}].[OneTimeConfigETL] "
+            f"ORDER BY SourceSchemaName, SourceTableName"
+        )
+        rows = cursor.fetchall()
+        return [
+            {
+                "id": r.Id,
+                "schema_name": r.SourceSchemaName,
+                "table_name": r.SourceTableName,
+                # Stored as the string '1'/'0' by the notebook (see
+                # 08.COLUMN SELECTION AND MODIFICATIONS cell) — normalize
+                # to a real bool for the API response.
+                "is_active": str(r.IsActive).strip() in ("1", "true", "True"),
+            }
+            for r in rows
+        ]
+    finally:
+        conn.close()
+
+
+def update_source_tables_active(
+    client_id: str,
+    client_secret: str,
+    server: str,
+    database: str,
+    connection_name: str,
+    active_ids: list[int],
+) -> int:
+    """Set IsActive='1' for exactly the given table Ids and IsActive='0'
+    for every other table belonging to this connection. Returns the
+    number of rows affected in total."""
+    config_schema = f"Config_{connection_name}"
+    conn = _connect_warehouse(client_id, client_secret, server, database)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"SELECT COUNT(*) FROM sys.schemas WHERE name = ?", (config_schema,)
+        )
+        if cursor.fetchone()[0] != 1:
+            raise ValueError(f"No config schema '{config_schema}' found for this connection.")
+
+        table = f"[{config_schema}].[OneTimeConfigETL]"
+        affected = 0
+
+        if active_ids:
+            placeholders = ",".join("?" for _ in active_ids)
+            cursor.execute(
+                f"UPDATE {table} SET IsActive = '1' WHERE Id IN ({placeholders}) AND IsActive <> '1'",
+                active_ids,
+            )
+            affected += cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
+            cursor.execute(
+                f"UPDATE {table} SET IsActive = '0' WHERE Id NOT IN ({placeholders}) AND IsActive <> '0'",
+                active_ids,
+            )
+            affected += cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
+        else:
+            # Nothing selected at all — deactivate every table for this connection.
+            cursor.execute(f"UPDATE {table} SET IsActive = '0' WHERE IsActive <> '0'")
+            affected += cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
+
+        return affected
+    finally:
+        conn.close()

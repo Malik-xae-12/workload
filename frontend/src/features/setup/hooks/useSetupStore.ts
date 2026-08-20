@@ -49,6 +49,11 @@ import {
 
 const initialState: SetupState = {
   currentStep: 0,
+  // Furthest step ever reached this project — the progress bar/percentage
+  // tracks THIS, not currentStep, so going Back to revisit an earlier
+  // step never makes the shown progress go backwards; only advancing
+  // past the previous high-water mark moves it.
+  highestStepReached: 0,
   workspace: {
     workspaceId: '',
     userObjectId: '',
@@ -117,25 +122,35 @@ const initialState: SetupState = {
 // browser refresh returns the user to where they left off instead of step 0.
 const PROGRESS_STORAGE_PREFIX = 'fabric_setup_progress_';
 
-const loadPersistedProgress = (projectId: string | null): { currentStep: number; selectedConnection: string | null } => {
-  if (!projectId) return { currentStep: 0, selectedConnection: null };
+const loadPersistedProgress = (projectId: string | null): { currentStep: number; highestStepReached: number; selectedConnection: string | null } => {
+  if (!projectId) return { currentStep: 0, highestStepReached: 0, selectedConnection: null };
   try {
     const raw = localStorage.getItem(`${PROGRESS_STORAGE_PREFIX}${projectId}`);
-    if (!raw) return { currentStep: 0, selectedConnection: null };
+    if (!raw) return { currentStep: 0, highestStepReached: 0, selectedConnection: null };
     const parsed = JSON.parse(raw);
+    const currentStep = typeof parsed.currentStep === 'number' ? parsed.currentStep : 0;
     return {
-      currentStep: typeof parsed.currentStep === 'number' ? parsed.currentStep : 0,
+      currentStep,
+      // Older persisted entries won't have highestStepReached at all —
+      // fall back to currentStep itself so an existing in-progress setup
+      // doesn't suddenly look like 0% on the first load after this change.
+      highestStepReached: typeof parsed.highestStepReached === 'number' ? parsed.highestStepReached : currentStep,
       selectedConnection: typeof parsed.selectedConnection === 'string' ? parsed.selectedConnection : null,
     };
   } catch {
-    return { currentStep: 0, selectedConnection: null };
+    return { currentStep: 0, highestStepReached: 0, selectedConnection: null };
   }
 };
 
 export const useSetupStore = (projectId: string | null) => {
   const [state, setState] = useState<SetupState>(() => {
     const persisted = loadPersistedProgress(projectId);
-    return { ...initialState, currentStep: persisted.currentStep, selectedConnection: persisted.selectedConnection };
+    return {
+      ...initialState,
+      currentStep: persisted.currentStep,
+      highestStepReached: persisted.highestStepReached,
+      selectedConnection: persisted.selectedConnection,
+    };
   });
 
   // Keep a ref to the latest state so async callbacks never see stale closures
@@ -188,10 +203,12 @@ export const useSetupStore = (projectId: string | null) => {
         const persisted = loadPersistedProgress(projectId);
         setState(() => ({
           ...initialState,
-          // currentStep/selectedConnection are restored from localStorage (or
-          // the per-accelerator session in SetupPage) — don't fight that by
-          // forcing them back to defaults here.
+          // currentStep/highestStepReached/selectedConnection are restored
+          // from localStorage (or the per-accelerator session in
+          // SetupPage) — don't fight that by forcing them back to
+          // defaults here.
           currentStep: persisted.currentStep,
+          highestStepReached: persisted.highestStepReached,
           selectedConnection: persisted.selectedConnection,
         }));
       }
@@ -244,15 +261,26 @@ export const useSetupStore = (projectId: string | null) => {
     try {
       localStorage.setItem(
         `${PROGRESS_STORAGE_PREFIX}${projectId}`,
-        JSON.stringify({ currentStep: state.currentStep, selectedConnection: state.selectedConnection }),
+        JSON.stringify({
+          currentStep: state.currentStep,
+          highestStepReached: state.highestStepReached,
+          selectedConnection: state.selectedConnection,
+        }),
       );
     } catch {
       /* localStorage unavailable/full — non-fatal, just skip persistence */
     }
-  }, [projectId, state.currentStep, state.selectedConnection]);
+  }, [projectId, state.currentStep, state.highestStepReached, state.selectedConnection]);
 
   const setCurrentStep = (step: number) => {
-    setState((prev) => ({ ...prev, currentStep: step }));
+    setState((prev) => ({
+      ...prev,
+      currentStep: step,
+      // Only ever moves forward — going Back (a lower step) must never
+      // reduce the shown progress; only reaching a genuinely new step
+      // does.
+      highestStepReached: Math.max(prev.highestStepReached, step),
+    }));
   };
 
   const updateWorkspace = (workspace: Partial<SetupState['workspace']>) => {
@@ -1829,6 +1857,32 @@ export const useSetupStore = (projectId: string | null) => {
   const runItlPipelineSequence = useCallback(
     async (connectionName: string, resumeFromFailed?: boolean) => {
       let order = ITL_RUN_SEQUENCE.map((suffix) => `${connectionName}_${suffix}`);
+
+      if (!resumeFromFailed) {
+        // A fresh (non-resume) run — reset every ITL pipeline's run
+        // status back to "—" right away, so the UI reflects "starting
+        // over" immediately instead of still showing the previous run's
+        // Completed/Failed badges while the new run gets underway.
+        const connIdForReset = stateRef.current.connections.find((c) => c.name === connectionName)?.id
+          ?? stateRef.current.selectedConnection ?? '';
+        if (connIdForReset) {
+          applyForProject(projectId, (prev) => ({
+            ...prev,
+            itlPipelineFiles: {
+              ...prev.itlPipelineFiles,
+              [connIdForReset]: (prev.itlPipelineFiles[connIdForReset] || []).map((p) => ({
+                ...p, runStatus: undefined, jobId: undefined,
+              })),
+            },
+          }));
+          // Best-effort — clears the persisted run_status too, so a
+          // refresh mid-run (or before the new run's first status write
+          // lands) doesn't resurrect the previous run's badge.
+          for (const name of order) {
+            try { await updateRunStatus(projectId, { item_name: name, run_status: '' as any }); } catch { /* non-fatal */ }
+          }
+        }
+      }
 
       if (resumeFromFailed) {
         const connIdForResume = stateRef.current.connections.find((c) => c.name === connectionName)?.id

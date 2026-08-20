@@ -112,6 +112,63 @@ async def get_source_connection(
     return result.scalars().first()
 
 
+async def get_source_connection_for_user(
+    db: AsyncSession, sc_id: str, user_id: str
+) -> SourceConnection | None:
+    """Like get_source_connection, but resilient to user-id type/format
+    drift: matches on str(user_id), and also accepts a connection that is
+    linked to any of this user's projects (covers rows created before the
+    user_id column was consistently stringified)."""
+    uid = str(user_id)
+    result = await db.execute(select(SourceConnection).where(SourceConnection.id == sc_id))
+    sc = result.scalars().first()
+    if not sc:
+        return None
+    if str(sc.user_id) == uid:
+        return sc
+    link_result = await db.execute(
+        select(ProjectSourceConnection.id)
+        .join(Project, Project.id == ProjectSourceConnection.project_id)
+        .where(
+            ProjectSourceConnection.source_connection_id == sc_id,
+            Project.user_id == uid,
+            Project.is_deleted == False,
+        )
+    )
+    return sc if link_result.scalars().first() else None
+
+
+async def delete_source_connection_record(
+    db: AsyncSession, source_connection_id: str
+) -> None:
+    """Hard-delete a source connection row plus any project links pointing
+    at it. Used when Fabric-side creation fails: a connection that never
+    came into existence in Fabric must not linger in the connections list."""
+    link_result = await db.execute(
+        select(ProjectSourceConnection).where(
+            ProjectSourceConnection.source_connection_id == source_connection_id
+        )
+    )
+    for link in link_result.scalars().all():
+        await db.delete(link)
+    result = await db.execute(
+        select(SourceConnection).where(SourceConnection.id == source_connection_id)
+    )
+    sc = result.scalars().first()
+    if sc is not None:
+        await db.delete(sc)
+    await db.commit()
+
+
+async def get_project_links_for_connection(db: AsyncSession, source_connection_id: str):
+    result = await db.execute(
+        select(ProjectSourceConnection).where(
+            ProjectSourceConnection.source_connection_id == source_connection_id
+        )
+    )
+    return result.scalars().all()
+
+
 async def create_source_connection_record(
     db: AsyncSession,
     *,
@@ -497,6 +554,15 @@ async def update_config_upload_run_status(
     for dup in stale:
         await db.delete(dup)
 
+    # This was the actual cause of run_status never surviving a page
+    # refresh: every OTHER write in this module (save_config_upload right
+    # above, for one) explicitly commits, but this one didn't — so
+    # 'running'/'completed'/'failed' updates only ever lived in this
+    # request's in-memory session and were discarded the moment the
+    # request finished, never reaching the database. The very next
+    # restore-on-reload fetch would then find whatever run_status (or
+    # lack of one) was there before this call, making a genuinely
+    # completed run look like it had never run at all.
     await db.commit()
     await db.refresh(existing)
     return existing

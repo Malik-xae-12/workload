@@ -12,6 +12,7 @@ from app.modules.fabric import service as svc
 from app.modules.fabric.schema import (
     ConfigUploadRead,
     ConnectionNameCheckResponse,
+    ConnectionTablesUpdateRequest,
     FabricCredentialCreate,
     FabricCredentialRead,
     ITLConfigStatusResponse,
@@ -28,6 +29,8 @@ from app.modules.fabric.schema import (
     NotebookRunResponse,
     PipelineJobStatusResponse,
     PipelineRunRequest,
+    SourceTableRead,
+    PendingTableSelectionRequest,
     PipelineRunResponse,
     PipelineUploadRequest,
     ProjectCreate,
@@ -291,6 +294,70 @@ async def list_notebooks(db_type: str | None = Query(None)):
     # Use explicit file map to return only relevant notebooks for this db type
     allowed_filenames = set(get_notebooks_for_db_type(db_type))
     return [nb for nb in all_notebooks if nb["filename"] in allowed_filenames]
+
+# ── Source table selection (source -> Bronze) ───────────────────────
+
+
+@router.get("/projects/{project_id}/connections/{connection_name}/tables", response_model=list[SourceTableRead])
+async def list_connection_tables(
+    project_id: str,
+    connection_name: str,
+    user: User = Depends(current_active_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    """List every table discovered for this source connection, with its
+    current IsActive (source -> Bronze) state."""
+    return await svc.list_connection_tables(project_id, connection_name, user, db)
+
+
+@router.put("/projects/{project_id}/connections/{connection_name}/tables")
+async def update_connection_tables(
+    project_id: str,
+    connection_name: str,
+    payload: ConnectionTablesUpdateRequest,
+    user: User = Depends(current_active_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Set exactly which tables for this connection are active (move to
+    Bronze) -- everything else is set inactive."""
+    return await svc.update_connection_tables(project_id, connection_name, payload.active_ids, user, db)
+
+
+@router.get("/connections/{connection_id}/pending-schemas")
+async def list_pending_source_schemas(
+    connection_id: str,
+    user: User = Depends(current_active_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Distinct schema names available directly on the source database
+    (excluding 'sys'), for the SchemaWise selection mode."""
+    return await svc.list_pending_source_schemas(connection_id, user, db)
+
+
+@router.get("/connections/{connection_id}/pending-tables")
+async def list_pending_source_tables(
+    connection_id: str,
+    user: User = Depends(current_active_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    """List tables directly from the source database itself, for picking
+    tables BEFORE this connection's config-creation notebook has run."""
+    return await svc.list_pending_source_tables(connection_id, user, db)
+
+
+@router.put("/connections/{connection_id}/pending-tables")
+async def save_pending_source_table_selection(
+    connection_id: str,
+    payload: PendingTableSelectionRequest,
+    user: User = Depends(current_active_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Save the table-selection mode ('all' | 'schema' | 'table') and the
+    corresponding picks, to be applied once the notebook eventually
+    creates the real (Fabric-side) config table for this connection."""
+    return await svc.save_pending_source_table_selection(
+        connection_id, payload.mode, payload.schemas, payload.selected, user, db
+    )
 
 
 @router.post("/projects/{project_id}/notebooks/upload")

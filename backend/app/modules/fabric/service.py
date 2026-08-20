@@ -33,7 +33,16 @@ from app.modules.fabric.services.connection import (
     create_source_connection,
 )
 from app.modules.fabric.services.medallion import setup_medallion_architecture
-from app.modules.fabric.services.metadata import setup_metadata_layer
+from app.modules.fabric.services.metadata import (
+    setup_metadata_layer,
+    list_source_tables,
+    update_source_tables_active,
+)
+from app.modules.fabric.services.source_tables import (
+    list_tables_for_source_connection,
+    list_distinct_schemas_for_source_connection,
+)
+import json
 from app.modules.fabric.services.pipeline import (
     build_replacements,
     get_pipeline_job_status,
@@ -296,10 +305,27 @@ async def create_source_connection_handler(
         )
     except (RuntimeError, ValueError) as e:
         friendly = to_friendly_message(str(e), status_code=502)
-        await repo.finalize_source_connection_status(db, record.id, status="failed", status_error=friendly)
+        # The Fabric-side connection was never created, so remove the local
+        # row (and any project link) entirely — a failed attempt must not
+        # show up in the connections list at all.
+        await repo.delete_source_connection_record(db, record.id)
         raise HTTPException(status_code=502, detail=friendly)
+    except Exception as e:
+        # Unexpected error (network, auth, bug) — same rule: nothing was
+        # created in Fabric, so leave no trace locally either.
+        await repo.delete_source_connection_record(db, record.id)
+        raise HTTPException(
+            status_code=502,
+            detail=to_friendly_message(str(e), status_code=502),
+        )
  
     fabric_conn_id = conn_data.get("id")
+    if not fabric_conn_id:
+        await repo.delete_source_connection_record(db, record.id)
+        raise HTTPException(
+            status_code=502,
+            detail="Fabric did not return a connection id — the connection was not created.",
+        )
  
     if getattr(user, 'azure_oid', None):
         try:
@@ -412,6 +438,12 @@ async def list_databases_handler(payload, user: User, db: AsyncSession):
         return ListDatabasesResponse(databases=[], supported=False, message=str(e))
     except (RuntimeError, ValueError) as e:
         raise HTTPException(status_code=502, detail=to_friendly_message(str(e), status_code=502))
+    except Exception as e:  # pyodbc.Error, psycopg2.Error, etc. — a raw
+        # driver-level connectivity failure (dropped TCP connection,
+        # timeout, DNS) isn't a RuntimeError/ValueError, so it fell
+        # through uncaught here as a raw 500/traceback. Routed through
+        # the same friendly-message translator instead.
+        raise HTTPException(status_code=502, detail=to_friendly_message(str(e), status_code=502))
 
     return ListDatabasesResponse(databases=databases, supported=True, message=note)
  
@@ -459,6 +491,34 @@ async def unlink_source_connection(
 async def create_medallion(
     project_id: str, payload: MedallionConfigCreate, user: User, db: AsyncSession
 ):
+    # Bronze and Silver are Lakehouse-only end to end: OTL's
+    # SourceToBronze pipeline writes Delta tables via a Copy Activity
+    # sink hardcoded to a Lakehouse artifact, and 01_NB_BronzeToSilver
+    # both requires LH_BRONZE/LH_SILVER by name and writes Delta paths
+    # directly (dataframe.write.format("delta").save(...)) — neither
+    # supports a Warehouse destination. Picking Warehouse for either
+    # doesn't just work worse, it fails outright (Fabric returns
+    # AuthorizationPermissionMismatch trying to write Delta files into a
+    # Warehouse's storage, regardless of the caller's actual permissions).
+    # Enforced here too, not just hidden in the UI, since this endpoint
+    # can be called directly.
+    if not payload.bronze_is_lakehouse:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Bronze must be a Lakehouse — OTL's SourceToBronze pipeline only "
+                "writes Delta tables, which a Warehouse can't receive."
+            ),
+        )
+    if not payload.silver_is_lakehouse:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Silver must be a Lakehouse — 01_NB_BronzeToSilver only writes "
+                "Delta tables, which a Warehouse can't receive."
+            ),
+        )
+
     project = await _require_workspace(project_id, user, db)
     token, _ = await _get_project_token(project_id, db)
  
@@ -515,7 +575,17 @@ async def create_metadata(
             action=payload.action,
         )
     except (RuntimeError, ValueError) as e:
-        raise HTTPException(status_code=502, detail=str(e))
+        raise HTTPException(status_code=502, detail=to_friendly_message(str(e), status_code=502))
+    except Exception as e:
+        # setup_metadata_layer runs raw SQL against the metadata warehouse
+        # (via pyodbc) for create_log — a dropped/timed-out TCP connection
+        # there raises pyodbc.OperationalError, which isn't a RuntimeError
+        # or ValueError, so it was falling through uncaught here and
+        # surfacing as a raw 500 with a full Python traceback instead of
+        # a real error message. Caught broadly and passed through
+        # to_friendly_message so any DB-connectivity failure — this one
+        # included — gets a plain-language explanation instead.
+        raise HTTPException(status_code=502, detail=to_friendly_message(str(e), status_code=502))
  
     # Persist metadata config
     if payload.action == "create_metadata":
@@ -530,6 +600,369 @@ async def create_metadata(
             db, project_id, log_created=True
         )
  
+    return result
+
+async def _resolve_metadata_warehouse_sql(project, project_id: str, cred, db: AsyncSession):
+    """Shared lookup for the two table-selection endpoints below: the
+    metadata warehouse must already exist (Create Metadata Warehouse step
+    completed) since that's what hosts the Config_<connection> schemas."""
+    from app.modules.fabric.services.metadata import get_warehouse_connection_string
+
+    mc = await repo.get_metadata_config(db, project_id)
+    if not mc or not mc.warehouse_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Metadata warehouse hasn't been created yet for this project -- "
+                   "complete the Metadata Setup step first.",
+        )
+    token, _ = await _get_project_token(project_id, db)
+    server, database = get_warehouse_connection_string(token, project.workspace_id, mc.warehouse_id)
+    return server, database
+
+
+async def _apply_pending_table_selection(
+    project, connection_name: str, client_id: str, client_secret: str, db: AsyncSession
+) -> None:
+    """Apply a table selection saved before the notebook ever ran (see
+    save_pending_source_table_selection) the moment OneTimeConfigETL
+    actually exists to apply it to. Idempotent — a no-op once
+    selected_tables_json has already been cleared.
+
+    This used to run lazily, only when the frontend happened to open the
+    post-notebook table list (list_connection_tables) for this
+    connection. That left a real gap: OTL's SourceToBronze pipeline
+    auto-runs immediately once its config-creation pipeline finishes, and
+    if nobody had opened that table list yet, IsActive was still whatever
+    the notebook set by default (every table active) — so the selection
+    was silently ignored and everything moved to Bronze regardless of
+    what was picked. Called eagerly now, right when the ConfigCreation
+    pipeline's run is observed to complete (see
+    sync_pipeline_status_handler), so IsActive is correct before
+    SourceToBronze ever reads it.
+    """
+    project_id = str(project.id)
+    sc = await repo.find_project_connection_by_name(db, project_id, connection_name)
+    if not sc or not sc.selected_tables_json:
+        return
+    saved = _load_pending_selection(sc)
+    if saved["applied"]:
+        return  # already applied — most likely by save_pending_source_table_selection itself
+
+    try:
+        server, database = await _resolve_metadata_warehouse_sql(project, project_id, None, db)
+    except HTTPException:
+        return  # metadata warehouse not set up yet — nothing to reconcile against
+
+    import asyncio
+    try:
+        rows = await asyncio.to_thread(
+            list_source_tables, client_id, client_secret, server, database, connection_name,
+        )
+    except Exception:
+        return  # OneTimeConfigETL not ready yet — will be retried next time this runs
+
+    active_ids: list[int] | None = None
+    if saved["mode"] == "table" and saved["tables"]:
+        wanted = set(saved["tables"])
+        active_ids = [r["id"] for r in rows if f'{r["schema_name"]}.{r["table_name"]}' in wanted]
+    elif saved["mode"] == "schema" and saved["schemas"]:
+        wanted_schemas = set(saved["schemas"])
+        active_ids = [r["id"] for r in rows if r["schema_name"] in wanted_schemas]
+    elif saved["mode"] == "all":
+        active_ids = [r["id"] for r in rows]
+    # (an empty schema/table pick with no active_ids resolved falls through
+    # and is left untouched below, same as before)
+    if active_ids is not None:
+        try:
+            await asyncio.to_thread(
+                update_source_tables_active,
+                client_id, client_secret, server, database, connection_name, active_ids,
+            )
+        except Exception:
+            return  # best-effort — will be retried next time this runs
+    sc.selected_tables_json = json.dumps({**saved, "applied": True})
+    await db.commit()
+
+
+async def list_connection_tables(
+    project_id: str, connection_name: str, user: User, db: AsyncSession
+) -> list[dict]:
+    project = await _require_workspace(project_id, user, db)
+    _, cred = await _get_project_token(project_id, db)
+    _client_id = cred.client_id if cred else settings.FABRIC_CLIENT_ID
+    _client_secret = cred.client_secret if cred else settings.FABRIC_CLIENT_SECRET
+    server, database = await _resolve_metadata_warehouse_sql(project, project_id, cred, db)
+
+    import asyncio
+    try:
+        rows = await asyncio.to_thread(
+            list_source_tables, _client_id, _client_secret, server, database, connection_name,
+        )
+    except (RuntimeError, ValueError) as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:  # pyodbc.Error etc.
+        raise HTTPException(status_code=502, detail=f"Failed to list tables: {e}")
+
+    # Normally already applied by now (see sync_pipeline_status_handler,
+    # which applies this the moment the ConfigCreation pipeline's run is
+    # observed to complete). This is just a safety-net second attempt for
+    # anyone who opens this list before that sync has happened.
+    sc = await repo.find_project_connection_by_name(db, project_id, connection_name)
+    if sc and sc.selected_tables_json:
+        saved = _load_pending_selection(sc)
+        if saved["applied"]:
+            # Already applied (normally by save_pending_source_table_selection
+            # itself, synchronously, at save time) — just reflect it in
+            # is_active for display, don't touch the DB again.
+            if saved["mode"] == "table":
+                wanted = set(saved["tables"])
+                for r in rows:
+                    r["is_active"] = f'{r["schema_name"]}.{r["table_name"]}' in wanted
+            elif saved["mode"] == "schema":
+                wanted_schemas = set(saved["schemas"])
+                for r in rows:
+                    r["is_active"] = r["schema_name"] in wanted_schemas
+            return rows
+        active_ids: list[int] | None = None
+        if saved["mode"] == "table" and saved["tables"]:
+            wanted = set(saved["tables"])
+            active_ids = [
+                r["id"] for r in rows if f'{r["schema_name"]}.{r["table_name"]}' in wanted
+            ]
+        elif saved["mode"] == "schema" and saved["schemas"]:
+            wanted_schemas = set(saved["schemas"])
+            active_ids = [r["id"] for r in rows if r["schema_name"] in wanted_schemas]
+        elif saved["mode"] == "all":
+            active_ids = [r["id"] for r in rows]
+        if active_ids is not None:
+            try:
+                await asyncio.to_thread(
+                    update_source_tables_active,
+                    _client_id, _client_secret, server, database, connection_name, active_ids,
+                )
+                active_id_set = set(active_ids)
+                for r in rows:
+                    r["is_active"] = r["id"] in active_id_set
+            except Exception:
+                pass  # best-effort — surfaces normally next time the person edits + saves
+        sc.selected_tables_json = json.dumps({**saved, "applied": True})
+        await db.commit()
+
+    return rows
+
+
+async def update_connection_tables(
+    project_id: str, connection_name: str, active_ids: list[int], user: User, db: AsyncSession
+) -> dict:
+    project = await _require_workspace(project_id, user, db)
+    _, cred = await _get_project_token(project_id, db)
+    _client_id = cred.client_id if cred else settings.FABRIC_CLIENT_ID
+    _client_secret = cred.client_secret if cred else settings.FABRIC_CLIENT_SECRET
+    server, database = await _resolve_metadata_warehouse_sql(project, project_id, cred, db)
+
+    import asyncio
+    try:
+        affected = await asyncio.to_thread(
+            update_source_tables_active,
+            _client_id, _client_secret, server, database, connection_name, active_ids,
+        )
+    except (RuntimeError, ValueError) as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:  # pyodbc.Error etc.
+        raise HTTPException(status_code=502, detail=f"Failed to update tables: {e}")
+    return {"status": "success", "rows_affected": affected}
+
+
+def _load_pending_selection(sc) -> dict:
+    """Read back the {mode, schemas, tables, applied} selection saved on
+    a SourceConnection row. Defaults to mode='all' (nothing saved yet ==
+    move everything, matching today's behavior until someone narrows it
+    down) and tolerates the old plain-list format that predates 'mode'.
+
+    Unlike the very first version of this, the row is now kept around
+    permanently after being applied (see save_pending_source_table_selection
+    / _apply_pending_table_selection) instead of being nulled out —
+    `applied` tells the picker UI whether this is a real, already-saved
+    choice (so it can stay collapsed across a page reload) or just today's
+    default with nothing saved yet.
+    """
+    if not sc.selected_tables_json:
+        return {"mode": "all", "schemas": [], "tables": [], "applied": False}
+    try:
+        data = json.loads(sc.selected_tables_json)
+    except (json.JSONDecodeError, TypeError):
+        return {"mode": "all", "schemas": [], "tables": [], "applied": False}
+    if isinstance(data, list):
+        # Legacy format: a bare list of "schema.table" strings == table mode.
+        return {"mode": "table", "schemas": [], "tables": data, "applied": False}
+    return {
+        "mode": data.get("mode", "all"),
+        "schemas": data.get("schemas") or [],
+        "tables": data.get("tables") or data.get("selected") or [],
+        "applied": bool(data.get("applied", False)),
+    }
+
+
+async def list_pending_source_schemas(connection_id: str, user: User, db: AsyncSession) -> dict:
+    """Distinct schema names on the source connection's own database
+    (excluding 'sys'), for the SchemaWise selection mode."""
+    sc = await repo.get_source_connection_for_user(db, connection_id, str(user.id))
+    if not sc:
+        raise HTTPException(status_code=404, detail="Connection not found.")
+
+    import asyncio
+    try:
+        schemas = await asyncio.to_thread(
+            list_distinct_schemas_for_source_connection,
+            sc.db_type, sc.server, sc.database, sc.username, sc.password,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:  # pyodbc.Error etc.
+        raise HTTPException(status_code=502, detail=f"Failed to connect to source: {e}")
+
+    saved = _load_pending_selection(sc)
+    selected_schemas = set(saved["schemas"]) if saved["mode"] == "schema" else set()
+
+    return {
+        "mode": saved["mode"],
+        "applied": saved["applied"],
+        "schemas": [
+            {"schema_name": s, "is_selected": (s in selected_schemas) if selected_schemas else True}
+            for s in schemas
+        ],
+    }
+
+
+async def list_pending_source_tables(connection_id: str, user: User, db: AsyncSession) -> dict:
+    """List tables directly from a source connection's own database — for
+    picking tables BEFORE that connection's config-creation notebook has
+    ever run (so there's no OneTimeConfigETL table yet to read from).
+    'sys' schema tables are never returned (filtered at the query level)."""
+    sc = await repo.get_source_connection_for_user(db, connection_id, str(user.id))
+    if not sc:
+        raise HTTPException(status_code=404, detail="Connection not found.")
+
+    import asyncio
+    try:
+        tables = await asyncio.to_thread(
+            list_tables_for_source_connection,
+            sc.db_type, sc.server, sc.database, sc.username, sc.password,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:  # pyodbc.Error etc.
+        raise HTTPException(status_code=502, detail=f"Failed to connect to source: {e}")
+
+    saved = _load_pending_selection(sc)
+    wanted_tables = set(saved["tables"]) if saved["mode"] == "table" else set()
+    wanted_schemas = set(saved["schemas"]) if saved["mode"] == "schema" else set()
+
+    def _is_selected(t: dict) -> bool:
+        if saved["mode"] == "table":
+            return f'{t["schema_name"]}.{t["table_name"]}' in wanted_tables
+        if saved["mode"] == "schema":
+            return t["schema_name"] in wanted_schemas
+        return True  # 'all' (or nothing saved yet)
+
+    return {
+        "mode": saved["mode"],
+        "applied": saved["applied"],
+        "tables": [
+            {
+                "schema_name": t["schema_name"],
+                "table_name": t["table_name"],
+                "is_selected": _is_selected(t),
+            }
+            for t in tables
+        ],
+    }
+
+
+async def save_pending_source_table_selection(
+    connection_id: str,
+    mode: str,
+    schemas: list[str],
+    selected: list[str],
+    user: User,
+    db: AsyncSession,
+) -> dict:
+    """Save the selection mode + picks AND apply it to WH_MetaData right
+    away, in this same request, if OneTimeConfigETL already exists for
+    this connection (i.e. 01_PL_SQL_ConfigCreation has already run — the
+    normal case now, since the Tables-to-move-to-Bronze picker only shows
+    once that pipeline has actually succeeded). Applying immediately
+    instead of waiting for some later trigger closes the exact race that
+    let OTL's SourceToBronze pipeline run against IsActive='1' for every
+    table before a save had ever landed.
+
+    If OneTimeConfigETL doesn't exist yet for some reason (kept as a
+    fallback for robustness), the selection is still saved and will be
+    applied automatically the moment sync_pipeline_status_handler
+    observes that pipeline complete, or the next time this connection's
+    table list is opened. 'sys' is always excluded regardless of mode."""
+    if mode not in ("all", "schema", "table"):
+        raise HTTPException(status_code=400, detail="mode must be 'all', 'schema', or 'table'.")
+    sc = await repo.get_source_connection_for_user(db, connection_id, str(user.id))
+    if not sc:
+        raise HTTPException(status_code=404, detail="Connection not found.")
+
+    clean_schemas = [s for s in schemas if s and s.lower() != "sys"]
+    clean_tables = [t for t in selected if t and not t.startswith("sys.")]
+
+    applied = False
+    apply_error: str | None = None
+    links = await repo.get_project_links_for_connection(db, connection_id)
+    for link in links:
+        project = await repo.get_project(db, link.project_id, str(user.id))
+        if not project:
+            continue
+        try:
+            _, cred = await _get_project_token(link.project_id, db)
+            client_id = cred.client_id if cred else settings.FABRIC_CLIENT_ID
+            client_secret = cred.client_secret if cred else settings.FABRIC_CLIENT_SECRET
+            server, database = await _resolve_metadata_warehouse_sql(project, link.project_id, cred, db)
+
+            import asyncio
+            rows = await asyncio.to_thread(
+                list_source_tables, client_id, client_secret, server, database, sc.conn_name,
+            )
+            if mode == "table":
+                wanted = set(clean_tables)
+                active_ids = [r["id"] for r in rows if f'{r["schema_name"]}.{r["table_name"]}' in wanted]
+            elif mode == "schema":
+                wanted_schemas = set(clean_schemas)
+                active_ids = [r["id"] for r in rows if r["schema_name"] in wanted_schemas]
+            else:
+                active_ids = [r["id"] for r in rows]  # 'all'
+            await asyncio.to_thread(
+                update_source_tables_active,
+                client_id, client_secret, server, database, sc.conn_name, active_ids,
+            )
+            applied = True
+            break  # one connection is linked to exactly one project in practice
+        except HTTPException as e:
+            apply_error = str(e.detail)
+        except (RuntimeError, ValueError) as e:
+            apply_error = str(e)
+        except Exception as e:
+            apply_error = str(e)
+
+    sc.selected_tables_json = json.dumps({
+        "mode": mode,
+        "schemas": clean_schemas,
+        "tables": clean_tables,
+        "applied": applied,
+    })
+    await db.commit()
+
+    count = len(clean_schemas) if mode == "schema" else len(clean_tables)
+    result = {"status": "success", "mode": mode, "selected_count": count, "applied": applied}
+    if not applied and apply_error:
+        # Not fatal — the selection is safely saved either way — but the
+        # picker UI surfaces this so it's clear a re-open/notebook-run is
+        # still needed before it actually takes effect.
+        result["apply_error"] = apply_error
     return result
  
  
@@ -564,8 +997,13 @@ async def upload_notebooks_handler(
             app_mode=payload.app_mode,
         )
     except (RuntimeError, ValueError) as e:
-        raise HTTPException(status_code=502, detail=str(e))
- 
+        raise HTTPException(status_code=502, detail=to_friendly_message(str(e), status_code=502))
+    except Exception as e:
+        # Notebook upload can hit the same class of transient
+        # network/Fabric-API failures as anything else here; without this
+        # it fell through as a raw 500/traceback instead of a real message.
+        raise HTTPException(status_code=502, detail=to_friendly_message(str(e), status_code=502))
+
     # Persist upload status
     for r in results:
         await repo.save_config_upload(
@@ -720,7 +1158,13 @@ async def upload_pipelines_handler(
             )
     except (RuntimeError, ValueError) as e:
         logger.error("Pipeline upload error: %s", e)
-        raise HTTPException(status_code=502, detail=str(e))
+        raise HTTPException(status_code=502, detail=to_friendly_message(str(e), status_code=502))
+    except Exception as e:
+        # Same class of transient network/Fabric-API/driver failure as
+        # everywhere else here — was falling through as a raw
+        # 500/traceback instead of a real message.
+        logger.error("Pipeline upload error: %s", e)
+        raise HTTPException(status_code=502, detail=to_friendly_message(str(e), status_code=502))
  
     # Persist upload status
     for r in results:
@@ -996,12 +1440,31 @@ async def update_run_status_handler(
     return updated
  
  
+async def _connection_name_for_item(project_id: str, item_name: str, db: AsyncSession) -> str | None:
+    """Match a Fabric item's display name ("{connection_name}_{artifact
+    name}") back to one of this project's linked connections. Connection
+    names may contain underscores themselves, so this can't just split on
+    "_" — instead it checks every linked connection's name as a literal
+    prefix and keeps the longest (most specific) match."""
+    links = await repo.list_project_links(db, project_id)
+    best: str | None = None
+    for link in links:
+        sc = link.source_connection
+        if not sc or not sc.conn_name:
+            continue
+        if item_name.startswith(f"{sc.conn_name}_") and (best is None or len(sc.conn_name) > len(best)):
+            best = sc.conn_name
+    return best
+
+
 async def sync_pipeline_status_handler(
     project_id: str, user: User, db: AsyncSession
 ):
     """Check Fabric API for actual status of any 'running' pipelines and update DB."""
     project = await _require_workspace(project_id, user, db)
-    token, _ = await _get_project_token(project_id, db)
+    token, cred = await _get_project_token(project_id, db)
+    _client_id = cred.client_id if cred else settings.FABRIC_CLIENT_ID
+    _client_secret = cred.client_secret if cred else settings.FABRIC_CLIENT_SECRET
  
     import asyncio
 
@@ -1034,6 +1497,23 @@ async def sync_pipeline_status_handler(
                     job_id=u.job_id,
                 )
                 updated += 1
+                # The moment a ConfigCreation pipeline finishes is the
+                # earliest OneTimeConfigETL actually exists with real Ids —
+                # apply any table selection saved before the notebook ran
+                # right here, so it's already correct before OTL's
+                # SourceToBronze pipeline (which reads IsActive directly)
+                # gets auto-deployed/auto-run next. See
+                # _apply_pending_table_selection for why this can't wait
+                # for the frontend to happen to open the table list.
+                if new_status == "completed" and "configcreation" in u.item_name.lower():
+                    connection_name = await _connection_name_for_item(project_id, u.item_name, db)
+                    if connection_name:
+                        try:
+                            await _apply_pending_table_selection(
+                                project, connection_name, _client_id, _client_secret, db,
+                            )
+                        except Exception:
+                            pass  # best-effort — list_connection_tables still applies it as a fallback
             pipelines.append({"item_name": u.item_name, "new_status": reported_status})
         except Exception:
             pipelines.append({"item_name": u.item_name, "new_status": "running"})
@@ -1136,8 +1616,13 @@ async def upload_itl_pipelines_handler(
             db_type=db_type,
         )
     except (RuntimeError, ValueError) as e:
-        raise HTTPException(status_code=502, detail=str(e))
- 
+        raise HTTPException(status_code=502, detail=to_friendly_message(str(e), status_code=502))
+    except Exception as e:
+        # Same class of transient network/Fabric-API/driver failure as
+        # everywhere else here — was falling through as a raw
+        # 500/traceback instead of a real message.
+        raise HTTPException(status_code=502, detail=to_friendly_message(str(e), status_code=502))
+
     for r in results:
         await repo.save_config_upload(
             db,

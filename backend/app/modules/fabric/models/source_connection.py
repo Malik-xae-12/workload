@@ -43,4 +43,12 @@ class SourceConnection(Base, AuditMixin, SoftDeleteMixin):
     # Reading this column back instead guarantees the "View Mapping" resume
     # shows exactly what the original run computed.
     ai_mapping_result_json = Column(Text, nullable=True)
+    # Table picks made in the Source step's "Tables to move to Bronze"
+    # UI, BEFORE the OTL config-creation notebook has ever run for this
+    # connection (so there's no OneTimeConfigETL row / Id to reference
+    # yet). Stored as a JSON array of "schema.table" strings. Once the
+    # notebook does run and populates OneTimeConfigETL for every
+    # discovered table, this saved list is used to set IsActive=0 for
+    # everything NOT in it (see service.reconcile_pending_table_selection).
+    selected_tables_json = Column(Text, nullable=True)
     user_id = Column(String(36), ForeignKey("user.id"), nullable=False, index=True)

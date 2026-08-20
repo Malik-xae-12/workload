@@ -3,13 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Database, Plus, Save, Loader2, CheckCircle2, XCircle, Server, Check, X, Search, Trash2 } from 'lucide-react';
+import { Database, Plus, Save, Loader2, CheckCircle2, XCircle, Server, Check, X, Search, Trash2, ChevronDown } from 'lucide-react';
 import { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 import type { SourceConnection } from '../../types';
 import { listGateways, checkConnectionNameAvailable, listDatabases, type GatewayInfo } from '../../../../layouts/services/fabricApi';
 import { SelectDropdown } from '../../../../shared/components/selectdropdown';
+import { validateSimpleName } from '../../../../shared/utils/nameValidation';
 
 interface SourceStepProps {
   connections: SourceConnection[];
@@ -194,6 +195,7 @@ export const SourceStep = ({ connections, onAddConnection, onDeleteConnection, l
   // style: debounced as the person types, instead of only finding out
   // after filling in the whole form and hitting Save.
   const [nameCheck, setNameCheck] = useState<{ status: 'idle' | 'checking' | 'available' | 'taken'; message?: string }>({ status: 'idle' });
+  const connNameValidation = validateSimpleName(formData.name);
   const nameCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nameCheckRequestId = useRef(0);
 
@@ -207,6 +209,13 @@ export const SourceStep = ({ connections, onAddConnection, onDeleteConnection, l
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const dbListTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dbListRequestId = useRef(0);
+
+  // Table selection ("Tables to move to Bronze") now happens in the
+  // Config → Metadata step, after this connection's Metadata
+  // (ConfigCreation) notebook + pipeline have been created. See
+  // ConfigStep.tsx's TableSelectionPanel. tablesConnId is still used
+  // below purely to show the connection detail card in the dropdown.
+  const [tablesConnId, setTablesConnId] = useState<string>('');
 
   const isPostgres = formData.databaseType === 'PostgreSQL';
   const isBlob = formData.databaseType === 'Azure Blob';
@@ -375,6 +384,11 @@ export const SourceStep = ({ connections, onAddConnection, onDeleteConnection, l
       return;
     }
 
+    if (!connNameValidation.isValid) {
+      toast.error(connNameValidation.warning || 'Connection name can only contain letters and numbers.');
+      return;
+    }
+
     if (nameCheck.status === 'taken') {
       toast.error(nameCheck.message || 'That connection name is already in use — please choose another.');
       return;
@@ -382,7 +396,7 @@ export const SourceStep = ({ connections, onAddConnection, onDeleteConnection, l
 
     const hasGateway = !isAzureSql && !!formData.gatewayName;
     onAddConnection({
-      name: formData.name,
+      name: connNameValidation.trimmed,
       databaseType: formData.databaseType,
       server: formData.server,
       databaseName: isOracle ? '' : formData.databaseName,
@@ -415,77 +429,97 @@ export const SourceStep = ({ connections, onAddConnection, onDeleteConnection, l
         </div>
       )}
 
-      {/* Existing connections */}
+      {/* Existing connections — dropdown instead of a stacked list, so
+          this stays usable with 10+ connections. */}
       {connections.length > 0 && (
-        <div className="mb-5 space-y-2.5">
-          {connections.map((conn) => (
-            <div
-              key={conn.id}
-              className="bg-white rounded-xl border border-slate-200 p-4 flex items-center justify-between hover:border-emerald-200 transition-colors shadow-sm shadow-slate-50"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-emerald-50 flex items-center justify-center">
-                  <Database size={16} className="text-emerald-600" />
+        <div className="mb-5">
+          <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5 block">
+            Connections ({connections.length})
+          </label>
+          <SelectDropdown
+            value={connections.find((c) => c.id === tablesConnId)?.name ?? ''}
+            options={connections.map((c) => c.name)}
+            placeholder="Select a connection to view…"
+            onChange={(name) => {
+              const c = connections.find((c) => c.name === name);
+              setTablesConnId(c ? c.id : '');
+            }}
+          />
+
+          {(() => {
+            const conn = connections.find((c) => c.id === tablesConnId);
+            if (!conn) return null;
+            return (
+              <div className="mt-2.5 bg-white rounded-xl border border-slate-200 p-4 flex items-center justify-between shadow-sm shadow-slate-50">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-emerald-50 flex items-center justify-center">
+                    <Database size={16} className="text-emerald-600" />
+                  </div>
+                  <div>
+                    <p className="text-[13px] font-semibold text-slate-800">{conn.name}</p>
+                    <p className="text-[11px] text-slate-400">
+                      {conn.databaseType} · {conn.server}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-[13px] font-semibold text-slate-800">{conn.name}</p>
-                  <p className="text-[11px] text-slate-400">
-                    {conn.databaseType} · {conn.server}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border ${
-                  conn.status === 'creating'
-                    ? 'text-blue-700 bg-blue-50 border-blue-100'
-                    : conn.status === 'failed'
-                    ? 'text-red-700 bg-red-50 border-red-100'
-                    : 'text-emerald-700 bg-emerald-50 border-emerald-100'
-                }`}>
-                  {conn.status === 'creating' ? (
-                    <><Loader2 size={11} className="animate-spin" /> Creating…</>
-                  ) : conn.status === 'failed' ? (
-                    <><XCircle size={11} /> Failed{conn.statusError ? `: ${conn.statusError}` : ''}</>
-                  ) : (
-                    <><CheckCircle2 size={11} /> {conn.fabricConnectionId ? 'Fabric Connected' : 'Active'}</>
+                <div className="flex items-center gap-2">
+                  <span className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border ${
+                    conn.status === 'creating'
+                      ? 'text-blue-700 bg-blue-50 border-blue-100'
+                      : conn.status === 'failed'
+                      ? 'text-red-700 bg-red-50 border-red-100'
+                      : 'text-emerald-700 bg-emerald-50 border-emerald-100'
+                  }`}>
+                    {conn.status === 'creating' ? (
+                      <><Loader2 size={11} className="animate-spin" /> Creating…</>
+                    ) : conn.status === 'failed' ? (
+                      <><XCircle size={11} /> Failed{conn.statusError ? `: ${conn.statusError}` : ''}</>
+                    ) : (
+                      <><CheckCircle2 size={11} /> {conn.fabricConnectionId ? 'Fabric Connected' : 'Active'}</>
+                    )}
+                  </span>
+                  {onDeleteConnection && conn.status !== 'creating' && (
+                    pendingDeleteId === conn.id ? (
+                      <div className="flex items-center gap-1">
+                        <span className="text-[11px] text-slate-500">Delete?</span>
+                        <button
+                          onClick={() => handleDelete(conn)}
+                          disabled={deletingId === conn.id}
+                          className="p-1 rounded text-white bg-red-600 hover:bg-red-700 disabled:opacity-50"
+                          title="Confirm delete"
+                        >
+                          {deletingId === conn.id ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                        </button>
+                        <button
+                          onClick={() => setPendingDeleteId(null)}
+                          disabled={deletingId === conn.id}
+                          className="p-1 rounded text-slate-500 hover:bg-slate-100 disabled:opacity-50"
+                          title="Cancel"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setPendingDeleteId(conn.id)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                        title="Delete connection"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )
                   )}
-                </span>
-                {onDeleteConnection && conn.status !== 'creating' && (
-                  pendingDeleteId === conn.id ? (
-                    <div className="flex items-center gap-1">
-                      <span className="text-[11px] text-slate-500">Delete?</span>
-                      <button
-                        onClick={() => handleDelete(conn)}
-                        disabled={deletingId === conn.id}
-                        className="p-1 rounded text-white bg-red-600 hover:bg-red-700 disabled:opacity-50"
-                        title="Confirm delete"
-                      >
-                        {deletingId === conn.id ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-                      </button>
-                      <button
-                        onClick={() => setPendingDeleteId(null)}
-                        disabled={deletingId === conn.id}
-                        className="p-1 rounded text-slate-500 hover:bg-slate-100 disabled:opacity-50"
-                        title="Cancel"
-                      >
-                        <X size={12} />
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setPendingDeleteId(conn.id)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                      title="Delete connection"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  )
-                )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })()}
         </div>
       )}
+
+      {/* Note: "Tables to move to Bronze" selection now lives in the
+          Metadata step of Config, after the Metadata (ConfigCreation)
+          notebook + pipeline have been created for a connection — see
+          ConfigStep.tsx's TableSelectionPanel. */}
 
       {/* Connecting indicator */}
       {loading && !showForm && (
@@ -534,9 +568,10 @@ export const SourceStep = ({ connections, onAddConnection, onDeleteConnection, l
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="e.g., Production Sales DB"
+                  onBlur={() => setFormData((prev) => ({ ...prev, name: prev.name.trim() }))}
+                  placeholder="e.g., ProductionSalesDB"
                   className={`w-full h-9 px-3.5 pr-8 text-[13px] rounded-lg border outline-none focus:ring-2 text-slate-800 placeholder:text-slate-400 bg-slate-50 ${
-                    nameCheck.status === 'taken'
+                    nameCheck.status === 'taken' || connNameValidation.warning
                       ? 'border-rose-300 focus:border-rose-400 focus:ring-rose-50'
                       : nameCheck.status === 'available'
                       ? 'border-emerald-300 focus:border-emerald-400 focus:ring-emerald-50'
@@ -545,16 +580,17 @@ export const SourceStep = ({ connections, onAddConnection, onDeleteConnection, l
                 />
                 <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
                   {nameCheck.status === 'checking' && <Loader2 size={14} className="text-slate-400 animate-spin" />}
-                  {nameCheck.status === 'available' && <Check size={15} className="text-emerald-500" strokeWidth={3} />}
-                  {nameCheck.status === 'taken' && <X size={15} className="text-rose-500" strokeWidth={3} />}
+                  {!connNameValidation.warning && nameCheck.status === 'available' && <Check size={15} className="text-emerald-500" strokeWidth={3} />}
+                  {(connNameValidation.warning || nameCheck.status === 'taken') && <X size={15} className="text-rose-500" strokeWidth={3} />}
                 </div>
               </div>
-              {nameCheck.status === 'taken' && (
+              {connNameValidation.warning ? (
+                <p className="text-[11px] text-rose-500">{connNameValidation.warning}</p>
+              ) : nameCheck.status === 'taken' ? (
                 <p className="text-[11px] text-rose-500">{nameCheck.message}</p>
-              )}
-              {nameCheck.status === 'available' && (
+              ) : nameCheck.status === 'available' ? (
                 <p className="text-[11px] text-emerald-600">Available</p>
-              )}
+              ) : null}
             </div>
 
             <div className="space-y-1">

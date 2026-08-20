@@ -4,7 +4,7 @@
  */
 
 import { ArrowLeft, ArrowRight, Loader2, SkipBack, SkipForward, Bell, HelpCircle, User } from 'lucide-react';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { SidebarStepper } from '../components/SidebarStepper';
 import { StepProgressCard } from '../components/StepProgressCard';
@@ -254,6 +254,92 @@ export const SetupPage = () => {
       setCurrentStep(state.currentStep + 1);
     }
   };
+
+  // Medallion (step 1) is otherwise a single manual "Create in Fabric"
+  // click — auto-fire it the moment layer names are set (they default to
+  // sensible names already) so nobody has to click anything here, then
+  // auto-advance to the next step the instant every layer validates.
+  // Guarded so a person who navigates back to this step to tweak
+  // something doesn't get auto-created/advanced out from under them a
+  // second time.
+  const medallionAutoCreateRef = useRef(false);
+  const medallionAutoAdvanceRef = useRef(false);
+  useEffect(() => {
+    if (state.currentStep !== 1) return;
+    const allNamed = state.medallionLayers.every((l) => l.name.trim());
+    const allValidated = state.medallionLayers.every((l) => l.validated);
+    if (allValidated) {
+      if (!medallionAutoAdvanceRef.current) {
+        medallionAutoAdvanceRef.current = true;
+        handleNext();
+      }
+      return;
+    }
+    if (allNamed && !state.loading && !medallionAutoCreateRef.current) {
+      medallionAutoCreateRef.current = true;
+      createMedallionInBackend();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.currentStep, state.medallionLayers.map((l) => `${l.name}:${l.validated}`).join(','), state.loading]);
+
+  // Step 0 (Workspace): provisioning itself stays the one deliberate
+  // manual action ("create project") — but the instant it succeeds,
+  // auto-advance straight into Medallion rather than making the person
+  // click Next for something that already finished.
+  //
+  // Gated on workspace.workspaceId, NOT credentialsSaved: saving the SP
+  // credentials alone (saveCredentialsToBackend, a separate, earlier
+  // action) also sets credentialsSaved=true, before the workspace is
+  // actually provisioned. Watching credentialsSaved alone auto-advanced
+  // to Medallion right after entering SP details — before a workspace
+  // existed at all — so Medallion's own auto-create immediately failed
+  // with "workspace not provisioned" and the person had to come back
+  // here and provision manually. workspaceId is only ever set once
+  // provisionWorkspaceToBackend actually succeeds, so that's the real
+  // signal to advance on.
+  const workspaceAutoAdvanceRef = useRef(false);
+  useEffect(() => {
+    if (state.currentStep !== 0) return;
+    if (state.workspace.workspaceId && !workspaceAutoAdvanceRef.current) {
+      workspaceAutoAdvanceRef.current = true;
+      handleNext();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.currentStep, state.workspace.workspaceId]);
+
+  // Step 2 (Metadata warehouse + log setup): auto-create WH_MetaData, then
+  // auto-create the log objects, then auto-advance into Source Connections
+  // — which is where automation deliberately stops. Source connections
+  // are added manually, and (per Config Step's own gating) nothing else
+  // auto-runs until the person explicitly clicks Create on Metadata for a
+  // chosen connection — this step just gets them there without clicking
+  // through two more "Create" buttons for setup that doesn't need a
+  // decision.
+  const metadataAutoCreateRef = useRef(false);
+  const metadataAutoLogRef = useRef(false);
+  const metadataAutoAdvanceRef = useRef(false);
+  useEffect(() => {
+    if (state.currentStep !== 2) return;
+    const { metadataCreated, logCreated } = state.metadataSetup;
+    if (metadataCreated && logCreated) {
+      if (!metadataAutoAdvanceRef.current) {
+        metadataAutoAdvanceRef.current = true;
+        handleNext();
+      }
+      return;
+    }
+    if (state.loading) return;
+    if (!metadataCreated && !metadataAutoCreateRef.current) {
+      metadataAutoCreateRef.current = true;
+      createMetadataInBackend();
+      return;
+    }
+    if (metadataCreated && !logCreated && !metadataAutoLogRef.current) {
+      metadataAutoLogRef.current = true;
+      createLogInBackend();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.currentStep, state.metadataSetup.metadataCreated, state.metadataSetup.logCreated, state.loading]);
 
   // Drives the Next button's dimmed "not ready yet" look — mirrors both
   // gates handleNext itself checks (validateCurrentStep() plus the
@@ -559,7 +645,7 @@ export const SetupPage = () => {
                     {renderStep()}
                   </div>
                   <div className="sticky top-[72px] hidden xl:flex flex-col gap-4">
-                    <StepProgressCard currentStep={state.currentStep} />
+                    <StepProgressCard currentStep={state.currentStep} highestStepReached={state.highestStepReached} />
                     <div className="flex items-center gap-2">
                       <button
                         onClick={handleBack}
@@ -570,8 +656,19 @@ export const SetupPage = () => {
                       </button>
                       <button
                         onClick={handleNext}
-                        disabled={state.currentStep >= 5 || state.loading}
-                        // Deliberately NOT using the native `disabled`
+                        disabled={state.currentStep >= 5}
+                        // Deliberately NOT tied to state.loading: that flag
+                        // is shared by every background auto-process (this
+                        // step's own auto-create/auto-advance, an in-flight
+                        // notebook/pipeline upload, etc.), so wiring it to
+                        // `disabled` made Next genuinely unclickable for as
+                        // long as anything was running in the background —
+                        // exactly backwards from "keep working normally
+                        // while automation runs." Only the step count
+                        // (nothing left to advance to) uses the real
+                        // `disabled` attribute now.
+                        //
+                        // Also deliberately NOT using the native `disabled`
                         // attribute for "step incomplete" — a truly
                         // disabled button can't be clicked at all, so
                         // there'd be no way to tell the person WHY it
@@ -581,7 +678,7 @@ export const SetupPage = () => {
                         // validateCurrentStep() shows the specific
                         // "please fill in ___" toast.
                         aria-disabled={stepIncomplete}
-                        className={`flex-1 h-9 rounded-lg flex items-center justify-center gap-1.5 text-white transition-all shadow-sm text-[11px] font-bold disabled:opacity-40 ${
+                        className={`cursor-pointer flex-1 h-9 rounded-lg flex items-center justify-center gap-1.5 text-white transition-all shadow-sm text-[11px] font-bold disabled:opacity-40 disabled:cursor-not-allowed ${
                           stepIncomplete ? 'opacity-40 cursor-not-allowed' : ''
                         }`}
                         style={{ background: activeNav === 'finin-accelerator' ? 'linear-gradient(135deg, #14b8a6, #0f766e)' : 'linear-gradient(135deg, #1D9E75, #0d6e52)' }}

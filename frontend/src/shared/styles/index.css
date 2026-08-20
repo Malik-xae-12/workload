@@ -30,6 +30,17 @@
   body {
     @apply antialiased text-slate-900 bg-white;
   }
+
+  /* Buttons should always feel clickable. Scoped to :not(:disabled) so
+     genuinely inactive buttons keep the default (not-allowed-looking)
+     cursor instead of falsely inviting a click. */
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']) {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
 }
 
 .bg-grid-white {

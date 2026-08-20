@@ -132,6 +132,34 @@ class MetadataActionRequest(BaseModel):
     action: str = "create_metadata"  # "create_metadata" or "create_log"
 
 
+# ── Source table selection (source -> Bronze) ───────────────────────
+
+class SourceTableRead(BaseModel):
+    id: int
+    schema_name: str
+    table_name: str
+    is_active: bool
+
+
+class ConnectionTablesUpdateRequest(BaseModel):
+    # Exactly the table Ids that should remain active (move to Bronze).
+    # Every other table for this connection is set inactive. An empty
+    # list deactivates all tables for the connection.
+    active_ids: list[int] = []
+
+
+class PendingTableSelectionRequest(BaseModel):
+    # 'all' -> move every discovered table (ignoring 'sys').
+    # 'schema' -> move every table under the chosen schemas (see `schemas`).
+    # 'table' -> move exactly the chosen "schema.table" entries (see `selected`).
+    mode: str = "table"
+    # Schema names, used when mode == 'schema'.
+    schemas: list[str] = []
+    # "schema.table" strings, used when mode == 'table'. Also accepted (and
+    # kept) for backwards compatibility when mode isn't provided.
+    selected: list[str] = []
+
+
 # ── Notebooks ────────────────────────────────────────────────────────
 
 class NotebookUploadRequest(BaseModel):

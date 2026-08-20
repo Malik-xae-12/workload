@@ -41,7 +41,6 @@ export const MetadataStep = ({
   selectedConnection,
   onWarehouseNameChange,
   onCreateMetadata,
-  onCreateLog,
   onSelectConnection,
   loading,
   error,
@@ -105,42 +104,28 @@ export const MetadataStep = ({
         </div>
       </div>
 
-      {/* Sub-step 2 */}
-      {metadataCreated && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-5 mb-4 shadow-sm">
-          <SubStep num={2} title="Create Log Objects" done={logCreated} />
+      {/* Sub-step 2: Create Log Objects — deliberately NOT a visible
+          card/form anymore. SetupPage already creates this fully
+          automatically right after the warehouse finishes (see its
+          metadataAutoLogRef effect) — there's no schema name to choose
+          and nothing for a person to decide here, so surfacing it as its
+          own "Create Log Objects" step with a button just asked for an
+          unnecessary click on something that was going to happen
+          regardless. What WAS missing: while that background creation
+          runs, the screen showed nothing at all between "Warehouse
+          Created" and the page auto-advancing — long enough to look
+          broken/stuck to someone who doesn't know what's happening
+          behind the scenes. This replaces that silence with a plain,
+          reassuring "finishing setup" indicator instead. */}
+      {metadataCreated && !logCreated && (
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 mb-4 shadow-sm flex items-center gap-3">
+          <Loader2 size={16} className="text-emerald-600 animate-spin shrink-0" />
           <div>
-            <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-1.5">
-              Log Schema Name
-            </label>
-            <input
-              type="text"
-              disabled={metadataCreated}
-              placeholder="Log"
-              className="w-full max-w-xs h-10 px-3.5 text-[13px] rounded-lg border border-slate-300 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-50 text-slate-800 bg-slate-50 disabled:bg-slate-100 disabled:text-slate-400"
-            />
-            <p className="text-[11px] text-slate-400 mt-1.5 mb-2">
-              Creates log tables and stored procedures for tracking data ingestion and processing.
+            <p className="text-[13px] font-semibold text-slate-700">Finishing setup…</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              Setting up log tracking for your data pipeline. This only takes a moment.
             </p>
           </div>
-          <button
-            onClick={onCreateLog}
-            disabled={loading || logCreated}
-            className="flex items-center gap-2 px-4 py-2 text-[12px] font-bold rounded-lg transition-all disabled:opacity-60"
-            style={
-              logCreated
-                ? { background: '#d1fae5', color: '#065f46' }
-                : { background: '#0d3828', color: '#fff' }
-            }
-          >
-            {logCreated ? (
-              <><CheckCircle2 size={13} /> Log Objects Created</>
-            ) : loading ? (
-              <><Loader2 size={13} className="animate-spin" /> Creating...</>
-            ) : (
-              <><Play size={13} /> Run Log Setup</>
-            )}
-          </button>
         </div>
       )}
     </div>
