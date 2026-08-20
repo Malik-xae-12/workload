@@ -8,7 +8,6 @@ import {
   Layers,
   Database as DatabaseIcon,
   Settings,
-  BarChart3,
 } from 'lucide-react';
 import type { SetupState } from '../../types';
 
@@ -88,7 +87,7 @@ export const OverviewStep = ({ setupState }: OverviewStepProps) => {
                     className="w-2 h-2 rounded-full"
                     style={{
                       background:
-                        layer.key === 'bronze' ? '#f59e0b' : layer.key === 'silver' ? '#94a3b8' : '#1D9E75',
+                        layer.key === 'bronze' ? '#f39b03' : layer.key === 'silver' ? '#94a3b8' : '#1D9E75',
                     }}
                   />
                   <span className="text-[12px] font-medium text-slate-700">{layer.name}</span>

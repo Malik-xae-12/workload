@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute 
@@ -34,11 +36,17 @@ def create_app() -> FastAPI:
     app.add_event_handler("startup", create_database)
     app.add_event_handler("startup", check_azure_openai_connection)
 
-    # CORS: use explicit CORS_ORIGINS if set, else fall back to FRONTEND_URL
-    allowed_origins = (
-        list(settings.CORS_ORIGINS)
-        if settings.CORS_ORIGINS
-        else [settings.FRONTEND_URL]
+    # CORS: always include FRONTEND_URL, plus any extra CORS_ORIGINS.
+    # Using "OR" here previously meant that if CORS_ORIGINS was left unset
+    # in an environment (e.g. Azure App Service application settings),
+    # FRONTEND_URL was used instead — but if FRONTEND_URL was also left at
+    # its default ("http://localhost:3000"), the real production frontend
+    # origin was silently dropped and every cross-origin request from prod
+    # failed with "No 'Access-Control-Allow-Origin' header is present".
+    # Combining both (deduped) means a missing CORS_ORIGINS env var can no
+    # longer wipe out a correctly configured FRONTEND_URL, or vice versa.
+    allowed_origins = list(
+        dict.fromkeys([settings.FRONTEND_URL, *settings.CORS_ORIGINS])
     )
     app.add_middleware(
         CORSMiddleware,
@@ -47,6 +55,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    logging.getLogger("uvicorn").info("CORS allowed origins: %s", allowed_origins)
 
     app.add_middleware(CSRFMiddleware)
 
