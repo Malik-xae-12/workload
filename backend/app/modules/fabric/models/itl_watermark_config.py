@@ -17,5 +17,6 @@ class ItlWatermarkConfig(Base, AuditMixin):
     connection_name = Column(String(255), nullable=False)
     config_json = Column(Text, nullable=False)  # JSON string of the parsed rows
     onelake_path = Column(String(1024), nullable=True)  # abfss:// path in Bronze/Files/MetaData_ITL/
+    original_filename = Column(String(500), nullable=True)  # the .xlsx name the person uploaded, for display
 
     project = relationship("Project")

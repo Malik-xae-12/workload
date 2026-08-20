@@ -119,6 +119,10 @@ export interface SetupState {
   error: string | null;
   itlConfigDownloaded: Record<string, boolean>;
   itlConfigUploaded: Record<string, boolean>;
+  /** Original filename of the last Excel uploaded via "Upload Filled Excel"
+   * per connection — lifted out of ItlSection's local state (and backed by
+   * the server) so it survives remounts/reloads instead of resetting. */
+  itlUploadedFileName: Record<string, string>;
   itlPipelineFiles: Record<string, PipelineItem[]>;
   itlNotebookRunStatus: Record<string, string | null>;
   itlStatusChecked: Record<string, boolean>;

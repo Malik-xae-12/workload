@@ -113,6 +113,7 @@ const initialState: SetupState = {
   error: null,
   itlConfigDownloaded: {},
   itlConfigUploaded: {},
+  itlUploadedFileName: {},
   itlPipelineFiles: {},
   itlNotebookRunStatus: {},
   itlStatusChecked: {},
@@ -936,6 +937,9 @@ export const useSetupStore = (projectId: string | null) => {
                 ...prev,
                 itlConfigDownloaded: { ...prev.itlConfigDownloaded, [connId]: status.downloaded },
                 itlConfigUploaded: { ...prev.itlConfigUploaded, [connId]: status.uploaded },
+                itlUploadedFileName: status.original_filename
+                  ? { ...prev.itlUploadedFileName, [connId]: status.original_filename }
+                  : prev.itlUploadedFileName,
                 itlNotebookRunStatus: {
                   ...prev.itlNotebookRunStatus,
                   [connId]: preserveNotebookStatus
@@ -1488,7 +1492,12 @@ export const useSetupStore = (projectId: string | null) => {
     setState((prev) => ({ ...prev, loading: true, error: null }));
     try {
       await uploadItlConfig(projectId, selectedConn.name, file);
-      applyForProject(projectId, (prev) => ({ ...prev, loading: false, itlConfigUploaded: { ...prev.itlConfigUploaded, [selectedConn.id]: true } }));
+      applyForProject(projectId, (prev) => ({
+        ...prev,
+        loading: false,
+        itlConfigUploaded: { ...prev.itlConfigUploaded, [selectedConn.id]: true },
+        itlUploadedFileName: { ...prev.itlUploadedFileName, [selectedConn.id]: file.name },
+      }));
       return true;
     } catch (e: any) {
       applyForProject(projectId, (prev) => ({ ...prev, loading: false, error: e.message }));

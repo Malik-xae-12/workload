@@ -44,6 +44,7 @@ interface ConfigStepProps {
   // ITL props — keyed by connection id, same shape as notebooks/pipelineFiles
   itlConfigDownloaded: Record<string, boolean>;
   itlConfigUploaded: Record<string, boolean>;
+  itlUploadedFileName: Record<string, string>;
   itlPipelineFiles: Record<string, PipelineItem[]>;
   itlStatusChecked: Record<string, boolean>;
 
@@ -101,6 +102,7 @@ export const ConfigStep = ({
   onRunPipeline,
   itlConfigDownloaded,
   itlConfigUploaded,
+  itlUploadedFileName,
   itlPipelineFiles,
   onDownloadItlConfig,
   onUploadItlConfig,
@@ -145,6 +147,7 @@ export const ConfigStep = ({
   // more than one connection existed in the workspace.
   const connItlConfigDownloaded = selectedConnection ? itlConfigDownloaded[selectedConnection] ?? false : false;
   const connItlConfigUploaded = selectedConnection ? itlConfigUploaded[selectedConnection] ?? false : false;
+  const connItlUploadedFileName = selectedConnection ? itlUploadedFileName[selectedConnection] ?? null : null;
   const connItlPipelineFiles: PipelineItem[] = (selectedConnection ? itlPipelineFiles[selectedConnection] : undefined) ?? [];
   // TEMP: MailTrigger pipeline is hidden from the UI (and skipped in the run
   // sequence — see ITL_RUN_SEQUENCE in useSetupStore) while it's failing, so a
@@ -668,6 +671,7 @@ export const ConfigStep = ({
               connectionName={selectedConn!.name}
               itlConfigDownloaded={connItlConfigDownloaded}
               itlConfigUploaded={connItlConfigUploaded}
+              itlUploadedFileName={connItlUploadedFileName}
               itlPipelineFiles={visibleItlPipelineFiles}
               onDownloadItlConfig={onDownloadItlConfig}
               onUploadItlConfig={onUploadItlConfig}
@@ -1517,6 +1521,12 @@ interface ItlSectionProps {
   connectionName: string;
   itlConfigDownloaded: boolean;
   itlConfigUploaded: boolean;
+  /** Name of the last Excel uploaded via "Upload Filled Excel" for this
+   * connection — persisted server-side (config_uploads/itl_watermark_configs
+   * original_filename) and lifted into store state, so it survives both a
+   * page reload and a remount of this section (e.g. switching connections
+   * and back), unlike the old component-local useState it replaced. */
+  itlUploadedFileName: string | null;
   itlPipelineFiles: PipelineItem[];
   onDownloadItlConfig: () => Promise<boolean>;
   onUploadItlConfig: (file: File) => Promise<boolean>;
@@ -1540,6 +1550,7 @@ const ItlSection = ({
   connectionName,
   itlConfigDownloaded,
   itlConfigUploaded,
+  itlUploadedFileName,
   itlPipelineFiles,
   onDownloadItlConfig,
   onUploadItlConfig,
@@ -1553,13 +1564,6 @@ const ItlSection = ({
   const [uploading, setUploading] = useState(false);
   const [runningNotebook, setRunningNotebook] = useState(false);
   const [deploying, setDeploying] = useState(false);
-  // Name of the last file uploaded via "Upload Filled Excel" this session
-  // — shown next to the button so it's clear which file is currently in
-  // use, and swaps to the new name the moment a different file is
-  // uploaded. Session-local only (not persisted across a reload) since
-  // the backend doesn't track the original filename, only that a file
-  // was uploaded.
-  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const autoDeployTriggeredRef = useRef(false);
 
@@ -1689,7 +1693,6 @@ const ItlSection = ({
     const ok = await onUploadItlConfig(file);
     setUploading(false);
     if (ok) {
-      setUploadedFileName(file.name);
       toast.success('ITL Config uploaded successfully');
     } else {
       toast.error('Failed to upload ITL config');
@@ -1744,7 +1747,8 @@ const ItlSection = ({
                 </div>
                 <button
                   onClick={handleDownload}
-                  disabled={loading || downloading}
+                  disabled={loading || downloading || notebookRan}
+                  title={notebookRan ? 'ITL Notebook has already run — config creation is locked' : undefined}
                   className={`cursor-pointer flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed ${itlConfigDownloaded
                       ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
                       : 'bg-emerald-600 text-white hover:bg-emerald-700'
@@ -1765,9 +1769,9 @@ const ItlSection = ({
                 <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold bg-emerald-100 text-emerald-700">2</div>
                 <div className="flex-1 min-w-0">
                   <p className="text-[12px] font-medium text-slate-700">Upload Filled Excel</p>
-                  {uploadedFileName ? (
-                    <p className="text-[10px] text-emerald-700 font-semibold truncate" title={uploadedFileName}>
-                      {uploadedFileName}
+                  {itlUploadedFileName ? (
+                    <p className="text-[10px] text-emerald-700 font-semibold truncate" title={itlUploadedFileName}>
+                      {itlUploadedFileName}
                     </p>
                   ) : (
                     <p className="text-[10px] text-slate-500">Fill watermark fields and upload back</p>
@@ -1782,7 +1786,8 @@ const ItlSection = ({
                 />
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={loading || uploading}
+                  disabled={loading || uploading || notebookRan}
+                  title={notebookRan ? 'ITL Notebook has already run — config creation is locked' : undefined}
                   className={`cursor-pointer flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed ${itlConfigUploaded
                       ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
                       : 'bg-emerald-600 text-white hover:bg-emerald-700'
@@ -1876,7 +1881,7 @@ const ItlSection = ({
                   }`}>1</div>
                 <div className="flex-1">
                   <p className="text-[12px] font-medium text-slate-700">Run ITL Notebook</p>
-                  <p className="text-[10px] text-slate-500">Auto-runs once the filled Excel is uploaded</p>
+                  <p className="text-[10px] text-slate-500">Executes once the filled Excel is uploaded</p>
                 </div>
                 <button
                   onClick={async () => {
@@ -1914,7 +1919,7 @@ const ItlSection = ({
                   }`}>2</div>
                 <div className="flex-1">
                   <p className="text-[12px] font-medium text-slate-700">Deploy ITL Pipelines</p>
-                  <p className="text-[10px] text-slate-500">Auto-deployed once the notebook completes</p>
+                  <p className="text-[10px] text-slate-500">Deployed once the notebook completes</p>
                 </div>
                 {notebookRan || allItlDeployed || anyItlFailed || deploying ? (
                   <button
@@ -1958,7 +1963,7 @@ const ItlSection = ({
                     }`}>3</div>
                   <div className="flex-1">
                     <p className="text-[12px] font-medium text-slate-700">Run Pipelines</p>
-                    <p className="text-[10px] text-slate-500">Auto-runs WatermarkUpdate → MasterPipeline in order</p>
+                    <p className="text-[10px] text-slate-500">Executes WatermarkUpdate → MasterPipeline in order</p>
                   </div>
                   <button
                     type="button"

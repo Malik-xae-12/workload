@@ -546,7 +546,9 @@ async def upload_itl_config(
     if not file.filename or not file.filename.endswith((".xlsx", ".xls")):
         raise HTTPException(status_code=400, detail="Please upload an Excel file (.xlsx)")
     file_bytes = await file.read()
-    return await svc.upload_itl_config_handler(project_id, connection_name, file_bytes, user, db)
+    return await svc.upload_itl_config_handler(
+        project_id, connection_name, file_bytes, user, db, original_filename=file.filename
+    )
 
 @router.get(
     "/projects/{project_id}/itl-config/status",
@@ -616,6 +618,7 @@ async def get_itl_config_status(
         "downloaded": cfg is not None,
         "uploaded": cfg is not None and cfg.config_json not in (None, "[]", ""),
         "onelake_path": cfg.onelake_path if cfg else None,
+        "original_filename": cfg.original_filename if cfg else None,
         "notebook_run_status": nb_upload.run_status if nb_upload else None,
         "notebook_job_id": nb_upload.job_id if nb_upload else None,
         "deployed_pipelines": deployed_pipelines,

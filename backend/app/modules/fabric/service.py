@@ -1696,7 +1696,8 @@ async def download_itl_config_handler(
  
  
 async def upload_itl_config_handler(
-    project_id: str, connection_name: str, file_bytes: bytes, user: User, db: AsyncSession
+    project_id: str, connection_name: str, file_bytes: bytes, user: User, db: AsyncSession,
+    original_filename: str | None = None,
 ):
     project = await _require_workspace(project_id, user, db)
  
@@ -1861,12 +1862,14 @@ async def upload_itl_config_handler(
         existing.config_json = json.dumps(rows)
         if onelake_path:
             existing.onelake_path = onelake_path
+        existing.original_filename = original_filename
         db.add(existing)
     else:
         itl_config = ItlWatermarkConfig(
             project_id=project_id,
             connection_name=connection_name,
             config_json=json.dumps(rows),
+            original_filename=original_filename,
         )
         if onelake_path:
             itl_config.onelake_path = onelake_path

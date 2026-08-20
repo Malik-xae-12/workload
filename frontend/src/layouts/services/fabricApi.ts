@@ -627,6 +627,7 @@ export function getItlConfigStatus(projectId: string, connectionName: string) {
     downloaded: boolean;
     uploaded: boolean;
     onelake_path: string | null;
+    original_filename: string | null;
     notebook_run_status: string | null;
     notebook_job_id: string | null;
     deployed_pipelines: {

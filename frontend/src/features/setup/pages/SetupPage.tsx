@@ -494,6 +494,7 @@ export const SetupPage = () => {
             onRunPipeline={handleRunPipelineFromFiles}
             itlConfigDownloaded={state.itlConfigDownloaded}
             itlConfigUploaded={state.itlConfigUploaded}
+            itlUploadedFileName={state.itlUploadedFileName}
             itlPipelineFiles={state.itlPipelineFiles}
             onDownloadItlConfig={downloadItlConfigExcel}
             onUploadItlConfig={uploadItlConfigExcel}

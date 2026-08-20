@@ -344,6 +344,7 @@ class ITLConfigStatusResponse(BaseModel):
     downloaded: bool
     uploaded: bool
     onelake_path: str | None = None
+    original_filename: str | None = None
     notebook_run_status: str | None = None
     notebook_job_id: str | None = None
     deployed_pipelines: list[ITLDeployedPipeline] = []
