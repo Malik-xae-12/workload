@@ -1,0 +1,13 @@
+{
+    "Workload_Display_Name": "Hello Fabric!",
+    "Workload_Full_Display_Name": "Hello Fabric!",
+    "Workload_Description": "See how to build, customize, and publish your first Fabric workload in minutes.",
+    "Workload_Hub_Slogan": "The fastest way to build, test, and publish your first Fabric workload.",
+    "Workload_Hub_Description": "Add a brief description of your workload here. Explain what it does, its main benefits, and who it's for. This is your opportunity to give users a clear and concise overview.\n\n**You can:**\n\n• Highlight a key feature or benefit of your workload.\n• Describe another important capability or use case.\n• Explain a core concept or how users can get started.\n• List another key selling point or feature.",
+    "Workload_Hub_GetStarted_1_Title": "Title1",    
+    "Workload_Hub_GetStarted_1_Sub_Title": "SubTitle1",
+    "Workload_Hub_GetStarted_1_Description": "Card1 description",
+    "HelloWorldItem_DisplayName": "Hello World",
+    "HelloWorldItem_DisplayName_Plural": "Hello Worlds",
+    "HelloWorldItem_Description": "A Hello World Item to start your Dev Experience"
+}
