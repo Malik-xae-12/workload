@@ -5,18 +5,17 @@ param (
 ################################################
 # Make sure Manifest is built
 ################################################
-# Run BuildManifestPackage.ps1 with absolute path
 $buildManifestPackageScript = Join-Path $PSScriptRoot "..\Build\BuildManifestPackage.ps1"
 if (Test-Path $buildManifestPackageScript) {
     $buildManifestPackageScript = (Resolve-Path $buildManifestPackageScript).Path
     & $buildManifestPackageScript 
 } else {
-    Write-Host "BuildManifestPackage.ps1 not found at $buildManifestPackageScript"
+    Write-Host "BuildManifestPackage.ps1 not found at $buildManifestPackageScript" -ForegroundColor Red
     exit 1
 }
 
 ################################################
-# Starting the Frontend
+# Starting DevGateway
 ################################################
 $fileExe = ""
 if($IsWindows) { 
@@ -28,7 +27,7 @@ if($IsWindows) {
 $CONFIGURATIONFILE = Resolve-Path -Path (Join-Path $PSScriptRoot "..\..\build\DevGateway\workload-dev-mode.json")
 $CONFIGURATIONFILE = $CONFIGURATIONFILE.Path
 Write-Host "DevGateway used: $fileExe"
-Write-Host "Configuration xsfile used: $CONFIGURATIONFILE"
+Write-Host "Configuration file used: $CONFIGURATIONFILE"
 
 $token = ""
 # When InteractiveLogin is false, always use az commands for authentication
@@ -47,11 +46,11 @@ if (-not $InteractiveLogin -or $env:CODESPACES -eq "true" -or $IsMacOS) {
     $token = az account get-access-token --scope https://analysis.windows.net/powerbi/api/.default --query accessToken -o tsv 
     Write-Host "Successfully obtained access token via az CLI" -ForegroundColor Green
 }
+
 $config = Get-Content -Path $CONFIGURATIONFILE -Raw | ConvertFrom-Json 
 $manifestPackageFilePath = $config.ManifestPackageFilePath 
 $devWorkspaceId = $config.WorkspaceGuid 
 $logLevel = "Information"
-
 
 if($IsWindows) { 
     if ($InteractiveLogin -and [string]::IsNullOrEmpty($token)) {
